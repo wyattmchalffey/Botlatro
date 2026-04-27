@@ -20,6 +20,10 @@ def joker_with_effect(name: str, effect: str) -> Joker:
     return Joker(name, metadata={"value": {"effect": effect}})
 
 
+def uncommon_joker(name: str) -> Joker:
+    return Joker(name, metadata={"rarity": "Uncommon"})
+
+
 class HandEvaluatorTests(unittest.TestCase):
     def test_identifies_core_hand_types(self) -> None:
         examples = [
@@ -85,6 +89,17 @@ class HandEvaluatorTests(unittest.TestCase):
         self.assertEqual(evaluation.card_chips, 52)
         self.assertEqual(evaluation.mult, 6)
         self.assertEqual(evaluation.score, 372)
+
+    def test_permanent_card_chip_metadata_is_applied(self) -> None:
+        evaluation = evaluate_played_cards(
+            (
+                Card(rank="A", suit="S", metadata={"modifier": {"perma_bonus": 10}}),
+                Card(rank="A", suit="D", metadata={"bonus_chips": 5}),
+            )
+        )
+
+        self.assertEqual(evaluation.card_chips, 37)
+        self.assertEqual(evaluation.score, 94)
 
     def test_glass_and_joker_edition_xmult_are_applied(self) -> None:
         evaluation = evaluate_played_cards(
@@ -389,6 +404,146 @@ class HandEvaluatorTests(unittest.TestCase):
         self.assertEqual(evaluation.chips, 35)
         self.assertEqual(evaluation.effect_xmult, 8)
         self.assertEqual(evaluation.score, 280)
+
+    def test_money_scaled_jokers_are_applied(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(Joker("Bull"), Joker("Bootstraps")),
+            money=11,
+        )
+
+        self.assertEqual(evaluation.chips, 38)
+        self.assertEqual(evaluation.mult, 5)
+        self.assertEqual(evaluation.score, 190)
+
+    def test_acrobat_and_suit_xmult_jokers_are_applied(self) -> None:
+        acrobat = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(Joker("Acrobat"),),
+            hands_remaining=1,
+        )
+        seeing_double = evaluate_played_cards(
+            cards(["KC", "KS"]),
+            jokers=(Joker("Seeing Double"),),
+        )
+        flower_pot = evaluate_played_cards(
+            cards(["TD", "9C", "8H", "7S", "6D"]),
+            jokers=(Joker("Flower Pot"),),
+        )
+
+        self.assertEqual(acrobat.score, 48)
+        self.assertEqual(seeing_double.score, 120)
+        self.assertEqual(flower_pot.score, 840)
+
+    def test_specific_scored_card_xmult_jokers_are_applied(self) -> None:
+        ancient = evaluate_played_cards(
+            cards(["AS", "AH"]),
+            jokers=(
+                joker_with_effect(
+                    "Ancient Joker",
+                    "Each played card with Heart suit gives X1.5 Mult when scored",
+                ),
+            ),
+        )
+        idol = evaluate_played_cards(
+            cards(["KS"]),
+            jokers=(
+                joker_with_effect(
+                    "The Idol",
+                    "Each played King of Spades gives X2 Mult when scored",
+                ),
+            ),
+        )
+        triboulet = evaluate_played_cards(
+            cards(["KS", "KH", "QS", "QH", "QD"]),
+            jokers=(Joker("Triboulet"),),
+        )
+
+        self.assertEqual(ancient.score, 96)
+        self.assertEqual(idol.score, 30)
+        self.assertEqual(triboulet.score, 11520)
+
+    def test_current_value_and_rarity_xmult_jokers_are_applied(self) -> None:
+        supernova = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(joker_with_effect("Supernova", "Adds times played to Mult (Currently +4 Mult)"),),
+        )
+        ramen = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(joker_with_effect("Ramen", "X2 Mult, loses X0.01 per card discarded (Currently X1.6 Mult)"),),
+        )
+        baseball = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(Joker("Baseball Card"), uncommon_joker("Uncommon One"), uncommon_joker("Uncommon Two")),
+        )
+
+        self.assertEqual(supernova.score, 80)
+        self.assertEqual(ramen.score, 25)
+        self.assertEqual(baseball.score, 36)
+
+    def test_current_value_chip_and_mult_jokers_are_applied(self) -> None:
+        stone = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(joker_with_effect("Stone Joker", "Gives +25 Chips for each Stone Card in your full deck (Currently +50 Chips)"),),
+        )
+        castle = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(joker_with_effect("Castle", "This Joker gains +3 Chips per discarded Spade card (Currently +9 Chips)"),),
+        )
+        erosion = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(joker_with_effect("Erosion", "+4 Mult for each card below starting deck size (Currently +8 Mult)"),),
+        )
+
+        self.assertEqual(stone.score, 66)
+        self.assertEqual(castle.score, 25)
+        self.assertEqual(erosion.score, 144)
+
+    def test_current_value_xmult_jokers_are_applied(self) -> None:
+        steel = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(joker_with_effect("Steel Joker", "Gives X0.2 Mult for each Steel Card in your full deck (Currently X1.4 Mult)"),),
+        )
+        glass = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(joker_with_effect("Glass Joker", "Gains X0.75 Mult when Glass Cards are destroyed (Currently X1.75 Mult)"),),
+        )
+        stencil = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(joker_with_effect("Joker Stencil", "X1 Mult for each empty Joker slot. Joker Stencil included (Currently X3)"),),
+        )
+        hit_the_road = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(joker_with_effect("Hit the Road", "Gains X0.5 Mult for every Jack discarded this round (Currently X2.5 Mult)"),),
+        )
+
+        self.assertEqual(steel.score, 22)
+        self.assertEqual(glass.score, 28)
+        self.assertEqual(stencil.score, 48)
+        self.assertEqual(hit_the_road.score, 40)
+
+    def test_license_and_loyalty_card_are_applied_from_effect_text(self) -> None:
+        license_active = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(joker_with_effect("Driver's License", "X3 Mult if you have at least 16 Enhanced cards in your full deck (Currently 16)"),),
+        )
+        license_inactive = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(joker_with_effect("Driver's License", "X3 Mult if you have at least 16 Enhanced cards in your full deck (Currently 15)"),),
+        )
+        loyalty_ready = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(joker_with_effect("Loyalty Card", "X4 Mult every 6 hands played 0 remaining"),),
+        )
+        loyalty_waiting = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(joker_with_effect("Loyalty Card", "X4 Mult every 6 hands played 2 remaining"),),
+        )
+
+        self.assertEqual(license_active.score, 48)
+        self.assertEqual(license_inactive.score, 16)
+        self.assertEqual(loyalty_ready.score, 64)
+        self.assertEqual(loyalty_waiting.score, 16)
 
 
 if __name__ == "__main__":

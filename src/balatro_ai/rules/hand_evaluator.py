@@ -168,6 +168,7 @@ def evaluate_played_cards(
     hands_remaining: int = 0,
     held_cards: tuple[Card, ...] | list[Card] = (),
     deck_size: int = 0,
+    money: int = 0,
 ) -> HandEvaluation:
     """Evaluate a played hand without joker or enhancement effects."""
 
@@ -200,6 +201,7 @@ def evaluate_played_cards(
         hands_remaining=hands_remaining,
         held_cards=tuple(held_cards),
         deck_size=deck_size,
+        money=money,
     )
 
     return HandEvaluation(
@@ -229,6 +231,7 @@ def best_play_from_hand(
     discards_remaining: int = 0,
     hands_remaining: int = 0,
     deck_size: int = 0,
+    money: int = 0,
 ) -> HandEvaluation:
     """Return the highest immediate-score play from the available hand."""
 
@@ -251,6 +254,7 @@ def best_play_from_hand(
                 hands_remaining=hands_remaining,
                 held_cards=tuple(cards[index] for index in range(len(cards)) if index not in indexes),
                 deck_size=deck_size,
+                money=money,
             )
             if best is None or _evaluation_sort_key(evaluation) > _evaluation_sort_key(best):
                 best = evaluation
@@ -343,7 +347,7 @@ def _scoring_indices(cards: tuple[Card, ...], hand_type: HandType, jokers: tuple
 def _card_chip_value(card: Card, *, debuffed_suits: frozenset[str] = frozenset()) -> int:
     if card.debuffed or _normalize_suit(card.suit) in debuffed_suits:
         return 0
-    return RANK_VALUES[card.rank] + _enhancement_chips(card)
+    return RANK_VALUES[card.rank] + _enhancement_chips(card) + _permanent_card_chips(card)
 
 
 def _evaluation_sort_key(evaluation: HandEvaluation) -> tuple[int, int, int]:
@@ -490,6 +494,7 @@ def _effect_adjustments(
     hands_remaining: int,
     held_cards: tuple[Card, ...],
     deck_size: int,
+    money: int,
 ) -> tuple[int, int, float]:
     ability_pairs = tuple(zip(jokers, _effective_ability_jokers(jokers), strict=False))
     ability_jokers = tuple(ability for _, ability in ability_pairs)
@@ -532,6 +537,8 @@ def _effect_adjustments(
             effect_mult += 4
         elif name == "Stuntman":
             effect_chips += 250
+        elif name == "Bull":
+            effect_chips += 2 * max(0, money)
         elif name == "Gros Michel":
             effect_mult += 15
         elif name == "Banner":
@@ -542,6 +549,10 @@ def _effect_adjustments(
             effect_mult += 3 * len(jokers)
         elif name == "Swashbuckler":
             effect_mult += sum(other.sell_value or 0 for other in jokers if other is not physical_joker)
+        elif name == "Supernova":
+            effect_mult += _joker_current_plus(ability_joker, suffix="mult")
+        elif name == "Bootstraps":
+            effect_mult += 2 * (max(0, money) // 5)
         elif name == "Fibonacci":
             effect_mult += _sum_triggers_for_cards(scored_entries, trigger_counts, lambda card: card.rank in {"A", "2", "3", "5", "8"}) * 8
         elif name == "Scholar":
@@ -613,6 +624,12 @@ def _effect_adjustments(
             effect_xmult *= 3
         elif name == "The Tribe" and _contains_flush(hand_type):
             effect_xmult *= 2
+        elif name == "Acrobat" and hands_remaining == 1:
+            effect_xmult *= 3
+        elif name == "Seeing Double" and _contains_scored_club_and_other_suit(scored_cards):
+            effect_xmult *= 2
+        elif name == "Flower Pot" and _contains_all_suits(scored_cards):
+            effect_xmult *= 3
         elif name == "Shoot the Moon":
             effect_mult += 13 * held_retrigger_count * sum(1 for card in active_held_cards if card.rank == "Q")
         elif name == "Raised Fist" and active_held_cards:
@@ -644,12 +661,56 @@ def _effect_adjustments(
                 effect_mult += 2
         elif name in {"Fortune Teller", "Red Card", "Flash Card", "Popcorn", "Ceremonial Dagger"}:
             effect_mult += _joker_current_plus(ability_joker, suffix="mult")
-        elif name in {"Ice Cream", "Square Joker"}:
+        elif name in {"Ice Cream", "Square Joker", "Stone Joker", "Castle"}:
             effect_chips += _joker_current_plus(ability_joker, suffix="chips")
+        elif name == "Erosion":
+            effect_mult += _joker_current_plus(ability_joker, suffix="mult")
         elif name in {"Constellation", "Madness", "Vampire", "Hologram", "Obelisk", "Lucky Cat"}:
+            effect_xmult *= _joker_current_xmult(ability_joker)
+        elif name in {
+            "Canio",
+            "Caino",
+            "Yorick",
+            "Ramen",
+            "Campfire",
+            "Throwback",
+            "Steel Joker",
+            "Glass Joker",
+            "Joker Stencil",
+            "Hit the Road",
+        }:
             effect_xmult *= _joker_current_xmult(ability_joker)
         elif name in {"Cavendish"}:
             effect_xmult *= 3
+        elif name == "Loyalty Card" and _loyalty_card_ready(ability_joker):
+            effect_xmult *= 4
+        elif name == "Driver's License" and _drivers_license_active(ability_joker):
+            effect_xmult *= 3
+        elif name == "Baseball Card":
+            effect_xmult *= 1.5 ** _uncommon_joker_count(jokers)
+        elif name == "Ancient Joker":
+            suit = _joker_target_suit(ability_joker)
+            if suit:
+                effect_xmult *= 1.5 ** _sum_triggers_for_cards(
+                    scored_entries,
+                    trigger_counts,
+                    lambda card: _normalize_suit(card.suit) == suit,
+                )
+        elif name == "The Idol":
+            target = _joker_target_rank_suit(ability_joker)
+            if target is not None:
+                rank, suit = target
+                effect_xmult *= 2 ** _sum_triggers_for_cards(
+                    scored_entries,
+                    trigger_counts,
+                    lambda card: _rank_matches(card.rank, rank) and _normalize_suit(card.suit) == suit,
+                )
+        elif name == "Triboulet":
+            effect_xmult *= 2 ** _sum_triggers_for_cards(
+                scored_entries,
+                trigger_counts,
+                lambda card: card.rank in {"K", "Q"},
+            )
         elif name == "Photograph" and not photograph_consumed:
             first_face = _first_scored_face_entry(scored_entries, ability_jokers)
             if first_face is not None:
@@ -666,6 +727,23 @@ def _enhancement_chips(card: Card) -> int:
     if enhancement in {"stone", "stone card"}:
         return 50
     return 0
+
+
+def _permanent_card_chips(card: Card) -> int:
+    modifier = card.metadata.get("modifier")
+    value = card.metadata.get("value")
+    for source in (card.metadata, modifier if isinstance(modifier, dict) else {}, value if isinstance(value, dict) else {}):
+        for key in ("perma_bonus", "permanent_chips", "bonus_chips", "extra_chips"):
+            if key in source:
+                return _int_or_zero(source[key])
+    return 0
+
+
+def _int_or_zero(value: object) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _enhancement_mult(card: Card) -> int:
@@ -743,6 +821,110 @@ def _current_plus_number(text: str, *, suffix: str) -> int:
     if not match:
         return 0
     return int(match.group(1))
+
+
+def _loyalty_card_ready(joker: Joker) -> bool:
+    text = _joker_effect_text(joker)
+    remaining_match = re.search(r"(\d+)\s+remaining", text, flags=re.IGNORECASE)
+    if remaining_match:
+        return int(remaining_match.group(1)) == 0
+    return "ready" in text.lower()
+
+
+def _drivers_license_active(joker: Joker) -> bool:
+    text = _joker_effect_text(joker)
+    match = re.search(r"currently\s+(\d+)", text, flags=re.IGNORECASE)
+    return bool(match and int(match.group(1)) >= 16)
+
+
+def _joker_target_suit(joker: Joker) -> str | None:
+    text = _joker_effect_text(joker)
+    for name, suit in (
+        ("spade", "S"),
+        ("spades", "S"),
+        ("heart", "H"),
+        ("hearts", "H"),
+        ("club", "C"),
+        ("clubs", "C"),
+        ("diamond", "D"),
+        ("diamonds", "D"),
+    ):
+        if re.search(rf"\b{name}\b", text, flags=re.IGNORECASE):
+            return suit
+    return None
+
+
+def _joker_target_rank_suit(joker: Joker) -> tuple[str, str] | None:
+    text = _joker_effect_text(joker)
+    rank_match = re.search(
+        r"\b(ace|king|queen|jack|10|ten|9|nine|8|eight|7|seven|6|six|5|five|4|four|3|three|2|two)\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+    suit = _joker_target_suit(joker)
+    if not rank_match or not suit:
+        return None
+    rank = _rank_from_text(rank_match.group(1))
+    return (rank, suit) if rank else None
+
+
+def _rank_from_text(text: str) -> str | None:
+    return {
+        "ace": "A",
+        "king": "K",
+        "queen": "Q",
+        "jack": "J",
+        "10": "10",
+        "ten": "10",
+        "9": "9",
+        "nine": "9",
+        "8": "8",
+        "eight": "8",
+        "7": "7",
+        "seven": "7",
+        "6": "6",
+        "six": "6",
+        "5": "5",
+        "five": "5",
+        "4": "4",
+        "four": "4",
+        "3": "3",
+        "three": "3",
+        "2": "2",
+        "two": "2",
+    }.get(text.lower())
+
+
+def _rank_matches(card_rank: str, target_rank: str) -> bool:
+    if target_rank == "10":
+        return card_rank in {"10", "T"}
+    return card_rank == target_rank
+
+
+def _uncommon_joker_count(jokers: tuple[Joker, ...]) -> int:
+    return sum(1 for joker in jokers if _joker_rarity(joker) == "uncommon")
+
+
+def _joker_rarity(joker: Joker) -> str:
+    value = joker.metadata.get("value")
+    candidates = [
+        joker.metadata.get("rarity"),
+        joker.metadata.get("rarity_name"),
+        value.get("rarity") if isinstance(value, dict) else None,
+    ]
+    for candidate in candidates:
+        if candidate is not None:
+            return str(candidate).lower()
+    return ""
+
+
+def _contains_scored_club_and_other_suit(cards: tuple[Card, ...]) -> bool:
+    suits = {_normalize_suit(card.suit) for card in cards}
+    return "C" in suits and len(suits - {"C"}) > 0
+
+
+def _contains_all_suits(cards: tuple[Card, ...]) -> bool:
+    return {"S", "H", "C", "D"}.issubset({_normalize_suit(card.suit) for card in cards})
 
 
 def _contains_pair(cards: tuple[Card, ...]) -> bool:

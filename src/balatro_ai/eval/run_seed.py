@@ -115,6 +115,7 @@ def _step_extra(*, state: GameState, next_state: GameState, action: Action) -> d
         hands_remaining=state.hands_remaining,
         held_cards=held_cards,
         deck_size=state.deck_size,
+        money=state.money,
     )
     actual_score_delta = next_state.current_score - state.current_score
     return {

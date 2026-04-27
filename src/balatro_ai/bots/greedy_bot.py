@@ -58,6 +58,7 @@ class GreedyBot:
             hands_remaining=state.hands_remaining,
             held_cards=held_cards,
             deck_size=state.deck_size,
+            money=state.money,
         ).score
 
 

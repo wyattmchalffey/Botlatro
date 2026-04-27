@@ -121,6 +121,7 @@ def _score_play_action(state: GameState, action: Action) -> int:
         hands_remaining=state.hands_remaining,
         held_cards=held_cards,
         deck_size=state.deck_size,
+        money=state.money,
     ).score
 
 

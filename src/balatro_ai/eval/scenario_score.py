@@ -17,6 +17,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--hands-remaining", type=int, default=0, help="Hands remaining before play.")
     parser.add_argument("--discards-remaining", type=int, default=0, help="Discards remaining before play.")
     parser.add_argument("--deck-size", type=int, default=0, help="Live deck size for Blue Joker.")
+    parser.add_argument("--money", type=int, default=0, help="Current money for money-scaled jokers.")
     parser.add_argument(
         "--hand-level",
         action="append",
@@ -38,6 +39,7 @@ def main(argv: list[str] | None = None) -> int:
         hands_remaining=args.hands_remaining,
         held_cards=_parse_cards(args.held),
         deck_size=args.deck_size,
+        money=args.money,
     )
     print(f"Hand type: {evaluation.hand_type.value}")
     print(f"Scoring indices: {', '.join(str(index) for index in evaluation.scoring_indices) or '-'}")

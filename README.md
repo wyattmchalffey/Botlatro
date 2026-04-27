@@ -129,6 +129,13 @@ $env:PYTHONPATH = "src"
 python -m balatro_ai.eval.scenario_score --cards "KS" --jokers "Hanging Chad,Photograph"
 ```
 
+Money-scaled joker scenarios can include current money:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m balatro_ai.eval.scenario_score --cards "AS" --jokers "Bull,Bootstraps" --money 11
+```
+
 ## Next Target
 
 Connect `JsonRpcBalatroClient` to the actual local BalatroBot API shape, then
