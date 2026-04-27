@@ -55,6 +55,7 @@ class GreedyBot:
             blind_name=state.blind,
             jokers=state.jokers,
             discards_remaining=state.discards_remaining,
+            hands_remaining=state.hands_remaining,
             held_cards=held_cards,
             deck_size=state.deck_size,
         ).score

@@ -6,6 +6,7 @@ import argparse
 from pathlib import Path
 
 from balatro_ai.eval.runner import BenchmarkOptions, endpoint_urls, run_benchmark
+from balatro_ai.eval.run_seed import REPLAY_MODES
 from balatro_ai.eval.seed_sets import make_explicit_seed_set, make_seed_set, parse_seed_values
 
 
@@ -27,6 +28,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout-seconds", type=float, default=10.0, help="JSON-RPC request timeout.")
     parser.add_argument("--max-steps", type=int, default=1000, help="Step cap per run.")
     parser.add_argument("--replay-dir", type=Path, help="Optional directory for per-run replay JSONL files.")
+    parser.add_argument(
+        "--replay-mode",
+        choices=REPLAY_MODES,
+        default="score_audit",
+        help="Replay detail: off, light JSONL, or score-audit JSONL.",
+    )
     return parser
 
 
@@ -69,6 +76,7 @@ def main(argv: list[str] | None = None) -> int:
             timeout_seconds=args.timeout_seconds,
             max_steps=args.max_steps,
             replay_dir=args.replay_dir,
+            replay_mode=args.replay_mode,
         ),
         progress=print,
     )

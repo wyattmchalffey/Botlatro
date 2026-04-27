@@ -67,6 +67,7 @@ class RunnerTests(unittest.TestCase):
         original_run_seed = runner._run_seed
 
         def fake_run_seed(*, seed: int, endpoint: str, options: BenchmarkOptions) -> RunResult:
+            self.assertEqual(options.replay_mode, "light")
             return RunResult(
                 bot_version=options.bot,
                 seed=seed,
@@ -87,6 +88,7 @@ class RunnerTests(unittest.TestCase):
                     profile_name="P2",
                     unlock_state="profile-default",
                     seed_values=(99,),
+                    replay_mode="light",
                 )
             )
         finally:

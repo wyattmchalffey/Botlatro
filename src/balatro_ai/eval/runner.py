@@ -13,7 +13,7 @@ from typing import Callable
 from balatro_ai.api.client import JsonRpcBalatroClient
 from balatro_ai.bots.registry import create_bot
 from balatro_ai.eval.metrics import BenchmarkSummary, RunResult, summarize_runs
-from balatro_ai.eval.run_seed import RunSeedOptions, run_single_seed
+from balatro_ai.eval.run_seed import REPLAY_MODES, RunSeedOptions, run_single_seed
 from balatro_ai.eval.seed_sets import SeedSet, make_explicit_seed_set, make_seed_set
 
 ProgressCallback = Callable[[str], None]
@@ -34,6 +34,7 @@ class BenchmarkOptions:
     timeout_seconds: float = 10.0
     max_steps: int = 1000
     replay_dir: Path | None = None
+    replay_mode: str = "score_audit"
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +66,9 @@ def run_benchmark(
     _emit(progress, f"Unlocks: {options.unlock_state}")
     _emit(progress, f"Seeds: {len(seed_set.seeds)}")
     _emit(progress, f"Endpoints: {', '.join(options.endpoints)}")
+    _emit(progress, f"Replay mode: {options.replay_mode}")
+    if options.replay_mode not in REPLAY_MODES:
+        raise ValueError(f"Unknown replay mode: {options.replay_mode}")
 
     results: list[RunResult] = []
     completed = 0
@@ -159,6 +163,7 @@ def _run_seed(*, seed: int, endpoint: str, options: BenchmarkOptions) -> RunResu
                 stake=options.stake,
                 max_steps=options.max_steps,
                 replay_path=replay_path,
+                replay_mode=options.replay_mode,
             ),
         )
     except Exception as exc:  # noqa: BLE001 - benchmarks should report failed seeds and keep moving.

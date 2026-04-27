@@ -274,8 +274,8 @@ class HandEvaluatorTests(unittest.TestCase):
             ),
         )
 
-        self.assertEqual(evaluation.mult, 5)
-        self.assertEqual(evaluation.score, 160)
+        self.assertEqual(evaluation.mult, 6)
+        self.assertEqual(evaluation.score, 192)
 
     def test_ride_the_bus_and_runner_use_current_values(self) -> None:
         bus = evaluate_played_cards(
@@ -312,6 +312,83 @@ class HandEvaluatorTests(unittest.TestCase):
         )
 
         self.assertEqual(evaluation.score, 316)
+
+    def test_four_fingers_and_shortcut_change_straight_detection(self) -> None:
+        four_fingers = evaluate_played_cards(
+            cards(["AS", "KD", "QH", "JC", "2D"]),
+            jokers=(Joker("Four Fingers"),),
+        )
+        shortcut = evaluate_played_cards(
+            cards(["TS", "8D", "6C", "5H", "3S"]),
+            jokers=(Joker("Shortcut"),),
+        )
+
+        self.assertEqual(four_fingers.hand_type, HandType.STRAIGHT)
+        self.assertEqual(four_fingers.scoring_indices, (0, 1, 2, 3))
+        self.assertEqual(four_fingers.score, 284)
+        self.assertEqual(shortcut.hand_type, HandType.STRAIGHT)
+        self.assertEqual(shortcut.score, 248)
+
+    def test_splash_scores_all_played_cards(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["AS", "AD", "7H"]),
+            jokers=(Joker("Splash"),),
+        )
+
+        self.assertEqual(evaluation.hand_type, HandType.PAIR)
+        self.assertEqual(evaluation.scoring_indices, (0, 1, 2))
+        self.assertEqual(evaluation.score, 78)
+
+    def test_pareidolia_makes_all_cards_face_cards(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["AS", "AD"]),
+            jokers=(Joker("Pareidolia"), Joker("Scary Face")),
+        )
+
+        self.assertEqual(evaluation.chips, 92)
+        self.assertEqual(evaluation.score, 184)
+
+    def test_copy_jokers_copy_adjacent_abilities(self) -> None:
+        blueprint = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(Joker("Blueprint"), Joker("Joker")),
+        )
+        brainstorm = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(Joker("Joker"), Joker("Brainstorm")),
+        )
+
+        self.assertEqual(blueprint.mult, 9)
+        self.assertEqual(blueprint.score, 144)
+        self.assertEqual(brainstorm.mult, 9)
+        self.assertEqual(brainstorm.score, 144)
+
+    def test_retrigger_jokers_repeat_card_and_when_scored_effects(self) -> None:
+        hack = evaluate_played_cards(
+            cards(["2S"]),
+            jokers=(Joker("Hack"), Joker("Fibonacci")),
+        )
+        sock = evaluate_played_cards(
+            cards(["KS"]),
+            jokers=(Joker("Sock and Buskin"), Joker("Smiley Face")),
+        )
+
+        self.assertEqual(hack.chips, 9)
+        self.assertEqual(hack.mult, 17)
+        self.assertEqual(hack.score, 153)
+        self.assertEqual(sock.chips, 25)
+        self.assertEqual(sock.mult, 11)
+        self.assertEqual(sock.score, 275)
+
+    def test_hanging_chad_and_photograph_stack_on_first_face_card(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["KS"]),
+            jokers=(Joker("Hanging Chad"), Joker("Photograph")),
+        )
+
+        self.assertEqual(evaluation.chips, 35)
+        self.assertEqual(evaluation.effect_xmult, 8)
+        self.assertEqual(evaluation.score, 280)
 
 
 if __name__ == "__main__":

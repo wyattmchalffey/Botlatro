@@ -83,8 +83,11 @@ the requested ports. Put exact seeds in `Seed list` for one-off or hand-picked
 runs; comma, spaces, and newlines all work, and this overrides the `Seeds`
 count. Use `Stop Run` to cancel the active benchmark; it stops owned workers and
 prevents new seeds from being scheduled. Use the `Benchmark Speed` preset for
-fast headless sweeps; it sets headless mode, fast mode, no shaders, `fps-cap`
-2000, `gamespeed` 32, and animation FPS 1. BalatroBot treats headless and
+fast headless sweeps; it sets headless mode, fast mode, no shaders, quiet bridge
+logs, replay mode off, `fps-cap` 2000, `gamespeed` 32, and animation FPS 1.
+Use `Replay mode` to choose no replay logging, lightweight JSONL, or full
+score-audit replay details. Use `Bridge logs` to choose quiet logs, disposable
+off logs, cleaned normal logs, or untouched normal logs. BalatroBot treats headless and
 render-on-API as mutually
 exclusive, so the GUI keeps only one of those options enabled at a time. The
 `Tiny startup` option creates a patched Balatro copy under `.balatro-headless`
@@ -98,11 +101,32 @@ $env:PYTHONPATH = "src"
 python -m balatro_ai.tools.preflight
 ```
 
+Clean existing bridge logs with:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m balatro_ai.tools.clean_bridge_logs --logs-root .logs --replace
+```
+
 Audit replay score predictions with:
 
 ```powershell
 $env:PYTHONPATH = "src"
 python -m balatro_ai.eval.score_audit --replay-dir .data\replays
+```
+
+Explain the largest current evaluator misses with:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m balatro_ai.eval.explain_score_misses --replay-dir .data\replays --worst 20
+```
+
+Score a small deterministic evaluator scenario with:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m balatro_ai.eval.scenario_score --cards "KS" --jokers "Hanging Chad,Photograph"
 ```
 
 ## Next Target

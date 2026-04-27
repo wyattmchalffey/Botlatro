@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 
 import context  # noqa: F401
 from balatro_ai.api.actions import Action, ActionType
@@ -112,6 +114,38 @@ class RunSeedTests(unittest.TestCase):
         self.assertFalse(result.won)
         self.assertEqual(result.seed, 123)
         self.assertEqual(result.ante_reached, 1)
+
+    def test_replay_mode_off_does_not_write_replay_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            replay_path = Path(directory) / "run.jsonl"
+            run_single_seed(
+                bot=RandomBot(seed=123),
+                client=TwoStepClient(),
+                options=RunSeedOptions(seed=123, max_steps=10, replay_path=replay_path, replay_mode="off"),
+            )
+
+            self.assertFalse(replay_path.exists())
+
+    def test_light_replay_writes_without_score_audit_extra(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            replay_path = Path(directory) / "run.jsonl"
+            run_single_seed(
+                bot=RandomBot(seed=123),
+                client=TwoStepClient(),
+                options=RunSeedOptions(seed=123, max_steps=10, replay_path=replay_path, replay_mode="light"),
+            )
+
+            text = replay_path.read_text(encoding="utf-8")
+            self.assertIn('"chosen_action"', text)
+            self.assertNotIn('"score_audit"', text)
+
+    def test_unknown_replay_mode_is_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            run_single_seed(
+                bot=RandomBot(seed=123),
+                client=TwoStepClient(),
+                options=RunSeedOptions(seed=123, max_steps=10, replay_mode="loud"),
+            )
 
 
 if __name__ == "__main__":

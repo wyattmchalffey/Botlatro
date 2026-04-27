@@ -17,6 +17,8 @@ from balatro_ai.env.balatro_env import BalatroEnv
 from balatro_ai.eval.metrics import RunResult
 from balatro_ai.rules.hand_evaluator import debuffed_suits_for_blind, evaluate_played_cards
 
+REPLAY_MODES = ("off", "light", "score_audit")
+
 
 @dataclass(frozen=True, slots=True)
 class RunSeedOptions:
@@ -25,6 +27,7 @@ class RunSeedOptions:
     max_steps: int = 500
     print_states: bool = False
     replay_path: Path | None = None
+    replay_mode: str = "score_audit"
 
 
 def run_single_seed(
@@ -34,7 +37,9 @@ def run_single_seed(
     options: RunSeedOptions,
 ) -> RunResult:
     env = BalatroEnv(client=client, stake=options.stake)
-    logger = ReplayLogger(options.replay_path) if options.replay_path else None
+    if options.replay_mode not in REPLAY_MODES:
+        raise ValueError(f"Unknown replay mode: {options.replay_mode}")
+    logger = ReplayLogger(options.replay_path) if options.replay_path and options.replay_mode != "off" else None
     started_at = perf_counter()
 
     _, info = env.reset(seed=options.seed)
@@ -60,12 +65,17 @@ def run_single_seed(
 
         next_state = info["state"]
         if logger is not None:
+            extra = (
+                _step_extra(state=state, next_state=next_state, action=action)
+                if options.replay_mode == "score_audit"
+                else {}
+            )
             logger.log_step(
                 state=state,
                 legal_actions=legal_actions,
                 chosen_action=action,
                 reward=reward,
-                extra=_step_extra(state=state, next_state=next_state, action=action),
+                extra=extra,
             )
 
         state = next_state
@@ -102,6 +112,7 @@ def _step_extra(*, state: GameState, next_state: GameState, action: Action) -> d
         blind_name=state.blind,
         jokers=state.jokers,
         discards_remaining=state.discards_remaining,
+        hands_remaining=state.hands_remaining,
         held_cards=held_cards,
         deck_size=state.deck_size,
     )
@@ -179,6 +190,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-steps", type=int, default=500, help="Safety cap for one run.")
     parser.add_argument("--print-states", action="store_true", help="Print state summaries while running.")
     parser.add_argument("--replay-path", type=Path, help="Optional JSONL replay output path.")
+    parser.add_argument(
+        "--replay-mode",
+        choices=REPLAY_MODES,
+        default="score_audit",
+        help="Replay detail: off, light JSONL, or score-audit JSONL.",
+    )
     return parser
 
 
@@ -192,6 +209,7 @@ def main(argv: list[str] | None = None) -> int:
         max_steps=args.max_steps,
         print_states=args.print_states,
         replay_path=args.replay_path,
+        replay_mode=args.replay_mode,
     )
     result = run_single_seed(bot=bot, client=client, options=options)
     print(

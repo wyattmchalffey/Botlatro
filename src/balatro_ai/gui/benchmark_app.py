@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
+import tempfile
 import threading
 import time
 import urllib.error
@@ -18,6 +20,7 @@ from tkinter import ttk
 
 from balatro_ai.eval.runner import BenchmarkOptions, endpoint_urls, run_benchmark
 from balatro_ai.eval.seed_sets import parse_seed_values
+from balatro_ai.tools.clean_bridge_logs import clean_logs, summarize_results
 from balatro_ai.tools.headless_exe import ensure_tiny_startup_copy
 
 
@@ -40,6 +43,8 @@ DECKS = (
     "PLASMA",
     "ERRATIC",
 )
+BRIDGE_LOG_MODES = ("quiet", "off", "normal_clean", "normal")
+REPLAY_DETAIL_MODES = ("off", "light", "score_audit")
 
 
 @dataclass(slots=True)
@@ -47,6 +52,8 @@ class BridgeProcess:
     port: int
     process: subprocess.Popen
     log_dir: Path
+    clean_logs: bool
+    discard_logs: bool
 
 
 class BenchmarkApp:
@@ -84,6 +91,7 @@ class BenchmarkApp:
         self.love_path = StringVar(value=r"F:\SteamLibrary\steamapps\common\Balatro\Balatro.exe")
         self.lovely_path = StringVar(value=r"F:\SteamLibrary\steamapps\common\Balatro\version.dll")
         self.logs_root = StringVar(value=str(Path(".logs") / "gui-workers"))
+        self.bridge_log_mode = StringVar(value="quiet")
 
         self.headless = BooleanVar(value=True)
         self.tiny_startup = BooleanVar(value=True)
@@ -94,6 +102,7 @@ class BenchmarkApp:
         self.fps_cap = IntVar(value=2000)
         self.gamespeed = IntVar(value=32)
         self.animation_fps = IntVar(value=1)
+        self.replay_mode = StringVar(value="off")
 
         self._build_ui()
         self._poll_messages()
@@ -163,6 +172,7 @@ class BenchmarkApp:
         ).grid(row=4, column=3, sticky="w")
         ttk.Checkbutton(bridge, text="Audio", variable=self.audio).grid(row=4, column=4, sticky="w")
         ttk.Checkbutton(bridge, text="Tiny startup", variable=self.tiny_startup).grid(row=4, column=5, sticky="w")
+        _combo(bridge, "Bridge logs", self.bridge_log_mode, BRIDGE_LOG_MODES, 4, 6)
         _entry(bridge, "FPS cap", self.fps_cap, 5, 0)
         _entry(bridge, "Game speed", self.gamespeed, 5, 2)
         _entry(bridge, "Anim FPS", self.animation_fps, 5, 4)
@@ -172,6 +182,7 @@ class BenchmarkApp:
         ttk.Button(bridge, text="Watch Speed", command=self._watch_speed_preset).grid(
             row=5, column=7, sticky="ew", padx=(8, 0), pady=3
         )
+        _combo(benchmark, "Replay mode", self.replay_mode, REPLAY_DETAIL_MODES, 5, 0)
 
         controls = ttk.Frame(outer)
         controls.grid(row=3, column=0, sticky="ew", pady=(10, 0))
@@ -255,10 +266,12 @@ class BenchmarkApp:
         self.no_shaders.set(True)
         self.render_on_api.set(False)
         self.audio.set(False)
+        self.bridge_log_mode.set("quiet")
+        self.replay_mode.set("off")
         self.fps_cap.set(2000)
         self.gamespeed.set(32)
         self.animation_fps.set(1)
-        self._log_message("Applied benchmark speed preset: headless, fast, no render-on-API, gamespeed 32.")
+        self._log_message("Applied benchmark speed preset: headless, quiet bridge logs, replay off, gamespeed 32.")
 
     def _watch_speed_preset(self) -> None:
         self.headless.set(False)
@@ -267,6 +280,8 @@ class BenchmarkApp:
         self.no_shaders.set(True)
         self.render_on_api.set(False)
         self.audio.set(False)
+        self.bridge_log_mode.set("normal_clean")
+        self.replay_mode.set("off")
         self.fps_cap.set(60)
         self.gamespeed.set(1)
         self.animation_fps.set(30)
@@ -308,6 +323,7 @@ class BenchmarkApp:
                 timeout_seconds=float(self.timeout_seconds.get()),
                 max_steps=int(self.max_steps.get()),
                 replay_dir=replay_dir,
+                replay_mode=self.replay_mode.get(),
             ),
             "worker_count": worker_count,
             "output_file": output_file,
@@ -347,7 +363,7 @@ class BenchmarkApp:
         if self.stop_existing.get():
             self._stop_existing_bridge_processes()
 
-        logs_root = Path(self.logs_root.get())
+        logs_root = self._effective_logs_root()
         logs_root.mkdir(parents=True, exist_ok=True)
         love_path, lovely_path = self._effective_balatro_paths()
 
@@ -359,14 +375,24 @@ class BenchmarkApp:
             log_dir = logs_root / f"worker-{port}-{int(time.time())}"
             log_dir.mkdir(parents=True, exist_ok=True)
             args = self._bridge_args(port=port, log_dir=log_dir, love_path=love_path, lovely_path=lovely_path)
+            clean_logs, discard_logs = self._bridge_log_cleanup_flags()
             self._log_message(f"Starting bridge on port {port}...")
             process = subprocess.Popen(
                 args,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
+                env=self._bridge_env(),
                 creationflags=_creation_flags(),
             )
-            self.bridge_processes.append(BridgeProcess(port=port, process=process, log_dir=log_dir))
+            self.bridge_processes.append(
+                BridgeProcess(
+                    port=port,
+                    process=process,
+                    log_dir=log_dir,
+                    clean_logs=clean_logs,
+                    discard_logs=discard_logs,
+                )
+            )
             try:
                 self._wait_for_health(port)
             except RuntimeError:
@@ -375,6 +401,26 @@ class BenchmarkApp:
                 raise
             self._log_message(f"Bridge {port} is healthy.")
             time.sleep(1)
+
+    def _effective_logs_root(self) -> Path:
+        if self.bridge_log_mode.get() == "off":
+            return Path(tempfile.gettempdir()) / "botlatro-bridge-logs"
+        return Path(self.logs_root.get())
+
+    def _bridge_log_cleanup_flags(self) -> tuple[bool, bool]:
+        mode = self.bridge_log_mode.get()
+        return mode in ("quiet", "normal_clean"), mode == "off"
+
+    def _bridge_env(self) -> dict[str, str]:
+        env = os.environ.copy()
+        mode = self.bridge_log_mode.get()
+        if mode == "off":
+            env["BALATROBOT_LOG_LEVEL"] = "off"
+        elif mode == "quiet":
+            env["BALATROBOT_LOG_LEVEL"] = "quiet"
+        else:
+            env["BALATROBOT_LOG_LEVEL"] = "normal"
+        return env
 
     def _effective_balatro_paths(self) -> tuple[Path, Path]:
         love_path = Path(self.love_path.get())
@@ -412,6 +458,7 @@ class BenchmarkApp:
         ]
         args.append("--headless" if self.headless.get() else "--no-headless")
         args.append("--fast" if self.fast.get() else "--no-fast")
+        args.append("--no-debug")
         if self.no_shaders.get():
             args.append("--no-shaders")
         if self.render_on_api.get():
@@ -442,11 +489,45 @@ class BenchmarkApp:
             self._log_message(f"{status} health http://{self.host.get()}:{port}")
 
     def _stop_bridges(self) -> None:
+        clean_log_dirs: list[Path] = []
+        discard_log_dirs: list[Path] = []
         for bridge in self.bridge_processes:
             if bridge.process.poll() is None:
                 self._log_message(f"Stopping owned bridge on port {bridge.port}...")
                 _kill_process_tree(bridge.process.pid)
+                try:
+                    bridge.process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    pass
+            if bridge.clean_logs:
+                clean_log_dirs.append(bridge.log_dir)
+            if bridge.discard_logs:
+                discard_log_dirs.append(bridge.log_dir)
+        if clean_log_dirs:
+            self._clean_bridge_log_dirs(clean_log_dirs)
+        if discard_log_dirs:
+            self._discard_bridge_log_dirs(discard_log_dirs)
         self.bridge_processes.clear()
+
+    def _clean_bridge_log_dirs(self, log_dirs: list[Path]) -> None:
+        try:
+            results = clean_logs(log_dirs, replace=True)
+        except OSError as exc:
+            self._log_message(f"WARNING: Could not clean bridge logs: {exc}")
+            return
+        if results:
+            self._log_message(summarize_results(results))
+
+    def _discard_bridge_log_dirs(self, log_dirs: list[Path]) -> None:
+        removed = 0
+        for log_dir in log_dirs:
+            try:
+                shutil.rmtree(log_dir, ignore_errors=True)
+                removed += 1
+            except OSError as exc:
+                self._log_message(f"WARNING: Could not discard bridge logs at {log_dir}: {exc}")
+        if removed:
+            self._log_message(f"Discarded bridge logs for {removed} worker(s).")
 
     def _stop_owned_workers_clicked(self) -> None:
         self._request_stop()

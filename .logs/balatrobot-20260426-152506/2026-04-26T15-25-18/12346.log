@@ -80,4 +80,3 @@ INFO - [G] 2026-04-26 15:25:28 :: INFO  :: TIMER :: [0022] Injected Draw Step in
 INFO - [G] 2026-04-26 15:25:28 :: INFO  :: TIMER :: [0000] Injected [INTERNAL] in 0.005 ms
 Setting breakpad minidump AppID = 2379780
 SteamInternal_SetMinidumpSteamID:  Caching Steam ID:  76561198065737106 [API loaded no]
-INFO - [G] LONG DT @ 0: 0.053899472
