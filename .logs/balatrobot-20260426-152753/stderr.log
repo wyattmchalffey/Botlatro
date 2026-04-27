@@ -1,0 +1,115 @@
++--------------------- Traceback (most recent call last) ---------------------+
+| C:\Users\Wyatt\AppData\Local\uv\cache\archive-v0\BAgCS7RPmEnninCsWcARc\Lib\ |
+| site-packages\balatrobot\manager.py:95 in start                             |
+|                                                                             |
+|    92         # Wait for health                                             |
+|    93         print(f"Waiting for health check on                           |
+|       {self._config.host}:{self._config.port}...")                          |
+|    94         try:                                                          |
+| >  95             await self._wait_for_health()                             |
+|    96         except RuntimeError as e:                                     |
+|    97             await self.stop()                                         |
+|    98             raise RuntimeError(f"{e}. Check log file:                 |
+|       {self._log_path}") from e                                             |
+|                                                                             |
+| C:\Users\Wyatt\AppData\Local\uv\cache\archive-v0\BAgCS7RPmEnninCsWcARc\Lib\ |
+| site-packages\balatrobot\manager.py:70 in _wait_for_health                  |
+|                                                                             |
+|    67                 pass                                                  |
+|    68             await asyncio.sleep(0.5)                                  |
+|    69                                                                       |
+| >  70         raise RuntimeError(                                           |
+|    71             f"Health check failed after {timeout}s on "               |
+|    72             f"{self._config.host}:{self._config.port}"                |
+|    73         )                                                             |
++-----------------------------------------------------------------------------+
+RuntimeError: Health check failed after 30.0s on 127.0.0.1:12346
+
+The above exception was the direct cause of the following exception:
+
++--------------------- Traceback (most recent call last) ---------------------+
+| C:\Users\Wyatt\AppData\Local\uv\cache\archive-v0\BAgCS7RPmEnninCsWcARc\Lib\ |
+| site-packages\balatrobot\cli\serve.py:98 in serve                           |
+|                                                                             |
+|    95     )                                                                 |
+|    96                                                                       |
+|    97     try:                                                              |
+| >  98         asyncio.run(_serve(config))                                   |
+|    99     except KeyboardInterrupt:                                         |
+|   100         typer.echo("\nShutting down server...")                       |
+|   101                                                                       |
+|                                                                             |
+| C:\Users\Wyatt\AppData\Roaming\uv\python\cpython-3.13-windows-x86_64-none\L |
+| ib\asyncio\runners.py:195 in run                                            |
+|                                                                             |
+|   192             "asyncio.run() cannot be called from a running event      |
+|       loop")                                                                |
+|   193                                                                       |
+|   194     with Runner(debug=debug, loop_factory=loop_factory) as runner:    |
+| > 195         return runner.run(main)                                       |
+|   196                                                                       |
+|   197                                                                       |
+|   198 def _cancel_all_tasks(loop):                                          |
+|                                                                             |
+| C:\Users\Wyatt\AppData\Roaming\uv\python\cpython-3.13-windows-x86_64-none\L |
+| ib\asyncio\runners.py:118 in run                                            |
+|                                                                             |
+|   115                                                                       |
+|   116         self._interrupt_count = 0                                     |
+|   117         try:                                                          |
+| > 118             return self._loop.run_until_complete(task)                |
+|   119         except exceptions.CancelledError:                             |
+|   120             if self._interrupt_count > 0:                             |
+|   121                 uncancel = getattr(task, "uncancel", None)            |
+|                                                                             |
+| C:\Users\Wyatt\AppData\Roaming\uv\python\cpython-3.13-windows-x86_64-none\L |
+| ib\asyncio\base_events.py:725 in run_until_complete                         |
+|                                                                             |
+|    722         if not future.done():                                        |
+|    723             raise RuntimeError('Event loop stopped before Future     |
+|        completed.')                                                         |
+|    724                                                                      |
+| >  725         return future.result()                                       |
+|    726                                                                      |
+|    727     def stop(self):                                                  |
+|    728         """Stop running the event loop.                              |
+|                                                                             |
+| C:\Users\Wyatt\AppData\Local\uv\cache\archive-v0\BAgCS7RPmEnninCsWcARc\Lib\ |
+| site-packages\balatrobot\cli\serve.py:105 in _serve                         |
+|                                                                             |
+|   102                                                                       |
+|   103 async def _serve(config: Config) -> None:                             |
+|   104     """Async serve implementation."""                                 |
+| > 105     async with BalatroInstance(config) as instance:                   |
+|   106         typer.echo(f"Balatro running on port {instance.port}. Press   |
+|       Ctrl+C to stop.")                                                     |
+|   107         while True:                                                   |
+|   108             await asyncio.sleep(5)                                    |
+|                                                                             |
+| C:\Users\Wyatt\AppData\Local\uv\cache\archive-v0\BAgCS7RPmEnninCsWcARc\Lib\ |
+| site-packages\balatrobot\manager.py:128 in __aenter__                       |
+|                                                                             |
+|   125                                                                       |
+|   126     async def __aenter__(self) -> "BalatroInstance":                  |
+|   127         """Start instance on context entry."""                        |
+| > 128         await self.start()                                            |
+|   129         return self                                                   |
+|   130                                                                       |
+|   131     async def __aexit__(self, *args) -> None:                         |
+|                                                                             |
+| C:\Users\Wyatt\AppData\Local\uv\cache\archive-v0\BAgCS7RPmEnninCsWcARc\Lib\ |
+| site-packages\balatrobot\manager.py:98 in start                             |
+|                                                                             |
+|    95             await self._wait_for_health()                             |
+|    96         except RuntimeError as e:                                     |
+|    97             await self.stop()                                         |
+| >  98             raise RuntimeError(f"{e}. Check log file:                 |
+|       {self._log_path}") from e                                             |
+|    99                                                                       |
+|   100         print(f"Balatro started (PID: {self._process.pid})")          |
+|   101                                                                       |
++-----------------------------------------------------------------------------+
+RuntimeError: Health check failed after 30.0s on 127.0.0.1:12346. Check log 
+file: 
+C:\Users\Wyatt\Desktop\Botlatro\.logs\balatrobot-20260426-152753\2026-04-26T15-
+27-53\12346.log

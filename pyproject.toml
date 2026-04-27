@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "botlatro"
+version = "0.1.0"
+description = "Local research scaffolding for a Balatro-playing AI agent."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Private research project" }
+authors = [{ name = "Botlatro contributors" }]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+ml = [
+  "gymnasium>=1",
+  "numpy>=1.26",
+  "pandas>=2",
+  "torch>=2",
+  "matplotlib>=3.8",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+

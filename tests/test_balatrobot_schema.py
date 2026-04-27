@@ -1,0 +1,127 @@
+from __future__ import annotations
+
+import unittest
+
+import context  # noqa: F401
+from balatro_ai.api.actions import Action, ActionType
+from balatro_ai.api.client import JsonRpcBalatroClient
+from balatro_ai.api.state import GamePhase, GameState, Stake
+
+
+class RecordingClient(JsonRpcBalatroClient):
+    def __init__(self, deck: str = "RED") -> None:
+        super().__init__(deck=deck)
+        self.calls: list[tuple[str, dict | None]] = []
+
+    def call(self, method: str, params: dict | None = None):
+        self.calls.append((method, params))
+        return {
+            "state": "BLIND_SELECT",
+            "ante_num": 1,
+            "money": 4,
+            "stake": "WHITE",
+            "seed": "123",
+            "round": {"hands_left": 4, "discards_left": 3, "chips": 0},
+            "blinds": {"small": {"status": "SELECT", "name": "Small Blind", "score": 300}},
+            "hand": {"cards": []},
+        }
+
+
+class BalatroBotSchemaTests(unittest.TestCase):
+    def test_parse_documented_gamestate_shape(self) -> None:
+        state = GameState.from_mapping(
+            {
+                "state": "SELECTING_HAND",
+                "ante_num": 2,
+                "money": 9,
+                "stake": "WHITE",
+                "round": {"hands_left": 4, "discards_left": 3, "chips": 12},
+                "blinds": {"current": {"name": "Big Blind", "score": 450}},
+                "hand": {
+                    "cards": [
+                        {
+                            "key": "H_A",
+                            "label": "Ace of Hearts",
+                            "value": {"suit": "H", "rank": "A"},
+                            "modifier": {"seal": None, "edition": None, "enhancement": None},
+                        }
+                    ]
+                },
+                "jokers": {"cards": [{"key": "j_joker", "label": "Joker", "cost": {"sell": 1}}]},
+                "hands": {"Pair": {"level": 2}},
+            }
+        )
+
+        self.assertEqual(state.phase, GamePhase.SELECTING_HAND)
+        self.assertEqual(state.stake, Stake.WHITE)
+        self.assertEqual(state.ante, 2)
+        self.assertEqual(state.required_score, 450)
+        self.assertEqual(state.hand[0].short_name, "AH")
+        self.assertEqual(state.jokers[0].name, "Joker")
+        self.assertEqual(state.jokers[0].metadata["key"], "j_joker")
+        self.assertEqual(state.modifiers["joker_cards"][0]["key"], "j_joker")
+        self.assertEqual(state.hand_levels["Pair"], 2)
+        self.assertIn("shop_cards", state.modifiers)
+        self.assertTrue(any(action.action_type == ActionType.PLAY_HAND for action in state.legal_actions))
+
+    def test_card_parser_preserves_debuff_state_and_raw_metadata(self) -> None:
+        card = GameState.from_mapping(
+            {
+                "state": "SELECTING_HAND",
+                "hand": {
+                    "cards": [
+                        {
+                            "id": 7,
+                            "key": "S_A",
+                            "label": "Ace of Spades",
+                            "value": {"suit": "S", "rank": "A", "effect": "Ace"},
+                            "modifier": {"enhancement": "STEEL"},
+                            "state": {"debuff": True},
+                        }
+                    ]
+                },
+            }
+        ).hand[0]
+
+        self.assertTrue(card.debuffed)
+        self.assertEqual(card.enhancement, "STEEL")
+        self.assertEqual(card.metadata["key"], "S_A")
+        self.assertEqual(card.metadata["value"]["effect"], "Ace")
+
+    def test_client_uses_documented_methods(self) -> None:
+        client = RecordingClient()
+        client.start_run(seed=123, stake="white")
+        client.send_action(Action(ActionType.PLAY_HAND, card_indices=(0, 1, 2)))
+
+        self.assertEqual(client.calls[0], ("menu", None))
+        self.assertEqual(client.calls[1], ("start", {"deck": "RED", "stake": "WHITE", "seed": "123"}))
+        self.assertEqual(client.calls[2], ("play", {"cards": [0, 1, 2]}))
+
+    def test_client_uses_configured_deck(self) -> None:
+        client = RecordingClient(deck="BLUE")
+        client.start_run(seed=123, stake="white")
+
+        self.assertEqual(client.calls[1], ("start", {"deck": "BLUE", "stake": "WHITE", "seed": "123"}))
+
+    def test_shop_actions_filter_unaffordable_buys(self) -> None:
+        state = GameState.from_mapping(
+            {
+                "state": "SHOP",
+                "money": 7,
+                "shop": {
+                    "cards": [
+                        {"label": "Cheap Joker", "cost": {"buy": 4}},
+                        {"label": "Expensive Joker", "cost": {"buy": 10}},
+                    ]
+                },
+            }
+        )
+
+        buy_actions = [action for action in state.legal_actions if action.action_type == ActionType.BUY]
+
+        self.assertEqual(len(buy_actions), 1)
+        self.assertEqual(buy_actions[0].amount, 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

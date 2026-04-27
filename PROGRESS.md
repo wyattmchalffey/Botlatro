@@ -1,0 +1,56 @@
+# Botlatro Progress
+
+## Completed
+
+- Created the long-term project plan.
+- Created the Python package scaffold.
+- Added core action and state models.
+- Added deterministic benchmark seed utilities.
+- Added benchmark summary metrics.
+- Added a random legal-action bot.
+- Added the first poker hand evaluator.
+- Added a greedy immediate-score bot.
+- Added a Gym-like environment wrapper.
+- Added JSONL replay logging.
+- Added a `run_seed` command for one seeded local bot run.
+- Added live execution support to the benchmark command.
+- Updated the JSON-RPC client defaults and method mapping for BalatroBot.
+- Added BalatroBot API notes from the official docs.
+- Added a local preflight command and setup notes.
+- Installed uv, Lovely Injector, Steamodded, and BalatroBot locally.
+- Patched the local BalatroBot manifest so it loads with the installed Steamodded.
+- Launched the BalatroBot bridge and verified `health`.
+- Completed a 10-run live `random_bot` smoke benchmark.
+- Fixed live action derivation to avoid unaffordable shop buys and impossible boss skips.
+- Completed a 100-run live `greedy_bot` benchmark; 3 runs reached ante 2.
+- Added `basic_strategy_bot`, which reached ante 2 on 26 of 50 tested White Stake seeds.
+- Added a reusable benchmark runner with endpoint-based parallelism.
+- Added a Tkinter benchmark GUI with run parameters and worker launch controls.
+- Hardened GUI worker launch: workers start sequentially, stale bridges can be stopped first, and partial launches are torn down on failure.
+- Added GUI speed presets and changed benchmark defaults to `gamespeed` 32 with true headless mode enabled.
+- Fixed the GUI so BalatroBot's mutually-exclusive headless and render-on-API options cannot be enabled together.
+- Added a tiny-startup headless Balatro copy path so workers do not flash fullscreen before minimizing.
+- Added explicit seed-list support for one-off and hand-picked benchmark runs.
+- Added stale-state recovery when BalatroBot rejects an action because the live phase advanced.
+- Added score-audit replay metadata and a `balatro_ai.eval.score_audit` command.
+- Made benchmark seed failures report as failed runs instead of tearing down the whole benchmark.
+- Added benchmark cancellation so GUI stop buttons stop scheduling new seeds instead of producing connection-error runs.
+- Extended the score evaluator with suit-debuff bosses, basic enhancements, joker editions, and simple flat/suit joker effects.
+- Continued Phase 4 scoring work with 4-worker audits; added The Psychic, Arrowhead, Even Steven, Half Joker, Swashbuckler, Scary Face, and The Flint handling.
+- Split score-audit misses into supported versus known-uncertain dynamic cases such as Misprint, Popcorn, Ice Cream, Shoot the Moon, Square Joker, and Ceremonial Dagger.
+- Added benchmark metadata for deck, active Balatro profile, and unlock pool; current local default is P1 with all unlocks.
+- Extended Phase 4 replay logging with full hand-before-play and held-card details.
+- Added evaluator support for debuffed card state, held-card score effects, Blue Joker, Blackboard, Baron, Shoot the Moon, Raised Fist, Steel held cards, Odd Todd, Smiley Face, and several exposed dynamic joker counters.
+- Ran a same-seed 4-worker score audit; mean absolute score error improved from 23.5 to 6.3 across 145 played hands.
+- Added standard-library tests for the foundation.
+
+## In Progress
+
+- Phase 1: local bot interface.
+
+## Next Steps
+
+1. Confirm the exact BalatroBot JSON-RPC method names and payloads.
+2. Adapt `JsonRpcBalatroClient` to the live bridge.
+3. Expand the hand evaluator with enhancements, editions, and simple jokers.
+4. Improve shop strategy beyond buying the first affordable joker.
