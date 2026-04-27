@@ -155,6 +155,7 @@ def _explanation_from_payload(
         hands_remaining=int(audit.get("hands_remaining", 0)),
         held_cards=held_cards,
         deck_size=int(audit.get("deck_size", 0)),
+        money=int(audit.get("money", 0)),
     )
 
     stored_predicted = int(audit.get("predicted_score", 0))

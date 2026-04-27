@@ -402,8 +402,31 @@ class HandEvaluatorTests(unittest.TestCase):
         )
 
         self.assertEqual(evaluation.chips, 35)
-        self.assertEqual(evaluation.effect_xmult, 8)
+        self.assertEqual(evaluation.mult, 8)
         self.assertEqual(evaluation.score, 280)
+
+    def test_photograph_triggers_before_flat_joker_mult(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["AS", "AC", "QC", "QD"]),
+            jokers=(Joker("Abstract Joker"), Joker("Photograph")),
+        )
+
+        self.assertEqual(evaluation.chips, 62)
+        self.assertEqual(evaluation.mult, 10)
+        self.assertEqual(evaluation.score, 620)
+
+    def test_raised_fist_does_not_skip_lower_debuffed_held_card(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["QS", "QC"]),
+            jokers=(Joker("Raised Fist"), Joker("Photograph")),
+            held_cards=(
+                Card(rank="A", suit="H", debuffed=True),
+                Card(rank="7", suit="H", debuffed=True),
+                Card(rank="10", suit="S"),
+            ),
+        )
+
+        self.assertEqual(evaluation.score, 120)
 
     def test_money_scaled_jokers_are_applied(self) -> None:
         evaluation = evaluate_played_cards(
@@ -476,10 +499,18 @@ class HandEvaluatorTests(unittest.TestCase):
             cards(["AS"]),
             jokers=(Joker("Baseball Card"), uncommon_joker("Uncommon One"), uncommon_joker("Uncommon Two")),
         )
+        baseball_with_fallback_rarity = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(
+                Joker("Baseball Card"),
+                joker_with_effect("Erosion", "+4 Mult for each card below starting deck size (Currently +4 Mult)"),
+            ),
+        )
 
         self.assertEqual(supernova.score, 80)
         self.assertEqual(ramen.score, 25)
         self.assertEqual(baseball.score, 36)
+        self.assertEqual(baseball_with_fallback_rarity.score, 120)
 
     def test_current_value_chip_and_mult_jokers_are_applied(self) -> None:
         stone = evaluate_played_cards(

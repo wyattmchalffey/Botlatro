@@ -50,15 +50,17 @@
 - Added GUI speed toggles for bridge log mode and replay detail, plus replay modes that can skip full score-audit replay work during large benchmark sweeps.
 - Continued Phase 4 joker scoring with Bull, Bootstraps, Acrobat, Seeing Double, Flower Pot, Ancient Joker, The Idol, Triboulet, Baseball Card, Supernova, Ramen, Canio, Yorick, Campfire, and Throwback support.
 - Added more metadata-driven scorer support for Steel Joker, Glass Joker, Joker Stencil, Hit the Road, Stone Joker, Castle, Erosion, Driver's License, Loyalty Card, and permanent card chip bonuses.
+- Fixed Phase 4 audit misses for Photograph timing, Raised Fist held-card debuff behavior, money-scaled miss explanations, and Baseball Card rarity fallback for Erosion.
+- Reran a 20-seed 4-worker White Stake score audit; all 297 played hands matched Balatro exactly, with 0.0 mean absolute error.
 - Added standard-library tests for the foundation.
 
 ## In Progress
 
-- Phase 1: local bot interface.
+- Phase 4: continue expanding the scorer from exact audited cases into broader joker/enhancement coverage.
 
 ## Next Steps
 
-1. Confirm the exact BalatroBot JSON-RPC method names and payloads.
-2. Adapt `JsonRpcBalatroClient` to the live bridge.
-3. Expand the hand evaluator with enhancements, editions, and simple jokers.
-4. Improve shop strategy beyond buying the first affordable joker.
+1. Add a broader local joker rarity table for Baseball Card and rarity-aware decisions.
+2. Build deterministic test scenarios for remaining complex jokers and card modifiers.
+3. Start using the exact scorer to improve discard/play selection and shop valuation.
+4. Run larger score-audit sweeps after each new scorer batch.

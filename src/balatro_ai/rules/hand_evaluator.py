@@ -202,6 +202,7 @@ def evaluate_played_cards(
         held_cards=tuple(held_cards),
         deck_size=deck_size,
         money=money,
+        pre_joker_mult=base_mult + (mult_increment * level_delta),
     )
 
     return HandEvaluation(
@@ -495,6 +496,7 @@ def _effect_adjustments(
     held_cards: tuple[Card, ...],
     deck_size: int,
     money: int,
+    pre_joker_mult: int,
 ) -> tuple[int, int, float]:
     ability_pairs = tuple(zip(jokers, _effective_ability_jokers(jokers), strict=False))
     ability_jokers = tuple(ability for _, ability in ability_pairs)
@@ -632,8 +634,10 @@ def _effect_adjustments(
             effect_xmult *= 3
         elif name == "Shoot the Moon":
             effect_mult += 13 * held_retrigger_count * sum(1 for card in active_held_cards if card.rank == "Q")
-        elif name == "Raised Fist" and active_held_cards:
-            effect_mult += 2 * min(RANK_VALUES[card.rank] for card in active_held_cards)
+        elif name == "Raised Fist" and held_cards:
+            lowest_held = min(held_cards, key=lambda card: RANK_VALUES[card.rank])
+            if not lowest_held.debuffed:
+                effect_mult += 2 * RANK_VALUES[lowest_held.rank]
         elif name == "Baron":
             effect_xmult *= 1.5 ** (held_retrigger_count * sum(1 for card in active_held_cards if card.rank == "K"))
         elif name == "Blackboard" and active_held_cards and all(
@@ -714,7 +718,8 @@ def _effect_adjustments(
         elif name == "Photograph" and not photograph_consumed:
             first_face = _first_scored_face_entry(scored_entries, ability_jokers)
             if first_face is not None:
-                effect_xmult *= 2 ** trigger_counts.get(first_face[0], 1)
+                # Photograph triggers while cards score, before later flat joker mult is added.
+                effect_mult += pre_joker_mult * ((2 ** trigger_counts.get(first_face[0], 1)) - 1)
                 photograph_consumed = True
 
     return effect_chips, effect_mult, effect_xmult
@@ -905,6 +910,11 @@ def _uncommon_joker_count(jokers: tuple[Joker, ...]) -> int:
     return sum(1 for joker in jokers if _joker_rarity(joker) == "uncommon")
 
 
+FALLBACK_UNCOMMON_JOKERS = {
+    "Erosion",
+}
+
+
 def _joker_rarity(joker: Joker) -> str:
     value = joker.metadata.get("value")
     candidates = [
@@ -915,6 +925,8 @@ def _joker_rarity(joker: Joker) -> str:
     for candidate in candidates:
         if candidate is not None:
             return str(candidate).lower()
+    if joker.name in FALLBACK_UNCOMMON_JOKERS:
+        return "uncommon"
     return ""
 
 
