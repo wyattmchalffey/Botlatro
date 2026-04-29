@@ -42,10 +42,20 @@ class ScoreAuditRecord:
             return "Popcorn's current mult is dynamic and not exposed in replay state"
         if "Ice Cream" in joker_text:
             return "Ice Cream's current chip counter is dynamic and not exposed in replay state"
+        if "Ramen" in joker_text:
+            return "Ramen's displayed XMult can be rounded and discard-timing dependent"
         if "Shoot the Moon" in joker_text and not self.held_cards_known:
             return "Shoot the Moon depends on held Queens, missing from older score audit rows"
         if "Loyalty Card" in joker_text:
             return "Loyalty Card's hand counter is dynamic and not exposed in replay state"
+        if "Bloodstone" in joker_text:
+            return "Bloodstone has probabilistic XMult triggers"
+        if "Space Joker" in joker_text:
+            return "Space Joker can randomly upgrade hand level before scoring"
+        if "Obelisk" in joker_text:
+            return "Obelisk depends on prior hand-type history and can reset before scoring"
+        if "Green Joker" in joker_text:
+            return "Green Joker's counter timing can differ between gamestate and scoring"
         if "Card Sharp" in joker_text:
             return "Card Sharp depends on previous hand types this round, not included in score audit rows yet"
         if "Ceremonial Dagger" in joker_text:
@@ -60,6 +70,10 @@ class ScoreAuditRecord:
             return "Blue Joker depends on live deck size, missing from older score audit rows"
         if self.blind == "The Pillar":
             return "The Pillar debuffs previously played cards not yet represented in card state"
+        if self.blind == "The Mouth":
+            return "The Mouth can zero hands after the first played hand type this round"
+        if self.blind == "The Hook":
+            return "The Hook discards held cards before scoring, changing held-card effects"
         return None
 
     @property

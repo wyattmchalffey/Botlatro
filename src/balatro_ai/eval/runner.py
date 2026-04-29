@@ -12,6 +12,7 @@ from typing import Callable
 
 from balatro_ai.api.client import JsonRpcBalatroClient
 from balatro_ai.bots.registry import create_bot
+from balatro_ai.data.replay_logger import ReplayLogger
 from balatro_ai.eval.metrics import BenchmarkSummary, RunResult, summarize_runs
 from balatro_ai.eval.run_seed import REPLAY_MODES, RunSeedOptions, run_single_seed
 from balatro_ai.eval.seed_sets import SeedSet, make_explicit_seed_set, make_seed_set
@@ -35,6 +36,7 @@ class BenchmarkOptions:
     max_steps: int = 1000
     replay_dir: Path | None = None
     replay_mode: str = "score_audit"
+    start_retries: int = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +69,7 @@ def run_benchmark(
     _emit(progress, f"Seeds: {len(seed_set.seeds)}")
     _emit(progress, f"Endpoints: {', '.join(options.endpoints)}")
     _emit(progress, f"Replay mode: {options.replay_mode}")
+    _emit(progress, f"Start retries: {options.start_retries}")
     if options.replay_mode not in REPLAY_MODES:
         raise ValueError(f"Unknown replay mode: {options.replay_mode}")
 
@@ -164,10 +167,11 @@ def _run_seed(*, seed: int, endpoint: str, options: BenchmarkOptions) -> RunResu
                 max_steps=options.max_steps,
                 replay_path=replay_path,
                 replay_mode=options.replay_mode,
+                start_retries=options.start_retries,
             ),
         )
     except Exception as exc:  # noqa: BLE001 - benchmarks should report failed seeds and keep moving.
-        return RunResult(
+        result = RunResult(
             bot_version=options.bot,
             seed=seed,
             stake=options.stake,
@@ -178,6 +182,19 @@ def _run_seed(*, seed: int, endpoint: str, options: BenchmarkOptions) -> RunResu
             runtime_seconds=perf_counter() - started_at,
             death_reason=f"error:{type(exc).__name__}: {exc}",
         )
+        if replay_path is not None and options.replay_mode != "off":
+            ReplayLogger(replay_path).log_summary(
+                bot_version=result.bot_version,
+                seed=result.seed,
+                stake=result.stake,
+                won=result.won,
+                ante_reached=result.ante_reached,
+                final_score=result.final_score,
+                final_money=result.final_money,
+                runtime_seconds=result.runtime_seconds,
+                death_reason=result.death_reason,
+            )
+        return result
 
 
 def _seed_set_from_options(options: BenchmarkOptions) -> SeedSet:

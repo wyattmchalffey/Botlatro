@@ -33,20 +33,10 @@ class ExplainScoreMissesTests(unittest.TestCase):
                                 "held_card_details": [
                                     {"rank": "Q", "suit": "C", "debuffed": False},
                                 ],
-                                "joker_details": [
-                                    {
-                                        "name": "Green Joker",
-                                        "sell_value": 2,
-                                        "metadata": {
-                                            "value": {
-                                                "effect": "+1 Mult per hand played -1 Mult per discard (Currently +1 Mult)"
-                                            }
-                                        },
-                                    }
-                                ],
+                                "joker_details": [],
                                 "hand_type": "Pair",
                                 "predicted_score": 141,
-                                "actual_score_delta": 94,
+                                "actual_score_delta": 63,
                                 "ante": 1,
                                 "blind": "Small Blind",
                                 "discards_remaining": 2,
@@ -65,7 +55,7 @@ class ExplainScoreMissesTests(unittest.TestCase):
         self.assertIn("Score miss explanations", text)
         self.assertIn("cards=AS AD indexes=0,1", text)
         self.assertIn("held=QC", text)
-        self.assertIn("Green Joker current counter timing", text)
+        self.assertIn("stored prediction differs from current evaluator", text)
 
 
 if __name__ == "__main__":

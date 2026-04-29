@@ -17,7 +17,7 @@ from balatro_ai.env.balatro_env import BalatroEnv
 from balatro_ai.eval.metrics import RunResult
 from balatro_ai.rules.hand_evaluator import debuffed_suits_for_blind, evaluate_played_cards
 
-REPLAY_MODES = ("off", "light", "score_audit")
+REPLAY_MODES = ("off", "summary", "light", "score_audit")
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,6 +28,7 @@ class RunSeedOptions:
     print_states: bool = False
     replay_path: Path | None = None
     replay_mode: str = "score_audit"
+    start_retries: int = 1
 
 
 def run_single_seed(
@@ -42,7 +43,7 @@ def run_single_seed(
     logger = ReplayLogger(options.replay_path) if options.replay_path and options.replay_mode != "off" else None
     started_at = perf_counter()
 
-    _, info = env.reset(seed=options.seed)
+    _, info = _reset_with_retries(env, seed=options.seed, max_retries=options.start_retries)
     state = info["state"]
     if options.print_states:
         print(state.debug_summary)
@@ -64,7 +65,7 @@ def run_single_seed(
             continue
 
         next_state = info["state"]
-        if logger is not None:
+        if logger is not None and options.replay_mode != "summary":
             extra = (
                 _step_extra(state=state, next_state=next_state, action=action)
                 if options.replay_mode == "score_audit"
@@ -86,7 +87,7 @@ def run_single_seed(
             print(state.debug_summary)
 
     runtime = perf_counter() - started_at
-    return RunResult(
+    result = RunResult(
         bot_version=bot.name,
         seed=options.seed,
         stake=options.stake,
@@ -97,6 +98,37 @@ def run_single_seed(
         runtime_seconds=runtime,
         death_reason=None if state.won else state.blind or None,
     )
+    if logger is not None:
+        logger.log_summary(
+            bot_version=result.bot_version,
+            seed=result.seed,
+            stake=result.stake,
+            won=result.won,
+            ante_reached=result.ante_reached,
+            final_score=result.final_score,
+            final_money=result.final_money,
+            runtime_seconds=result.runtime_seconds,
+            death_reason=result.death_reason,
+            final_state=state,
+        )
+    return result
+
+
+def _reset_with_retries(
+    env: BalatroEnv,
+    *,
+    seed: int,
+    max_retries: int,
+) -> tuple[tuple[float, ...], dict[str, object]]:
+    attempts = 0
+    while True:
+        try:
+            return env.reset(seed=seed)
+        except (BalatroBridgeError, ConnectionError):
+            if attempts >= max_retries:
+                raise
+            attempts += 1
+            sleep(0.25 * attempts)
 
 
 def _step_extra(*, state: GameState, next_state: GameState, action: Action) -> dict[str, object]:
@@ -195,8 +227,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--replay-mode",
         choices=REPLAY_MODES,
         default="score_audit",
-        help="Replay detail: off, light JSONL, or score-audit JSONL.",
+        help="Replay detail: off, summary-only JSONL, light JSONL, or score-audit JSONL.",
     )
+    parser.add_argument("--start-retries", type=int, default=1, help="Retries for bridge start/reset failures.")
     return parser
 
 
@@ -211,6 +244,7 @@ def main(argv: list[str] | None = None) -> int:
         print_states=args.print_states,
         replay_path=args.replay_path,
         replay_mode=args.replay_mode,
+        start_retries=args.start_retries,
     )
     result = run_single_seed(bot=bot, client=client, options=options)
     print(

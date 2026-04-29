@@ -428,6 +428,50 @@ class HandEvaluatorTests(unittest.TestCase):
 
         self.assertEqual(evaluation.score, 120)
 
+    def test_raised_fist_respects_blind_debuffed_held_suit(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["QH", "QC"]),
+            jokers=(Joker("Raised Fist"),),
+            held_cards=(Card(rank="7", suit="S"), Card(rank="10", suit="H")),
+            debuffed_suits=debuffed_suits_for_blind("The Goad"),
+        )
+
+        self.assertEqual(evaluation.score, 60)
+
+    def test_raised_fist_uses_rank_order_for_ten_face_ties(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["AH", "AC"]),
+            jokers=(Joker("Raised Fist"),),
+            held_cards=(Card(rank="Q", suit="H"), Card(rank="10", suit="S")),
+            debuffed_suits=debuffed_suits_for_blind("The Goad"),
+        )
+
+        self.assertEqual(evaluation.score, 64)
+
+    def test_raised_fist_uses_last_card_when_lowest_rank_ties(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["JH"]),
+            jokers=(Joker("Raised Fist"),),
+            held_cards=(
+                Card(rank="J", suit="D"),
+                Card(rank="6", suit="S"),
+                Card(rank="6", suit="H"),
+                Card(rank="6", suit="C"),
+            ),
+            debuffed_suits=debuffed_suits_for_blind("The Club"),
+        )
+
+        self.assertEqual(evaluation.score, 15)
+
+    def test_hanging_chad_does_not_move_to_next_card_when_first_scoring_card_is_debuffed(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["7S", "7H", "2H", "2C", "2D"]),
+            jokers=(Joker("Hanging Chad"), Joker("Odd Todd")),
+            debuffed_suits=debuffed_suits_for_blind("The Goad"),
+        )
+
+        self.assertEqual(evaluation.score, 336)
+
     def test_money_scaled_jokers_are_applied(self) -> None:
         evaluation = evaluate_played_cards(
             cards(["AS"]),
@@ -453,10 +497,45 @@ class HandEvaluatorTests(unittest.TestCase):
             cards(["TD", "9C", "8H", "7S", "6D"]),
             jokers=(Joker("Flower Pot"),),
         )
+        flower_pot_with_debuffed_suit = evaluate_played_cards(
+            cards(["TD", "9C", "8H", "7S", "6D"]),
+            jokers=(Joker("Flower Pot"),),
+            debuffed_suits=debuffed_suits_for_blind("The Goad"),
+        )
 
         self.assertEqual(acrobat.score, 48)
         self.assertEqual(seeing_double.score, 120)
         self.assertEqual(flower_pot.score, 840)
+        self.assertEqual(flower_pot_with_debuffed_suit.score, 756)
+
+    def test_flower_pot_needs_five_played_cards(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["8H", "8C", "8D", "2S"]),
+            jokers=(Joker("Flower Pot"),),
+        )
+
+        self.assertEqual(evaluation.score, 162)
+
+    def test_flower_pot_ignores_kicker_suits_outside_scored_hand(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["QH", "QC", "7S", "3H", "3D"]),
+            jokers=(Joker("Flower Pot"),),
+        )
+
+        self.assertEqual(evaluation.score, 92)
+
+    def test_contains_two_pair_jokers_apply_to_full_house(self) -> None:
+        mad = evaluate_played_cards(
+            cards(["9S", "9D", "5S", "5C", "5D"]),
+            jokers=(Joker("Mad Joker"),),
+        )
+        clever = evaluate_played_cards(
+            cards(["9S", "9D", "5S", "5C", "5D"]),
+            jokers=(Joker("Clever Joker"),),
+        )
+
+        self.assertEqual(mad.score, 1022)
+        self.assertEqual(clever.score, 612)
 
     def test_specific_scored_card_xmult_jokers_are_applied(self) -> None:
         ancient = evaluate_played_cards(
@@ -495,6 +574,10 @@ class HandEvaluatorTests(unittest.TestCase):
             cards(["AS"]),
             jokers=(joker_with_effect("Ramen", "X2 Mult, loses X0.01 per card discarded (Currently X1.6 Mult)"),),
         )
+        ramen_live_text = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(joker_with_effect("Ramen", "X1.92 Mult, loses X0.01 Mult per card discarded"),),
+        )
         baseball = evaluate_played_cards(
             cards(["AS"]),
             jokers=(Joker("Baseball Card"), uncommon_joker("Uncommon One"), uncommon_joker("Uncommon Two")),
@@ -509,8 +592,36 @@ class HandEvaluatorTests(unittest.TestCase):
 
         self.assertEqual(supernova.score, 80)
         self.assertEqual(ramen.score, 25)
+        self.assertEqual(ramen_live_text.score, 30)
         self.assertEqual(baseball.score, 36)
         self.assertEqual(baseball_with_fallback_rarity.score, 120)
+
+    def test_baseball_card_uses_local_rarity_fallbacks(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(
+                Joker("Baseball Card"),
+                Joker("Blackboard"),
+                Joker("Acrobat"),
+                Joker("Baron"),
+                Joker("Credit Card"),
+            ),
+        )
+
+        self.assertEqual(evaluation.score, 36)
+
+    def test_baseball_card_accepts_numeric_rarity_metadata(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(
+                Joker("Baseball Card"),
+                Joker("Numeric Uncommon", metadata={"rarity": 2}),
+                Joker("Nested Numeric Uncommon", metadata={"value": {"rarity": "2"}}),
+                Joker("Numeric Rare", metadata={"rarity": 3}),
+            ),
+        )
+
+        self.assertEqual(evaluation.score, 36)
 
     def test_current_value_chip_and_mult_jokers_are_applied(self) -> None:
         stone = evaluate_played_cards(

@@ -138,6 +138,22 @@ class RunSeedTests(unittest.TestCase):
             text = replay_path.read_text(encoding="utf-8")
             self.assertIn('"chosen_action"', text)
             self.assertNotIn('"score_audit"', text)
+            self.assertIn('"record_type": "run_summary"', text)
+
+    def test_summary_replay_writes_only_final_result(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            replay_path = Path(directory) / "run.jsonl"
+            run_single_seed(
+                bot=RandomBot(seed=123),
+                client=TwoStepClient(),
+                options=RunSeedOptions(seed=123, max_steps=10, replay_path=replay_path, replay_mode="summary"),
+            )
+
+            text = replay_path.read_text(encoding="utf-8")
+            self.assertIn('"record_type": "run_summary"', text)
+            self.assertIn('"won": true', text)
+            self.assertIn('"final_state_detail"', text)
+            self.assertNotIn('"chosen_action"', text)
 
     def test_unknown_replay_mode_is_rejected(self) -> None:
         with self.assertRaises(ValueError):

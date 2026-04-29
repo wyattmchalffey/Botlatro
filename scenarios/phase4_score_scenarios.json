@@ -1,0 +1,54 @@
+{
+  "scenarios": [
+    {
+      "name": "hanging_chad_photograph_retrigger",
+      "cards": "KS",
+      "jokers": ["Hanging Chad", "Photograph"],
+      "expected": {
+        "score": 280
+      }
+    },
+    {
+      "name": "photograph_before_flat_joker_mult",
+      "cards": "AS AC QC QD",
+      "jokers": ["Abstract Joker", "Photograph"],
+      "expected": {
+        "score": 620
+      }
+    },
+    {
+      "name": "raised_fist_debuffed_lowest_held_card",
+      "cards": "QS QC",
+      "held": [
+        {"rank": "A", "suit": "H", "debuffed": true},
+        {"rank": "7", "suit": "H", "debuffed": true},
+        {"rank": "10", "suit": "S"}
+      ],
+      "jokers": ["Raised Fist", "Photograph"],
+      "expected": {
+        "score": 120
+      }
+    },
+    {
+      "name": "baseball_card_local_rarity_fallbacks",
+      "cards": "AS",
+      "jokers": ["Baseball Card", "Blackboard", "Acrobat", "Baron", "Credit Card"],
+      "expected": {
+        "score": 36
+      }
+    },
+    {
+      "name": "baseball_card_numeric_rarity_metadata",
+      "cards": "AS",
+      "jokers": [
+        "Baseball Card",
+        {"name": "Numeric Uncommon", "rarity": 2},
+        {"name": "Nested Numeric Uncommon", "value": {"rarity": "2"}},
+        {"name": "Numeric Rare", "rarity": 3}
+      ],
+      "expected": {
+        "score": 36
+      }
+    }
+  ]
+}

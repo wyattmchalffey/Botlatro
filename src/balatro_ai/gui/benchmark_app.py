@@ -44,7 +44,7 @@ DECKS = (
     "ERRATIC",
 )
 BRIDGE_LOG_MODES = ("quiet", "off", "normal_clean", "normal")
-REPLAY_DETAIL_MODES = ("off", "light", "score_audit")
+REPLAY_DETAIL_MODES = ("off", "summary", "light", "score_audit")
 
 
 @dataclass(slots=True)
@@ -78,6 +78,7 @@ class BenchmarkApp:
         self.label = StringVar(value="default")
         self.max_steps = IntVar(value=800)
         self.timeout_seconds = StringVar(value="30")
+        self.start_retries = IntVar(value=1)
         self.replay_dir = StringVar(value="")
         self.output_file = StringVar(value=str(Path(".data") / "gui_benchmark.txt"))
 
@@ -127,12 +128,13 @@ class BenchmarkApp:
         _entry(benchmark, "Label", self.label, 0, 6)
         _entry(benchmark, "Max steps", self.max_steps, 1, 0)
         _entry(benchmark, "Timeout", self.timeout_seconds, 1, 2)
-        _path_entry(benchmark, "Replay dir", self.replay_dir, 1, 4, self._browse_replay_dir)
-        _path_entry(benchmark, "Output file", self.output_file, 2, 0, self._browse_output_file, column_span=7)
-        _wide_entry(benchmark, "Seed list", self.seed_list, 3, 0, column_span=7)
-        _combo(benchmark, "Deck", self.deck, DECKS, 4, 0)
-        _entry(benchmark, "Profile", self.profile_name, 4, 2)
-        _entry(benchmark, "Unlocks", self.unlock_state, 4, 4)
+        _entry(benchmark, "Start retries", self.start_retries, 1, 4)
+        _path_entry(benchmark, "Replay dir", self.replay_dir, 2, 0, self._browse_replay_dir, column_span=7)
+        _path_entry(benchmark, "Output file", self.output_file, 3, 0, self._browse_output_file, column_span=7)
+        _wide_entry(benchmark, "Seed list", self.seed_list, 4, 0, column_span=7)
+        _combo(benchmark, "Deck", self.deck, DECKS, 5, 0)
+        _entry(benchmark, "Profile", self.profile_name, 5, 2)
+        _entry(benchmark, "Unlocks", self.unlock_state, 5, 4)
 
         workers = ttk.LabelFrame(outer, text="Workers", padding=10)
         workers.grid(row=1, column=0, sticky="ew", pady=(10, 0))
@@ -182,7 +184,7 @@ class BenchmarkApp:
         ttk.Button(bridge, text="Watch Speed", command=self._watch_speed_preset).grid(
             row=5, column=7, sticky="ew", padx=(8, 0), pady=3
         )
-        _combo(benchmark, "Replay mode", self.replay_mode, REPLAY_DETAIL_MODES, 5, 0)
+        _combo(benchmark, "Replay mode", self.replay_mode, REPLAY_DETAIL_MODES, 6, 0)
 
         controls = ttk.Frame(outer)
         controls.grid(row=3, column=0, sticky="ew", pady=(10, 0))
@@ -267,11 +269,12 @@ class BenchmarkApp:
         self.render_on_api.set(False)
         self.audio.set(False)
         self.bridge_log_mode.set("quiet")
-        self.replay_mode.set("off")
+        self.replay_mode.set("summary")
+        self.start_retries.set(1)
         self.fps_cap.set(2000)
         self.gamespeed.set(32)
         self.animation_fps.set(1)
-        self._log_message("Applied benchmark speed preset: headless, quiet bridge logs, replay off, gamespeed 32.")
+        self._log_message("Applied benchmark speed preset: headless, quiet bridge logs, summary replay, gamespeed 32.")
 
     def _watch_speed_preset(self) -> None:
         self.headless.set(False)
@@ -282,6 +285,7 @@ class BenchmarkApp:
         self.audio.set(False)
         self.bridge_log_mode.set("normal_clean")
         self.replay_mode.set("off")
+        self.start_retries.set(1)
         self.fps_cap.set(60)
         self.gamespeed.set(1)
         self.animation_fps.set(30)
@@ -324,6 +328,7 @@ class BenchmarkApp:
                 max_steps=int(self.max_steps.get()),
                 replay_dir=replay_dir,
                 replay_mode=self.replay_mode.get(),
+                start_retries=int(self.start_retries.get()),
             ),
             "worker_count": worker_count,
             "output_file": output_file,

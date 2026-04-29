@@ -435,6 +435,7 @@ def _rank_sum(cards: tuple[Card, ...]) -> int:
 def _scored_card_trigger_counts(
     scored_entries: tuple[tuple[int, Card], ...],
     *,
+    scoring_indices: tuple[int, ...],
     cards: tuple[Card, ...],
     jokers: tuple[Joker, ...],
     hands_remaining: int,
@@ -443,7 +444,7 @@ def _scored_card_trigger_counts(
     if not scored_entries:
         return counts
 
-    first_scored_index = scored_entries[0][0]
+    first_scored_index = scoring_indices[0] if scoring_indices else scored_entries[0][0]
     for index, card in scored_entries:
         extra = 0
         if card.seal and _normalize_effect_name(card.seal) == "red":
@@ -505,10 +506,14 @@ def _effect_adjustments(
         for index in scoring_indices
         if not cards[index].debuffed and _normalize_suit(cards[index].suit) not in debuffed_suits
     )
+    scoring_cards = tuple(cards[index] for index in scoring_indices)
     scored_cards = tuple(card for _, card in scored_entries)
-    active_held_cards = tuple(card for card in held_cards if not card.debuffed)
+    active_held_cards = tuple(
+        card for card in held_cards if not card.debuffed and _normalize_suit(card.suit) not in debuffed_suits
+    )
     trigger_counts = _scored_card_trigger_counts(
         scored_entries,
+        scoring_indices=scoring_indices,
         cards=cards,
         jokers=ability_jokers,
         hands_remaining=hands_remaining,
@@ -600,7 +605,7 @@ def _effect_adjustments(
             effect_mult += 8
         elif name == "Zany Joker" and _contains_three_of_a_kind(cards):
             effect_mult += 12
-        elif name == "Mad Joker" and hand_type == HandType.TWO_PAIR:
+        elif name == "Mad Joker" and _contains_two_pair(cards):
             effect_mult += 10
         elif name == "Crazy Joker" and _contains_straight(hand_type):
             effect_mult += 12
@@ -610,7 +615,7 @@ def _effect_adjustments(
             effect_chips += 50
         elif name == "Wily Joker" and _contains_three_of_a_kind(cards):
             effect_chips += 100
-        elif name == "Clever Joker" and hand_type == HandType.TWO_PAIR:
+        elif name == "Clever Joker" and _contains_two_pair(cards):
             effect_chips += 80
         elif name == "Devious Joker" and _contains_straight(hand_type):
             effect_chips += 100
@@ -630,13 +635,14 @@ def _effect_adjustments(
             effect_xmult *= 3
         elif name == "Seeing Double" and _contains_scored_club_and_other_suit(scored_cards):
             effect_xmult *= 2
-        elif name == "Flower Pot" and _contains_all_suits(scored_cards):
+        elif name == "Flower Pot" and _contains_all_suits(scoring_cards):
             effect_xmult *= 3
         elif name == "Shoot the Moon":
             effect_mult += 13 * held_retrigger_count * sum(1 for card in active_held_cards if card.rank == "Q")
         elif name == "Raised Fist" and held_cards:
-            lowest_held = min(held_cards, key=lambda card: RANK_VALUES[card.rank])
-            if not lowest_held.debuffed:
+            lowest_rank = min(STRAIGHT_VALUES[card.rank] for card in held_cards)
+            lowest_held = next(card for card in reversed(held_cards) if STRAIGHT_VALUES[card.rank] == lowest_rank)
+            if not lowest_held.debuffed and _normalize_suit(lowest_held.suit) not in debuffed_suits:
                 effect_mult += 2 * RANK_VALUES[lowest_held.rank]
         elif name == "Baron":
             effect_xmult *= 1.5 ** (held_retrigger_count * sum(1 for card in active_held_cards if card.rank == "K"))
@@ -806,6 +812,9 @@ def _joker_current_plus(joker: Joker, *, suffix: str) -> int:
 def _joker_current_xmult(joker: Joker) -> float:
     effect = _joker_effect_text(joker)
     match = re.search(r"currently\s+x\s*([0-9]+(?:\.[0-9]+)?)", effect, flags=re.IGNORECASE)
+    if match:
+        return float(match.group(1))
+    match = re.search(r"\bx\s*([0-9]+(?:\.[0-9]+)?)\s*mult", effect, flags=re.IGNORECASE)
     return float(match.group(1)) if match else 1.0
 
 
@@ -910,8 +919,157 @@ def _uncommon_joker_count(jokers: tuple[Joker, ...]) -> int:
     return sum(1 for joker in jokers if _joker_rarity(joker) == "uncommon")
 
 
-FALLBACK_UNCOMMON_JOKERS = {
-    "Erosion",
+JOKER_RARITY_FALLBACKS = {
+    "8 Ball": "common",
+    "Abstract Joker": "common",
+    "Acrobat": "uncommon",
+    "Ancient Joker": "rare",
+    "Arrowhead": "uncommon",
+    "Astronomer": "uncommon",
+    "Banner": "common",
+    "Baron": "rare",
+    "Baseball Card": "rare",
+    "Blackboard": "uncommon",
+    "Bloodstone": "uncommon",
+    "Blue Joker": "common",
+    "Blueprint": "rare",
+    "Bootstraps": "uncommon",
+    "Brainstorm": "rare",
+    "Bull": "uncommon",
+    "Burglar": "uncommon",
+    "Burnt Joker": "rare",
+    "Business Card": "common",
+    "Caino": "legendary",
+    "Campfire": "rare",
+    "Card Sharp": "uncommon",
+    "Cartomancer": "uncommon",
+    "Castle": "uncommon",
+    "Cavendish": "common",
+    "Ceremonial Dagger": "uncommon",
+    "Certificate": "uncommon",
+    "Chaos the Clown": "common",
+    "Chicot": "legendary",
+    "Clever Joker": "common",
+    "Cloud 9": "uncommon",
+    "Constellation": "uncommon",
+    "Crafty Joker": "common",
+    "Crazy Joker": "common",
+    "Credit Card": "common",
+    "Delayed Gratification": "common",
+    "Devious Joker": "common",
+    "Diet Cola": "uncommon",
+    "DNA": "rare",
+    "Driver's License": "rare",
+    "Droll Joker": "common",
+    "Drunkard": "common",
+    "Dusk": "uncommon",
+    "Egg": "common",
+    "Erosion": "uncommon",
+    "Even Steven": "common",
+    "Faceless Joker": "common",
+    "Fibonacci": "uncommon",
+    "Flash Card": "uncommon",
+    "Flower Pot": "uncommon",
+    "Fortune Teller": "common",
+    "Four Fingers": "uncommon",
+    "Gift Card": "uncommon",
+    "Glass Joker": "uncommon",
+    "Gluttonous Joker": "common",
+    "Golden Joker": "common",
+    "Golden Ticket": "common",
+    "Greedy Joker": "common",
+    "Green Joker": "common",
+    "Gros Michel": "common",
+    "Hack": "uncommon",
+    "Half Joker": "common",
+    "Hallucination": "common",
+    "Hanging Chad": "common",
+    "Hiker": "uncommon",
+    "Hit the Road": "rare",
+    "Hologram": "uncommon",
+    "Ice Cream": "common",
+    "Invisible Joker": "rare",
+    "Joker": "common",
+    "Joker Stencil": "uncommon",
+    "Jolly Joker": "common",
+    "Juggler": "common",
+    "Loyalty Card": "uncommon",
+    "Luchador": "uncommon",
+    "Lucky Cat": "uncommon",
+    "Lusty Joker": "common",
+    "Mad Joker": "common",
+    "Madness": "uncommon",
+    "Mail-In Rebate": "common",
+    "Marble Joker": "uncommon",
+    "Matador": "uncommon",
+    "Merry Andy": "uncommon",
+    "Midas Mask": "uncommon",
+    "Mime": "uncommon",
+    "Misprint": "common",
+    "Mr. Bones": "uncommon",
+    "Mystic Summit": "common",
+    "Obelisk": "rare",
+    "Odd Todd": "common",
+    "Onyx Agate": "uncommon",
+    "Oops! All 6s": "uncommon",
+    "Pareidolia": "uncommon",
+    "Perkeo": "legendary",
+    "Photograph": "common",
+    "Popcorn": "common",
+    "Raised Fist": "common",
+    "Ramen": "uncommon",
+    "Red Card": "common",
+    "Reserved Parking": "common",
+    "Ride the Bus": "common",
+    "Riff-raff": "common",
+    "Rocket": "uncommon",
+    "Rough Gem": "uncommon",
+    "Runner": "common",
+    "Satellite": "uncommon",
+    "Scary Face": "common",
+    "Scholar": "common",
+    "Seance": "uncommon",
+    "Seeing Double": "uncommon",
+    "Seltzer": "uncommon",
+    "Shoot the Moon": "common",
+    "Shortcut": "uncommon",
+    "Showman": "uncommon",
+    "Sixth Sense": "uncommon",
+    "Sly Joker": "common",
+    "Smeared Joker": "uncommon",
+    "Smiley Face": "common",
+    "Sock and Buskin": "uncommon",
+    "Space Joker": "uncommon",
+    "Spare Trousers": "uncommon",
+    "Splash": "common",
+    "Square Joker": "common",
+    "Steel Joker": "uncommon",
+    "Stone Joker": "uncommon",
+    "Stuntman": "rare",
+    "Supernova": "common",
+    "Superposition": "common",
+    "Swashbuckler": "common",
+    "The Duo": "rare",
+    "The Family": "rare",
+    "The Idol": "uncommon",
+    "The Order": "rare",
+    "The Tribe": "rare",
+    "The Trio": "rare",
+    "Throwback": "uncommon",
+    "To Do List": "common",
+    "To the Moon": "uncommon",
+    "Trading Card": "uncommon",
+    "Triboulet": "legendary",
+    "Troubadour": "uncommon",
+    "Turtle Bean": "uncommon",
+    "Vagabond": "rare",
+    "Vampire": "uncommon",
+    "Walkie Talkie": "common",
+    "Wee Joker": "rare",
+    "Wily Joker": "common",
+    "Wrathful Joker": "common",
+    "Yorick": "legendary",
+    "Zany Joker": "common",
 }
 
 
@@ -923,11 +1081,32 @@ def _joker_rarity(joker: Joker) -> str:
         value.get("rarity") if isinstance(value, dict) else None,
     ]
     for candidate in candidates:
-        if candidate is not None:
-            return str(candidate).lower()
-    if joker.name in FALLBACK_UNCOMMON_JOKERS:
-        return "uncommon"
+        normalized = _normalize_joker_rarity(candidate)
+        if normalized:
+            return normalized
+    if joker.name in JOKER_RARITY_FALLBACKS:
+        return JOKER_RARITY_FALLBACKS[joker.name]
     return ""
+
+
+def _normalize_joker_rarity(candidate: object) -> str:
+    if candidate is None:
+        return ""
+    text = str(candidate).strip().lower()
+    return {
+        "1": "common",
+        "1.0": "common",
+        "common": "common",
+        "2": "uncommon",
+        "2.0": "uncommon",
+        "uncommon": "uncommon",
+        "3": "rare",
+        "3.0": "rare",
+        "rare": "rare",
+        "4": "legendary",
+        "4.0": "legendary",
+        "legendary": "legendary",
+    }.get(text, text)
 
 
 def _contains_scored_club_and_other_suit(cards: tuple[Card, ...]) -> bool:
@@ -941,6 +1120,10 @@ def _contains_all_suits(cards: tuple[Card, ...]) -> bool:
 
 def _contains_pair(cards: tuple[Card, ...]) -> bool:
     return max(Counter(card.rank for card in cards).values()) >= 2
+
+
+def _contains_two_pair(cards: tuple[Card, ...]) -> bool:
+    return sum(1 for count in Counter(card.rank for card in cards).values() if count >= 2) >= 2
 
 
 def _contains_three_of_a_kind(cards: tuple[Card, ...]) -> bool:

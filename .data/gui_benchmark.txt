@@ -1,69 +1,11 @@
-Cleaned 4 log file(s): dropped 962212 noisy line(s), kept 200 line(s).
 Stopping existing Balatro/BalatroBot processes...
-Preparing tiny-startup Balatro copy in .balatro-headless...
-Using tiny-startup Balatro exe: C:\Users\Wyatt\Desktop\Botlatro\.balatro-headless\Balatro.exe
 Starting bridge on port 12346...
 Bridge 12346 is healthy.
-Starting bridge on port 12347...
-Bridge 12347 is healthy.
-Starting bridge on port 12348...
-Bridge 12348 is healthy.
-Starting bridge on port 12349...
-Bridge 12349 is healthy.
 Bot: basic_strategy_bot
 Stake: white
-Deck: BLUE
+Deck: RED
 Profile: P1
 Unlocks: all
-Seeds: 50
-Endpoints: http://127.0.0.1:12346, http://127.0.0.1:12347, http://127.0.0.1:12348, http://127.0.0.1:12349
+Seeds: 1
+Endpoints: http://127.0.0.1:12346
 Replay mode: off
-[1/50] seed=2076245306 won=False ante=1 score=404 money=6 runtime=3.65s
-[2/50] seed=2032945879 won=False ante=1 score=598 money=4 runtime=4.94s
-[3/50] seed=743926755 won=False ante=1 score=526 money=3 runtime=5.93s
-[4/50] seed=1268319471 won=False ante=2 score=756 money=15 runtime=9.58s
-[5/50] seed=2003065730 won=False ante=1 score=432 money=2 runtime=4.29s
-[6/50] seed=1141206374 won=False ante=2 score=709 money=27 runtime=8.16s
-[7/50] seed=280549927 won=False ante=3 score=1492 money=30 runtime=13.00s
-[8/50] seed=459516027 won=False ante=2 score=507 money=14 runtime=7.89s
-[9/50] seed=1316005320 won=False ante=2 score=641 money=29 runtime=9.58s
-[10/50] seed=563160464 won=False ante=2 score=868 money=20 runtime=11.27s
-[11/50] seed=731991340 won=False ante=1 score=245 money=5 runtime=5.51s
-[12/50] seed=2059822327 won=False ante=3 score=1398 money=33 runtime=12.93s
-[13/50] seed=8976142 won=False ante=3 score=2684 money=59 runtime=14.27s
-[14/50] seed=1158103151 won=False ante=2 score=386 money=15 runtime=9.78s
-[15/50] seed=298416999 won=False ante=2 score=539 money=29 runtime=8.44s
-[16/50] seed=1272859959 won=False ante=2 score=804 money=17 runtime=9.77s
-[17/50] seed=1072344913 won=False ante=2 score=1036 money=19 runtime=10.49s
-[18/50] seed=274483854 won=False ante=4 score=4268 money=77 runtime=24.31s
-[19/50] seed=1103098422 won=False ante=2 score=856 money=28 runtime=12.43s
-[20/50] seed=1007946438 won=False ante=2 score=717 money=21 runtime=10.85s
-[21/50] seed=1491059921 won=False ante=3 score=1968 money=35 runtime=12.12s
-[22/50] seed=907592208 won=False ante=2 score=536 money=14 runtime=6.83s
-[23/50] seed=1803185026 won=False ante=3 score=2924 money=48 runtime=14.40s
-[24/50] seed=1064282259 won=False ante=3 score=1522 money=42 runtime=9.35s
-[25/50] seed=1592674595 won=False ante=2 score=682 money=21 runtime=9.50s
-[26/50] seed=430746903 won=False ante=1 score=388 money=3 runtime=5.05s
-[27/50] seed=1172879558 won=False ante=3 score=2268 money=56 runtime=11.97s
-[28/50] seed=1495068977 won=False ante=2 score=600 money=27 runtime=10.93s
-[29/50] seed=328289799 won=False ante=2 score=373 money=36 runtime=10.71s
-[30/50] seed=243376624 won=False ante=3 score=3598 money=56 runtime=15.49s
-[31/50] seed=812922127 won=False ante=2 score=459 money=35 runtime=10.11s
-[32/50] seed=1882898124 won=False ante=2 score=699 money=13 runtime=7.23s
-[33/50] seed=666654767 won=False ante=2 score=1009 money=15 runtime=9.90s
-[34/50] seed=322930650 won=False ante=3 score=1733 money=63 runtime=22.44s
-[35/50] seed=849961274 won=False ante=2 score=952 money=30 runtime=12.54s
-[36/50] seed=1519195660 won=False ante=1 score=595 money=8 runtime=5.09s
-[37/50] seed=253537433 won=False ante=3 score=1248 money=46 runtime=14.60s
-[38/50] seed=487214353 won=False ante=2 score=1572 money=32 runtime=13.76s
-[39/50] seed=2114238660 won=False ante=1 score=368 money=0 runtime=3.39s
-[40/50] seed=1322523838 won=False ante=2 score=756 money=25 runtime=11.45s
-[41/50] seed=1916965017 won=False ante=1 score=416 money=6 runtime=3.62s
-[42/50] seed=106390627 won=False ante=2 score=583 money=43 runtime=10.35s
-[43/50] seed=1372732851 won=False ante=2 score=1466 money=32 runtime=12.01s
-[44/50] seed=1890574763 won=False ante=3 score=1603 money=34 runtime=12.77s
-[45/50] seed=166654154 won=False ante=3 score=2254 money=57 runtime=13.50s
-[46/50] seed=869367608 won=False ante=2 score=836 money=24 runtime=9.84s
-[47/50] seed=937290358 won=False ante=3 score=2658 money=41 runtime=17.48s
-[48/50] seed=1812067239 won=False ante=2 score=792 money=6 runtime=9.34s
-[49/50] seed=346671540 won=False ante=3 score=2652 money=52 runtime=16.32s

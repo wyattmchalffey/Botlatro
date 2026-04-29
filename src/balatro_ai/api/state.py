@@ -190,7 +190,7 @@ class GameState:
             won=bool(data.get("won", False)),
         )
         if state.legal_actions:
-            return state
+            return _with_augmented_sell_actions(state)
         return _with_derived_legal_actions(state, shop_cards=shop_cards, voucher_cards=voucher_cards, booster_packs=booster_packs)
 
 
@@ -212,7 +212,7 @@ def _mapping_or_empty(value: Any) -> dict[str, Any]:
 
 def _raw_metadata(data: dict[str, Any]) -> dict[str, Any]:
     metadata = dict(data.get("metadata", {})) if isinstance(data.get("metadata"), dict) else {}
-    for key in ("id", "key", "set", "label", "value", "modifier", "state", "cost"):
+    for key in ("id", "key", "set", "label", "value", "modifier", "state", "cost", "rarity", "rarity_name"):
         if key in data:
             metadata[key] = data[key]
     return metadata
@@ -331,6 +331,8 @@ def _derive_legal_actions(
     elif state.phase == GamePhase.ROUND_EVAL:
         actions.append(Action(ActionType.CASH_OUT))
     elif state.phase == GamePhase.SHOP:
+        for index in range(len(state.jokers)):
+            actions.append(Action(ActionType.SELL, target_id="joker", amount=index, metadata={"kind": "joker", "index": index}))
         for index in range(len(shop_cards)):
             if _is_affordable(shop_cards[index], state.money):
                 actions.append(Action(ActionType.BUY, target_id="card", amount=index, metadata={"kind": "card", "index": index}))
@@ -350,6 +352,43 @@ def _derive_legal_actions(
     elif state.phase not in {GamePhase.RUN_OVER, GamePhase.UNKNOWN}:
         actions.append(Action(ActionType.NO_OP))
     return tuple(actions)
+
+
+def _with_augmented_sell_actions(state: GameState) -> GameState:
+    if state.phase != GamePhase.SHOP or not state.jokers:
+        return state
+    if any(action.action_type == ActionType.SELL for action in state.legal_actions):
+        return state
+
+    sell_actions = tuple(
+        Action(ActionType.SELL, target_id="joker", amount=index, metadata={"kind": "joker", "index": index})
+        for index in range(len(state.jokers))
+    )
+    return GameState(
+        phase=state.phase,
+        stake=state.stake,
+        seed=state.seed,
+        ante=state.ante,
+        blind=state.blind,
+        required_score=state.required_score,
+        current_score=state.current_score,
+        hands_remaining=state.hands_remaining,
+        discards_remaining=state.discards_remaining,
+        money=state.money,
+        deck_size=state.deck_size,
+        hand=state.hand,
+        known_deck=state.known_deck,
+        jokers=state.jokers,
+        consumables=state.consumables,
+        vouchers=state.vouchers,
+        shop=state.shop,
+        pack=state.pack,
+        hand_levels=state.hand_levels,
+        modifiers=state.modifiers,
+        legal_actions=sell_actions + state.legal_actions,
+        run_over=state.run_over,
+        won=state.won,
+    )
 
 
 def _is_affordable(card: Any, money: int) -> bool:

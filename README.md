@@ -84,9 +84,11 @@ runs; comma, spaces, and newlines all work, and this overrides the `Seeds`
 count. Use `Stop Run` to cancel the active benchmark; it stops owned workers and
 prevents new seeds from being scheduled. Use the `Benchmark Speed` preset for
 fast headless sweeps; it sets headless mode, fast mode, no shaders, quiet bridge
-logs, replay mode off, `fps-cap` 2000, `gamespeed` 32, and animation FPS 1.
-Use `Replay mode` to choose no replay logging, lightweight JSONL, or full
-score-audit replay details. Use `Bridge logs` to choose quiet logs, disposable
+logs, summary replay mode, `fps-cap` 2000, `gamespeed` 32, and animation FPS 1.
+Use `Replay mode` to choose no replay logging, summary-only JSONL, lightweight
+JSONL, or full score-audit replay details. Summary replay writes one tiny final
+result row per seed, which is useful for fast sweeps that still need replay
+analyzer win/ante counts. Use `Bridge logs` to choose quiet logs, disposable
 off logs, cleaned normal logs, or untouched normal logs. BalatroBot treats headless and
 render-on-API as mutually
 exclusive, so the GUI keeps only one of those options enabled at a time. The

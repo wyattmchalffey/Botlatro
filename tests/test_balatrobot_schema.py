@@ -122,6 +122,25 @@ class BalatroBotSchemaTests(unittest.TestCase):
         self.assertEqual(len(buy_actions), 1)
         self.assertEqual(buy_actions[0].amount, 0)
 
+    def test_shop_actions_include_joker_sells(self) -> None:
+        state = GameState.from_mapping(
+            {
+                "state": "SHOP",
+                "money": 7,
+                "jokers": {
+                    "cards": [
+                        {"label": "Joker", "cost": {"sell": 1}},
+                        {"label": "Credit Card", "cost": {"sell": 1}},
+                    ]
+                },
+                "shop": {"cards": []},
+            }
+        )
+
+        sell_actions = [action for action in state.legal_actions if action.action_type == ActionType.SELL]
+
+        self.assertEqual(tuple(action.amount for action in sell_actions), (0, 1))
+
 
 if __name__ == "__main__":
     unittest.main()

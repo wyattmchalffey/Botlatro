@@ -52,15 +52,34 @@
 - Added more metadata-driven scorer support for Steel Joker, Glass Joker, Joker Stencil, Hit the Road, Stone Joker, Castle, Erosion, Driver's License, Loyalty Card, and permanent card chip bonuses.
 - Fixed Phase 4 audit misses for Photograph timing, Raised Fist held-card debuff behavior, money-scaled miss explanations, and Baseball Card rarity fallback for Erosion.
 - Reran a 20-seed 4-worker White Stake score audit; all 297 played hands matched Balatro exactly, with 0.0 mean absolute error.
+- Added a full vanilla joker rarity fallback table from the local Balatro dump and normalized numeric rarity metadata so Baseball Card and future rarity-aware logic work when bridge metadata is sparse.
+- Added JSON-backed score scenarios and a `scenario_score --scenario-file` mode for repeatable Phase 4 scoring checks.
+- Preserved top-level joker rarity metadata in parsed bridge state.
+- Improved `basic_strategy_bot` play/discard discipline: it now prefers the smallest legal hand that clears the current blind pace and scores discard choices using the best potential hand left after discarding.
+- Ran a 20-seed live White Stake smoke benchmark after the play/discard update; average ante was 2.00 with 0% win rate, average final money 21.7.
 - Added standard-library tests for the foundation.
+- Ran larger 100-seed, 4-worker White Stake score-audit smoke tests for `basic_strategy_bot`; the final pass averaged ante 2.08 and reached ante 2+ on 71 of 99 valid replayed runs.
+- Fixed deterministic score audit misses found in the larger sweep: Flower Pot now uses scored poker-hand suits including debuffed scored cards but ignoring kicker-only suits, Raised Fist follows Balatro's held-card tie/debuff behavior, Hanging Chad no longer shifts from a debuffed first scoring card, Mad/Clever Joker apply to full houses, and Ramen live text is parsed/classified safely.
+- Verified the current evaluator against the final 100-seed replay set: 1,246 supported played hands, 1,246 exact expected-vs-actual score matches; remaining miss rows are known dynamic/uncertain effects such as Misprint, Ice Cream, Bloodstone, Space Joker, Obelisk, The Mouth, The Hook, Green Joker, and Ramen display rounding.
+- Started Phase 5 shop/build valuation in `basic_strategy_bot`: shop choices now score jokers, planets, tarots, vouchers, packs, rerolls, edition bonuses, interest breakpoints, simple build synergies, and sample-hand scorer gains instead of buying the first cheap joker.
+- Ran a 100-seed, 4-worker White Stake smoke benchmark after the shop update: win rate 1.0%, average ante 3.53, average final score 8,750.5, average final money 45.9, and first observed White Stake win for this bot.
+- Added replacement-aware shop play: shop states now expose sell actions, the bot can sell its weakest joker for a major visible upgrade, and shop/pack actions carry reason metadata into replay logs.
+- Tightened hand play around hands remaining: the bot now chooses plays by estimated hands-to-clear and only discards when the current hand cannot clear before using all remaining paid hands.
+- Ran a 100-seed replay-producing smoke after replacement/min-hands changes; the command timed out at the shell boundary after writing 100 replay files, but replay-derived metrics showed average ante 4.11, ante 4+ on 69/100 runs, ante 5+ on 47/100 runs, 175 sell actions, and average played hands per blind improved from 2.40 to 2.14.
+- Added first-pass survival-aware shop pressure: the bot estimates next-blind target score, scorer-based build capacity, and early-build joker pressure, then adjusts buy/reroll/replacement thresholds and interest penalties. Shop replay reasons now include pressure, target, and capacity.
+- Tuned the pressure model after a bad first smoke that over-saved with incomplete early builds; the clean 20-seed validation averaged ante 3.75 with 13/20 runs reaching ante 4+, 8/20 reaching ante 5+, and 25 replacement sells.
+- Added `balatro_ai.eval.replay_analyzer`, a compact replay summary tool for average max ante, ante reach rates, action counts, shop reason counts, pressure stats, sell actions, and played-hands-per-blind efficiency.
+- Ran the tuned survival-pressure bot over 100 White Stake seeds with 4 workers: official benchmark win rate 1.0%, average ante 4.00, average final score 10,761.9, average final money 54.7, average runtime 50.25 sec/run. Replay analyzer covered 99 replay files with average max ante 4.04, ante 4+ on 67/99, ante 5+ on 44/99, 148 sell actions, and average played hands per blind 2.14.
+- Made fast benchmarking a real low-overhead path: added summary-only replay rows, GUI/CLI summary replay selection, a `--fast-benchmark` CLI shortcut, and configurable start retries for intermittent bridge start failures.
+- Started consistency analysis on deep losses and early busts: replay analyzer now reports early-failure and deep-loss sections, summary replays include final state/jokers, and future step replays include compact shop/pack/chosen-item details. Tested two first-shop tuning ideas on the same 20 seeds; both underperformed or failed to beat the old baseline, so no unproven bot behavior change was kept.
 
 ## In Progress
 
-- Phase 4: continue expanding the scorer from exact audited cases into broader joker/enhancement coverage.
+- Phase 5: turn the exact scorer into stronger shop/build planning and survival-aware spending.
 
 ## Next Steps
 
-1. Add a broader local joker rarity table for Baseball Card and rarity-aware decisions.
-2. Build deterministic test scenarios for remaining complex jokers and card modifiers.
-3. Start using the exact scorer to improve discard/play selection and shop valuation.
-4. Run larger score-audit sweeps after each new scorer batch.
+1. Tune replacement thresholds after inspecting bad sells and missed upgrades.
+2. Run a new light/score-audit sample with compact shop item details, then inspect exact early purchases in ante <= 2 failures.
+3. Compare losing deep runs against the winning seed to find shop/scoring bottlenecks after ante 6.
+4. Add CSV export to replay analyzer if spreadsheet analysis becomes useful.

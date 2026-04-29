@@ -28,11 +28,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout-seconds", type=float, default=10.0, help="JSON-RPC request timeout.")
     parser.add_argument("--max-steps", type=int, default=1000, help="Step cap per run.")
     parser.add_argument("--replay-dir", type=Path, help="Optional directory for per-run replay JSONL files.")
+    parser.add_argument("--start-retries", type=int, default=1, help="Retries for bridge start/reset failures.")
+    parser.add_argument(
+        "--fast-benchmark",
+        action="store_true",
+        help="Use low-overhead benchmark defaults; currently selects summary replay unless --replay-mode is set.",
+    )
     parser.add_argument(
         "--replay-mode",
         choices=REPLAY_MODES,
-        default="score_audit",
-        help="Replay detail: off, light JSONL, or score-audit JSONL.",
+        default=None,
+        help="Replay detail: off, summary-only JSONL, light JSONL, or score-audit JSONL.",
     )
     return parser
 
@@ -57,6 +63,7 @@ def main(argv: list[str] | None = None) -> int:
         print("Status: benchmark prepared; pass --execute to run against a live BalatroBot bridge.")
         return 0
 
+    replay_mode = args.replay_mode or ("summary" if args.fast_benchmark else "score_audit")
     endpoints = (
         (args.endpoint,)
         if args.workers == 1 and args.endpoint
@@ -76,7 +83,8 @@ def main(argv: list[str] | None = None) -> int:
             timeout_seconds=args.timeout_seconds,
             max_steps=args.max_steps,
             replay_dir=args.replay_dir,
-            replay_mode=args.replay_mode,
+            replay_mode=replay_mode,
+            start_retries=args.start_retries,
         ),
         progress=print,
     )
