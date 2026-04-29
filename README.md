@@ -88,7 +88,9 @@ logs, summary replay mode, `fps-cap` 2000, `gamespeed` 32, and animation FPS 1.
 Use `Replay mode` to choose no replay logging, summary-only JSONL, lightweight
 JSONL, or full score-audit replay details. Summary replay writes one tiny final
 result row per seed, which is useful for fast sweeps that still need replay
-analyzer win/ante counts. Use `Bridge logs` to choose quiet logs, disposable
+analyzer win/ante counts. Benchmark runs retire unhealthy worker endpoints after
+bridge/client errors and retry failed seeds once by default, replacing that
+seed's replay file so analyzer results stay clean. Use `Bridge logs` to choose quiet logs, disposable
 off logs, cleaned normal logs, or untouched normal logs. BalatroBot treats headless and
 render-on-API as mutually
 exclusive, so the GUI keeps only one of those options enabled at a time. The

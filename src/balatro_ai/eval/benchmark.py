@@ -30,6 +30,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--replay-dir", type=Path, help="Optional directory for per-run replay JSONL files.")
     parser.add_argument("--start-retries", type=int, default=1, help="Retries for bridge start/reset failures.")
     parser.add_argument(
+        "--retry-failed-seeds",
+        type=int,
+        default=1,
+        help="After the main sweep, retry seeds that ended in a bridge/client error this many times.",
+    )
+    parser.add_argument(
         "--fast-benchmark",
         action="store_true",
         help="Use low-overhead benchmark defaults; currently selects summary replay unless --replay-mode is set.",
@@ -85,6 +91,7 @@ def main(argv: list[str] | None = None) -> int:
             replay_dir=args.replay_dir,
             replay_mode=replay_mode,
             start_retries=args.start_retries,
+            retry_failed_seeds=args.retry_failed_seeds,
         ),
         progress=print,
     )

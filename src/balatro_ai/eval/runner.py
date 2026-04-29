@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, replace
+import json
 from pathlib import Path
 from queue import Queue
 from threading import Lock
 from time import perf_counter
 from typing import Callable
+import urllib.error
+import urllib.request
 
 from balatro_ai.api.client import JsonRpcBalatroClient
 from balatro_ai.bots.registry import create_bot
@@ -37,6 +40,7 @@ class BenchmarkOptions:
     replay_dir: Path | None = None
     replay_mode: str = "score_audit"
     start_retries: int = 1
+    retry_failed_seeds: int = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +48,13 @@ class BenchmarkRun:
     seed_set_label: str
     results: tuple[RunResult, ...]
     summary: BenchmarkSummary
+
+
+@dataclass(frozen=True, slots=True)
+class _SeedExecution:
+    result: RunResult
+    endpoint: str
+    retired_endpoint: bool = False
 
 
 def endpoint_urls(host: str, base_port: int, workers: int) -> tuple[str, ...]:
@@ -70,6 +81,7 @@ def run_benchmark(
     _emit(progress, f"Endpoints: {', '.join(options.endpoints)}")
     _emit(progress, f"Replay mode: {options.replay_mode}")
     _emit(progress, f"Start retries: {options.start_retries}")
+    _emit(progress, f"Failed seed retries: {options.retry_failed_seeds}")
     if options.replay_mode not in REPLAY_MODES:
         raise ValueError(f"Unknown replay mode: {options.replay_mode}")
 
@@ -88,19 +100,32 @@ def run_benchmark(
             _emit_result(progress, completed, len(seed_set.seeds), result)
     else:
         endpoint_queue: Queue[str] = Queue()
+        active_endpoints = set(options.endpoints)
+        active_endpoints_lock = Lock()
         for endpoint in options.endpoints:
             endpoint_queue.put(endpoint)
 
-        def worker(seed: int) -> RunResult:
+        def active_endpoint_count() -> int:
+            with active_endpoints_lock:
+                return len(active_endpoints)
+
+        def worker(seed: int) -> _SeedExecution:
             endpoint = endpoint_queue.get()
-            try:
-                return _run_seed(seed=seed, endpoint=endpoint, options=options)
-            finally:
+            result = _run_seed(seed=seed, endpoint=endpoint, options=options)
+            retired_endpoint = _is_retryable_seed_failure(result) and not _endpoint_is_healthy(
+                endpoint,
+                options.timeout_seconds,
+            )
+            if retired_endpoint:
+                with active_endpoints_lock:
+                    active_endpoints.discard(endpoint)
+            else:
                 endpoint_queue.put(endpoint)
+            return _SeedExecution(result=result, endpoint=endpoint, retired_endpoint=retired_endpoint)
 
         with ThreadPoolExecutor(max_workers=len(options.endpoints)) as executor:
             seed_iter = iter(seed_set.seeds)
-            pending: set[Future[RunResult]] = set()
+            pending: set[Future[_SeedExecution]] = set()
 
             def submit_next() -> bool:
                 if _stop_requested(should_stop):
@@ -119,16 +144,34 @@ def run_benchmark(
             while pending:
                 done, pending = wait(pending, return_when=FIRST_COMPLETED)
                 for future in done:
-                    result = future.result()
+                    execution = future.result()
+                    result = execution.result
                     results.append(result)
+                    if execution.retired_endpoint:
+                        _emit(
+                            progress,
+                            f"Retired unhealthy endpoint {execution.endpoint}; failed seed {result.seed} will retry later.",
+                        )
                     with completed_lock:
                         completed += 1
                         count = completed
                     _emit_result(progress, count, len(seed_set.seeds), result)
 
-                while len(pending) < len(options.endpoints):
+                if active_endpoint_count() == 0:
+                    _emit(progress, "No healthy endpoints remain; stopping main sweep before retry pass.")
+                    break
+
+                while len(pending) < active_endpoint_count():
                     if not submit_next():
                         break
+
+    if not _stop_requested(should_stop):
+        results = _retry_failed_seed_results(
+            results,
+            options=options,
+            progress=progress,
+            should_stop=should_stop,
+        )
 
     seed_order = {seed: index for index, seed in enumerate(seed_set.seeds)}
     sorted_results = tuple(sorted(results, key=lambda result: seed_order[result.seed]))
@@ -143,6 +186,74 @@ def run_benchmark(
     _emit(progress, "")
     _emit(progress, summary.to_text())
     return BenchmarkRun(seed_set_label=seed_set.label, results=sorted_results, summary=summary)
+
+
+def _retry_failed_seed_results(
+    results: list[RunResult],
+    *,
+    options: BenchmarkOptions,
+    progress: ProgressCallback | None,
+    should_stop: StopCallback | None,
+) -> list[RunResult]:
+    if options.retry_failed_seeds <= 0:
+        return results
+
+    current_by_seed = {result.seed: result for result in results}
+    for attempt in range(1, options.retry_failed_seeds + 1):
+        failed = [result for result in current_by_seed.values() if _is_retryable_seed_failure(result)]
+        if not failed or _stop_requested(should_stop):
+            break
+
+        endpoints = _healthy_endpoints(options)
+        if not endpoints:
+            _emit(progress, f"Retry {attempt}: no healthy endpoints available for {len(failed)} failed seed(s).")
+            break
+
+        _emit(progress, f"Retry {attempt}: rerunning {len(failed)} failed seed(s) on healthy endpoint(s).")
+        for index, failed_result in enumerate(sorted(failed, key=lambda result: result.seed)):
+            if _stop_requested(should_stop):
+                break
+            endpoint = endpoints[index % len(endpoints)]
+            _delete_replay_for_seed(failed_result.seed, options)
+            retry = _run_seed(seed=failed_result.seed, endpoint=endpoint, options=options)
+            current_by_seed[retry.seed] = retry
+            _emit_retry_result(progress, attempt, retry)
+
+    return list(current_by_seed.values())
+
+
+def _is_retryable_seed_failure(result: RunResult) -> bool:
+    return bool(result.death_reason and result.death_reason.startswith("error:"))
+
+
+def _healthy_endpoints(options: BenchmarkOptions) -> tuple[str, ...]:
+    return tuple(endpoint for endpoint in options.endpoints if _endpoint_is_healthy(endpoint, options.timeout_seconds))
+
+
+def _endpoint_is_healthy(endpoint: str, timeout_seconds: float) -> bool:
+    payload = {"jsonrpc": "2.0", "method": "health", "id": 1}
+    request = urllib.request.Request(
+        endpoint,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=min(2.0, timeout_seconds)) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, OSError, TimeoutError, json.JSONDecodeError):
+        return False
+    return data.get("result", {}).get("status") == "ok"
+
+
+def _delete_replay_for_seed(seed: int, options: BenchmarkOptions) -> None:
+    if options.replay_dir is None or options.replay_mode == "off":
+        return
+    replay_path = options.replay_dir / f"{options.bot}_{options.stake}_{seed}.jsonl"
+    try:
+        replay_path.unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def _run_seed(*, seed: int, endpoint: str, options: BenchmarkOptions) -> RunResult:
@@ -245,6 +356,17 @@ def _emit_result(
 ) -> None:
     message = (
         f"[{count}/{total}] seed={result.seed} won={result.won} "
+        f"ante={result.ante_reached} score={result.final_score} "
+        f"money={result.final_money} runtime={result.runtime_seconds:.2f}s"
+    )
+    if result.death_reason and result.death_reason.startswith("error:"):
+        message += f" death={result.death_reason[:140]}"
+    _emit(progress, message)
+
+
+def _emit_retry_result(progress: ProgressCallback | None, attempt: int, result: RunResult) -> None:
+    message = (
+        f"[retry {attempt}] seed={result.seed} won={result.won} "
         f"ante={result.ante_reached} score={result.final_score} "
         f"money={result.final_money} runtime={result.runtime_seconds:.2f}s"
     )

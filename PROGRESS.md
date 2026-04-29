@@ -81,6 +81,7 @@
 - Added play-to-cycle behavior: when a play already meets the same scoring goal, `basic_strategy_bot` prefers legal plays that include low-value non-scoring cards so it can dig deeper through the deck without spending a discard, while avoiding cards the current archetype wants to keep.
 - Ran a 100-seed, 4-worker White Stake summary benchmark after the archetype/cycle-play changes: win rate 3.0%, average ante 4.06, average final score 14,029.6, average final money 55.2, average runtime 75.13 sec/run, with 0 replay errors. Analyzer report saved to `.data/cycle-summary-100-analysis.txt`.
 - Added late-shop spending gates: `basic_strategy_bot` now tracks rerolls/packs per shop, caps safe late role-hunt rerolls, and skips late packs unless pressure is high or the estimated scoring capacity improves after accounting for the money spent. A final 12-seed validation improved from the prior gated run's 1/12 wins and 4.83 average ante to 2/12 wins and 4.92 average ante, while keeping early ante <=2 deaths at 2/12.
+- Added benchmark failed-seed retry handling: the runner now retires an unhealthy endpoint after a bridge/client error, finishes the main sweep on healthy endpoints, then retries only failed seeds and replaces their replay JSONL files. A 100-seed White Stake summary run completed with 0 final error summaries after retry: win rate 2.0%, average ante 4.19, ante 5+ on 46/100, and early ante <=2 losses down to 18/100.
 
 ## In Progress
 
