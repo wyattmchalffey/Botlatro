@@ -1,0 +1,40 @@
+Bot: basic_strategy_bot
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Seeds: 12
+First seed: 1034844634
+Bot: basic_strategy_bot
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Seeds: 12
+Endpoints: http://127.0.0.1:12346, http://127.0.0.1:12347, http://127.0.0.1:12348, http://127.0.0.1:12349
+Replay mode: light
+Start retries: 1
+[1/12] seed=1967659416 won=False ante=1 score=544 money=5 runtime=24.95s
+[2/12] seed=2009798891 won=False ante=3 score=2000 money=26 runtime=34.89s
+[3/12] seed=358348266 won=False ante=1 score=410 money=0 runtime=10.39s
+[4/12] seed=1207379061 won=False ante=5 score=5326 money=33 runtime=72.09s
+[5/12] seed=99513175 won=False ante=5 score=15496 money=31 runtime=71.98s
+[6/12] seed=1034844634 won=False ante=5 score=5338 money=34 runtime=108.42s
+[7/12] seed=1628884758 won=False ante=5 score=8364 money=27 runtime=73.64s
+[8/12] seed=2093443908 won=False ante=5 score=21860 money=38 runtime=80.46s
+[9/12] seed=1909439758 won=False ante=7 score=40451 money=29 runtime=61.19s
+[10/12] seed=1857116799 won=False ante=7 score=31374 money=33 runtime=64.77s
+[11/12] seed=1120994396 won=False ante=6 score=34955 money=77 runtime=70.29s
+[12/12] seed=1358328226 won=False ante=0 score=0 money=0 runtime=78.72s death=error:ConnectionError: Could not reach Balatro bridge at http://127.0.0.1:12347
+
+Bot: basic_strategy_bot
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Runs: 12
+Win rate: 0.0%
+Average ante: 4.17
+Average final score: 13843.2
+Average final money: 27.8
+Average runtime: 62.65 sec/run

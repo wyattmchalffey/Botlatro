@@ -91,6 +91,34 @@ class StaleStateClient:
         )
 
 
+class AnteNineClient:
+    def __init__(self) -> None:
+        self.action = Action(ActionType.NO_OP)
+
+    def start_run(self, seed: int | None = None, stake: str | None = None) -> GameState:
+        return GameState(
+            phase=GamePhase.PLAYING_BLIND,
+            seed=seed,
+            ante=8,
+            current_score=100000,
+            money=19,
+            legal_actions=(self.action,),
+        )
+
+    def get_state(self) -> GameState:
+        return GameState(phase=GamePhase.PLAYING_BLIND, legal_actions=(self.action,))
+
+    def send_action(self, action: Action) -> GameState:
+        return GameState(
+            phase=GamePhase.SHOP,
+            ante=9,
+            current_score=0,
+            money=28,
+            run_over=False,
+            won=False,
+        )
+
+
 class RunSeedTests(unittest.TestCase):
     def test_run_single_seed_returns_result(self) -> None:
         result = run_single_seed(
@@ -114,6 +142,17 @@ class RunSeedTests(unittest.TestCase):
         self.assertFalse(result.won)
         self.assertEqual(result.seed, 123)
         self.assertEqual(result.ante_reached, 1)
+
+    def test_run_single_seed_treats_ante_nine_as_standard_win_boundary(self) -> None:
+        result = run_single_seed(
+            bot=RandomBot(seed=123),
+            client=AnteNineClient(),
+            options=RunSeedOptions(seed=123, max_steps=10),
+        )
+
+        self.assertTrue(result.won)
+        self.assertEqual(result.ante_reached, 8)
+        self.assertIsNone(result.death_reason)
 
     def test_replay_mode_off_does_not_write_replay_file(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

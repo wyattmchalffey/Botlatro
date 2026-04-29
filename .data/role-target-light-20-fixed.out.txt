@@ -1,0 +1,48 @@
+Bot: basic_strategy_bot
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Seeds: 20
+First seed: 1091327796
+Bot: basic_strategy_bot
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Seeds: 20
+Endpoints: http://127.0.0.1:12346, http://127.0.0.1:12347, http://127.0.0.1:12348, http://127.0.0.1:12349
+Replay mode: light
+Start retries: 1
+[1/20] seed=1091327796 won=False ante=1 score=280 money=4 runtime=6.80s
+[2/20] seed=212882040 won=False ante=4 score=9498 money=86 runtime=47.05s
+[3/20] seed=2089781294 won=False ante=8 score=38105 money=176 runtime=58.74s
+[4/20] seed=1875266045 won=False ante=4 score=8140 money=26 runtime=58.97s
+[5/20] seed=1462527666 won=False ante=6 score=22409 money=114 runtime=77.42s
+[6/20] seed=1946168078 won=False ante=2 score=440 money=7 runtime=40.47s
+[7/20] seed=414874271 won=False ante=3 score=2944 money=33 runtime=43.69s
+[8/20] seed=846028799 won=False ante=2 score=616 money=6 runtime=80.37s
+[9/20] seed=1831782975 won=False ante=6 score=18318 money=154 runtime=145.28s
+[10/20] seed=1745235677 won=False ante=2 score=776 money=8 runtime=32.45s
+[11/20] seed=582835749 won=False ante=3 score=1994 money=24 runtime=63.31s
+[12/20] seed=932633974 won=False ante=7 score=26754 money=29 runtime=184.92s
+[13/20] seed=1843485682 won=False ante=2 score=405 money=9 runtime=25.23s
+[14/20] seed=830355824 won=False ante=5 score=13348 money=37 runtime=123.74s
+[15/20] seed=1892726094 won=False ante=1 score=596 money=3 runtime=35.91s
+[16/20] seed=1850225369 won=False ante=3 score=2151 money=32 runtime=88.65s
+[17/20] seed=249957100 won=False ante=5 score=13095 money=35 runtime=119.22s
+[18/20] seed=1671623605 won=False ante=4 score=9009 money=62 runtime=113.61s
+[19/20] seed=925712062 won=False ante=5 score=11427 money=71 runtime=153.28s
+[20/20] seed=1813880868 won=False ante=3 score=2948 money=12 runtime=40.19s
+
+Bot: basic_strategy_bot
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Runs: 20
+Win rate: 0.0%
+Average ante: 3.80
+Average final score: 9162.6
+Average final money: 46.4
+Average runtime: 76.97 sec/run

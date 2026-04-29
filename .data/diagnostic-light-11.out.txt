@@ -1,0 +1,40 @@
+Bot: basic_strategy_bot
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Seeds: 12
+First seed: 1034844634
+Bot: basic_strategy_bot
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Seeds: 12
+Endpoints: http://127.0.0.1:12346, http://127.0.0.1:12347, http://127.0.0.1:12348, http://127.0.0.1:12349
+Replay mode: light
+Start retries: 1
+[1/12] seed=2009798891 won=False ante=1 score=296 money=0 runtime=27.62s
+[2/12] seed=1207379061 won=False ante=1 score=420 money=3 runtime=33.29s
+[3/12] seed=1034844634 won=False ante=1 score=582 money=6 runtime=39.88s
+[4/12] seed=358348266 won=False ante=1 score=410 money=0 runtime=12.54s
+[5/12] seed=1967659416 won=False ante=1 score=496 money=4 runtime=41.65s
+[6/12] seed=1909439758 won=False ante=7 score=47283 money=140 runtime=73.93s
+[7/12] seed=99513175 won=False ante=7 score=69052 money=25 runtime=83.08s
+[8/12] seed=1628884758 won=False ante=7 score=59824 money=159 runtime=118.06s
+[9/12] seed=2093443908 won=False ante=6 score=36179 money=73 runtime=126.55s
+[10/12] seed=1857116799 won=True ante=8 score=52704 money=208 runtime=77.96s
+[11/12] seed=1358328226 won=True ante=8 score=77118 money=17 runtime=60.85s
+[12/12] seed=1120994396 won=True ante=8 score=222718 money=176 runtime=97.00s
+
+Bot: basic_strategy_bot
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Runs: 12
+Win rate: 25.0%
+Average ante: 4.67
+Average final score: 47256.8
+Average final money: 67.6
+Average runtime: 66.03 sec/run

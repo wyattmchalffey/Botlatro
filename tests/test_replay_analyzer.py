@@ -23,19 +23,35 @@ class ReplayAnalyzerTests(unittest.TestCase):
                             "chosen_action": {
                                 "type": "buy",
                                 "metadata": {
-                                    "reason": "shop_value value=44.0 pressure=1.15 target=450 capacity=390"
+                                    "reason": "shop_value value=44.0 pressure=1.15 target=450 capacity=390",
+                                    "shop_audit": {
+                                        "decision": "take",
+                                        "build_profile": {
+                                            "preferred_hand": "Pair",
+                                            "missing_roles": ["xmult", "scaling"],
+                                        },
+                                        "threshold": 24.0,
+                                        "chosen_value": 44.0,
+                                        "pressure": {"ratio": 1.15},
+                                        "chosen_item": {"name": "Cavendish"},
+                                        "options": [
+                                            {"type": "buy", "value": 44.0, "item": {"name": "Cavendish"}},
+                                            {"type": "reroll", "value": 19.0},
+                                        ],
+                                    },
                                 },
                             },
+                            "chosen_item": {"name": "Cavendish"},
                         },
                         {
                             "seed": 123,
-                            "state": "phase=selecting_hand ante=1 blind=Big Blind score=0/450 money=4 hands=4 discards=4",
+                            "state": "phase=selecting_hand ante=1 blind=Big Blind score=0/450 money=4 hands=4 discards=4 hand=[AS AH 7C 2D] jokers=[Cavendish]",
                             "chosen_action": {"type": "play_hand", "card_indices": [0, 1]},
                         },
                         {
                             "seed": 123,
-                            "state": "phase=selecting_hand ante=1 blind=Big Blind score=100/450 money=4 hands=3 discards=4",
-                            "chosen_action": {"type": "play_hand", "card_indices": [2, 3]},
+                            "state": "phase=selecting_hand ante=1 blind=Big Blind score=100/450 money=4 hands=3 discards=4 hand=[KS KH 7C 7D] jokers=[Cavendish]",
+                            "chosen_action": {"type": "play_hand", "card_indices": [0, 1, 2, 3]},
                         },
                         {
                             "seed": 123,
@@ -87,13 +103,28 @@ class ReplayAnalyzerTests(unittest.TestCase):
         self.assertEqual(analysis.action_counts["sell"], 1)
         self.assertEqual(analysis.shop_reason_counts["shop_value"], 1)
         self.assertEqual(analysis.shop_reason_counts["replace"], 1)
+        self.assertEqual(analysis.shop_audit_count, 1)
+        self.assertEqual(analysis.chosen_shop_items["buy:Cavendish"], 1)
+        self.assertEqual(analysis.played_hand_types["Pair"], 1)
+        self.assertEqual(analysis.played_hand_types["Two Pair"], 1)
+        self.assertEqual(analysis.dominant_played_hands["Pair"], 1)
+        self.assertEqual(analysis.preferred_hand_counts["Pair"], 1)
+        self.assertEqual(analysis.final_preferred_hands["Pair"], 1)
+        self.assertEqual(analysis.missing_role_counts["xmult"], 1)
+        self.assertEqual(analysis.missing_role_counts["scaling"], 1)
         self.assertEqual(analysis.pressure_values, (1.15, 0.8))
         self.assertEqual(analysis.hands_per_blind, (2,))
         self.assertEqual(len(analysis.deep_losses), 0)
         self.assertEqual(len(analysis.early_failures), 0)
         self.assertIn("Average played hands per blind: 2.00", analysis.to_text())
+        self.assertIn("Archetypes:", analysis.to_text())
         self.assertEqual(analysis.to_json_dict()["reach_counts"], {"2": 1, "3": 1, "4": 1, "5": 1, "6": 1, "8": 1})
         self.assertEqual(analysis.to_json_dict()["outcome_distribution"], {"win": 1})
+        self.assertEqual(analysis.to_json_dict()["chosen_shop_items"], {"buy:Cavendish": 1})
+        self.assertEqual(
+            analysis.to_json_dict()["archetypes"]["played_hand_types"],
+            {"Pair": 1, "Two Pair": 1},
+        )
         self.assertEqual(analysis.to_json_dict()["pressure"]["at_least_1"], 1)
 
     def test_analyze_replays_reports_early_failures(self) -> None:

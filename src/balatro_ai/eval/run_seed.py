@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from time import perf_counter, sleep
 
@@ -44,7 +44,7 @@ def run_single_seed(
     started_at = perf_counter()
 
     _, info = _reset_with_retries(env, seed=options.seed, max_retries=options.start_retries)
-    state = info["state"]
+    state = _with_standard_win_boundary(info["state"])
     if options.print_states:
         print(state.debug_summary)
 
@@ -64,7 +64,7 @@ def run_single_seed(
             env.state = state
             continue
 
-        next_state = info["state"]
+        next_state = _with_standard_win_boundary(info["state"])
         if logger is not None and options.replay_mode != "summary":
             extra = (
                 _step_extra(state=state, next_state=next_state, action=action)
@@ -129,6 +129,12 @@ def _reset_with_retries(
                 raise
             attempts += 1
             sleep(0.25 * attempts)
+
+
+def _with_standard_win_boundary(state: GameState) -> GameState:
+    if state.run_over or state.won or state.ante < 9:
+        return state
+    return replace(state, ante=8, run_over=True, won=True)
 
 
 def _step_extra(*, state: GameState, next_state: GameState, action: Action) -> dict[str, object]:

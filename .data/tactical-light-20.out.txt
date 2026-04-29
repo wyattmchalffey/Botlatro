@@ -1,0 +1,48 @@
+Bot: basic_strategy_bot
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Seeds: 20
+First seed: 1091327796
+Bot: basic_strategy_bot
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Seeds: 20
+Endpoints: http://127.0.0.1:12346, http://127.0.0.1:12347, http://127.0.0.1:12348, http://127.0.0.1:12349
+Replay mode: light
+Start retries: 1
+[1/20] seed=1091327796 won=False ante=1 score=280 money=4 runtime=7.81s
+[2/20] seed=212882040 won=False ante=4 score=9498 money=82 runtime=51.86s
+[3/20] seed=2089781294 won=False ante=8 score=38499 money=178 runtime=65.72s
+[4/20] seed=1875266045 won=False ante=5 score=12920 money=58 runtime=66.02s
+[5/20] seed=1462527666 won=False ante=6 score=22409 money=114 runtime=84.07s
+[6/20] seed=1946168078 won=False ante=2 score=1187 money=6 runtime=43.61s
+[7/20] seed=414874271 won=False ante=3 score=2944 money=39 runtime=43.52s
+[8/20] seed=1831782975 won=False ante=5 score=20532 money=139 runtime=103.56s
+[9/20] seed=846028799 won=False ante=4 score=5856 money=38 runtime=103.37s
+[10/20] seed=582835749 won=False ante=3 score=1994 money=25 runtime=69.23s
+[11/20] seed=932633974 won=False ante=0 score=0 money=0 runtime=163.97s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'NOT_ALLOWED'}, 'code': -32003, 'message': 'Not enough dollars to reroll. 
+[12/20] seed=1745235677 won=False ante=2 score=776 money=6 runtime=36.18s
+[13/20] seed=1843485682 won=False ante=2 score=390 money=6 runtime=20.55s
+[14/20] seed=830355824 won=False ante=6 score=16084 money=97 runtime=131.86s
+[15/20] seed=1892726094 won=False ante=2 score=336 money=8 runtime=62.45s
+[16/20] seed=1850225369 won=False ante=3 score=948 money=20 runtime=82.86s
+[17/20] seed=249957100 won=False ante=5 score=5616 money=109 runtime=144.04s
+[18/20] seed=925712062 won=False ante=5 score=28342 money=67 runtime=170.30s
+[19/20] seed=1671623605 won=False ante=4 score=9009 money=62 runtime=116.19s
+[20/20] seed=1813880868 won=False ante=3 score=2948 money=19 runtime=50.77s
+
+Bot: basic_strategy_bot
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Runs: 20
+Win rate: 0.0%
+Average ante: 3.65
+Average final score: 9028.4
+Average final money: 53.9
+Average runtime: 80.90 sec/run

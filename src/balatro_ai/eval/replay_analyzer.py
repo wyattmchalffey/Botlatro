@@ -11,9 +11,13 @@ import re
 from statistics import mean
 from typing import Iterable
 
+from balatro_ai.api.state import Card
+from balatro_ai.rules.hand_evaluator import evaluate_played_cards
+
 
 ANTE_PATTERN = re.compile(r"ante=(\d+)")
 BLIND_PATTERN = re.compile(r"ante=(\d+) blind=(.*?) score=")
+HAND_PATTERN = re.compile(r"hand=\[(?P<hand>.*?)\]")
 PRESSURE_PATTERN = re.compile(r"pressure=([0-9]+(?:\.[0-9]+)?)")
 STATE_PATTERN = re.compile(
     r"phase=(?P<phase>\S+) ante=(?P<ante>\d+) blind=(?P<blind>.*?) "
@@ -43,6 +47,20 @@ class RunReplaySummary:
     final_hands: int = 0
     final_jokers: tuple[str, ...] = ()
     shop_action_count: int = 0
+    shop_audit_count: int = 0
+    shop_skip_count: int = 0
+    played_hand_types: Counter[str] = field(default_factory=Counter)
+    preferred_hand_counts: Counter[str] = field(default_factory=Counter)
+    missing_role_counts: Counter[str] = field(default_factory=Counter)
+    final_preferred_hand: str | None = None
+    chosen_shop_items: Counter[str] = field(default_factory=Counter)
+    shop_choices: tuple[str, ...] = ()
+
+    @property
+    def dominant_played_hand(self) -> str | None:
+        if not self.played_hand_types:
+            return None
+        return self.played_hand_types.most_common(1)[0][0]
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,6 +71,14 @@ class ReplayAnalysis:
     shop_reason_counts: Counter[str] = field(default_factory=Counter)
     pressure_values: tuple[float, ...] = ()
     hands_per_blind: tuple[int, ...] = ()
+    played_hand_types: Counter[str] = field(default_factory=Counter)
+    dominant_played_hands: Counter[str] = field(default_factory=Counter)
+    preferred_hand_counts: Counter[str] = field(default_factory=Counter)
+    final_preferred_hands: Counter[str] = field(default_factory=Counter)
+    missing_role_counts: Counter[str] = field(default_factory=Counter)
+    chosen_shop_items: Counter[str] = field(default_factory=Counter)
+    shop_audit_count: int = 0
+    shop_skip_count: int = 0
 
     @property
     def files_scanned(self) -> int:
@@ -115,6 +141,9 @@ class ReplayAnalysis:
                 f"Action counts: {_format_counter(self.action_counts)}",
                 f"Shop reason counts: {_format_counter(self.shop_reason_counts)}",
                 f"Sell actions: {self.action_counts.get('sell', 0)}",
+                f"Shop audit rows: {self.shop_audit_count}",
+                f"Shop skips: {self.shop_skip_count}",
+                f"Chosen shop items: {_format_counter(_most_common_counter(self.chosen_shop_items, 15))}",
             )
         )
         if self.pressure_values:
@@ -132,17 +161,39 @@ class ReplayAnalysis:
                     f"Average played hands per blind: {self.average_hands_per_blind:.2f}",
                     f"Played hands per blind: {_format_counter(self.hands_per_blind_distribution)}",
                     f"One-hand clears: {self.hands_per_blind_distribution.get(1, 0)}/{len(self.hands_per_blind)}",
-                    f"Four-hand clears/deaths: {self.hands_per_blind_distribution.get(4, 0)}/{len(self.hands_per_blind)}",
+                f"Four-hand clears/deaths: {self.hands_per_blind_distribution.get(4, 0)}/{len(self.hands_per_blind)}",
+                )
+            )
+
+        if self.played_hand_types or self.preferred_hand_counts:
+            lines.extend(
+                (
+                    "",
+                    "Archetypes:",
+                    f"Played hand types: {_format_counter(_most_common_counter(self.played_hand_types, 12))}",
+                    f"Dominant played hand by run: {_format_counter(self.dominant_played_hands)}",
+                    f"Shop preferred hand signals: {_format_counter(_most_common_counter(self.preferred_hand_counts, 12))}",
+                    f"Final preferred hand signals: {_format_counter(self.final_preferred_hands)}",
+                    f"Missing role signals: {_format_counter(self.missing_role_counts)}",
                 )
             )
 
         if self.early_failures:
             early_jokers = Counter(joker for run in self.early_failures for joker in run.final_jokers)
+            early_items = Counter()
             early_play_counts = Counter(
                 hand_count
                 for run in self.early_failures
                 for hand_count in run.hands_per_blind
             )
+            early_played_hands = Counter(
+                hand_type
+                for run in self.early_failures
+                for hand_type, count in run.played_hand_types.items()
+                for _ in range(count)
+            )
+            for run in self.early_failures:
+                early_items.update(run.chosen_shop_items)
             lines.extend(
                 (
                     "",
@@ -150,30 +201,47 @@ class ReplayAnalysis:
                     f"Ante <= 2 losses: {len(self.early_failures)}/{self.files_scanned}",
                     f"Average shop actions: {mean(run.shop_action_count for run in self.early_failures):.2f}",
                     f"Final joker counts: {_format_counter(early_jokers)}",
+                    f"Chosen shop items: {_format_counter(_most_common_counter(early_items, 12))}",
                     f"Played hands per blind: {_format_counter(early_play_counts)}",
+                    f"Played hand types: {_format_counter(_most_common_counter(early_played_hands, 8))}",
                 )
             )
             for run in sorted(self.early_failures, key=lambda item: (item.max_ante, item.seed))[:5]:
                 lines.append(f"- {_failure_line(run)}")
+                for choice in run.shop_choices[:4]:
+                    lines.append(f"  shop: {choice}")
 
         if self.deep_losses:
             deep_jokers = Counter(joker for run in self.deep_losses for joker in run.final_jokers)
+            deep_items = Counter()
             deep_play_counts = Counter(
                 hand_count
                 for run in self.deep_losses
                 for hand_count in run.hands_per_blind
             )
+            deep_played_hands = Counter(
+                hand_type
+                for run in self.deep_losses
+                for hand_type, count in run.played_hand_types.items()
+                for _ in range(count)
+            )
+            for run in self.deep_losses:
+                deep_items.update(run.chosen_shop_items)
             lines.extend(
                 (
                     "",
                     "Deep losses:",
                     f"Ante 6-7 losses: {len(self.deep_losses)}/{self.files_scanned}",
                     f"Final joker counts: {_format_counter(deep_jokers)}",
+                    f"Chosen shop items: {_format_counter(_most_common_counter(deep_items, 12))}",
                     f"Played hands per blind: {_format_counter(deep_play_counts)}",
+                    f"Played hand types: {_format_counter(_most_common_counter(deep_played_hands, 8))}",
                 )
             )
             for run in sorted(self.deep_losses, key=lambda item: (-item.max_ante, item.seed))[:5]:
                 lines.append(f"- {_failure_line(run)}")
+                for choice in run.shop_choices[-4:]:
+                    lines.append(f"  shop: {choice}")
 
         if self.runs:
             lines.extend(("", "Deepest runs:"))
@@ -195,6 +263,9 @@ class ReplayAnalysis:
             },
             "action_counts": _counter_to_json_dict(self.action_counts),
             "shop_reason_counts": _counter_to_json_dict(self.shop_reason_counts),
+            "shop_audit_count": self.shop_audit_count,
+            "shop_skip_count": self.shop_skip_count,
+            "chosen_shop_items": _counter_to_json_dict(self.chosen_shop_items),
             "pressure": {
                 "count": len(self.pressure_values),
                 "average": self.average_pressure,
@@ -208,6 +279,13 @@ class ReplayAnalysis:
                 "one_hand": self.hands_per_blind_distribution.get(1, 0),
                 "four_hand": self.hands_per_blind_distribution.get(4, 0),
                 "total": len(self.hands_per_blind),
+            },
+            "archetypes": {
+                "played_hand_types": _counter_to_json_dict(self.played_hand_types),
+                "dominant_played_hands": _counter_to_json_dict(self.dominant_played_hands),
+                "preferred_hand_counts": _counter_to_json_dict(self.preferred_hand_counts),
+                "final_preferred_hands": _counter_to_json_dict(self.final_preferred_hands),
+                "missing_role_counts": _counter_to_json_dict(self.missing_role_counts),
             },
             "early_failures": {
                 "count": len(self.early_failures),
@@ -235,13 +313,31 @@ def analyze_replays(paths: Iterable[Path]) -> ReplayAnalysis:
 
     action_counts: Counter[str] = Counter()
     shop_reason_counts: Counter[str] = Counter()
+    chosen_shop_items: Counter[str] = Counter()
     pressure_values: list[float] = []
     hands_per_blind: list[int] = []
+    played_hand_types: Counter[str] = Counter()
+    dominant_played_hands: Counter[str] = Counter()
+    preferred_hand_counts: Counter[str] = Counter()
+    final_preferred_hands: Counter[str] = Counter()
+    missing_role_counts: Counter[str] = Counter()
+    shop_audit_count = 0
+    shop_skip_count = 0
     for run in run_summaries:
         action_counts.update(run.action_counts)
         shop_reason_counts.update(run.shop_reason_counts)
+        chosen_shop_items.update(run.chosen_shop_items)
         pressure_values.extend(run.pressure_values)
         hands_per_blind.extend(run.hands_per_blind)
+        played_hand_types.update(run.played_hand_types)
+        if run.dominant_played_hand:
+            dominant_played_hands[run.dominant_played_hand] += 1
+        preferred_hand_counts.update(run.preferred_hand_counts)
+        if run.final_preferred_hand:
+            final_preferred_hands[run.final_preferred_hand] += 1
+        missing_role_counts.update(run.missing_role_counts)
+        shop_audit_count += run.shop_audit_count
+        shop_skip_count += run.shop_skip_count
 
     return ReplayAnalysis(
         runs=tuple(run_summaries),
@@ -250,6 +346,14 @@ def analyze_replays(paths: Iterable[Path]) -> ReplayAnalysis:
         shop_reason_counts=shop_reason_counts,
         pressure_values=tuple(pressure_values),
         hands_per_blind=tuple(hands_per_blind),
+        played_hand_types=played_hand_types,
+        dominant_played_hands=dominant_played_hands,
+        preferred_hand_counts=preferred_hand_counts,
+        final_preferred_hands=final_preferred_hands,
+        missing_role_counts=missing_role_counts,
+        chosen_shop_items=chosen_shop_items,
+        shop_audit_count=shop_audit_count,
+        shop_skip_count=shop_skip_count,
     )
 
 
@@ -260,14 +364,22 @@ def _analyze_file(path: Path) -> tuple[RunReplaySummary | None, int]:
     seed = path.stem
     action_counts: Counter[str] = Counter()
     reason_counts: Counter[str] = Counter()
+    chosen_shop_items: Counter[str] = Counter()
     pressure_values: list[float] = []
     hands_per_blind: list[int] = []
+    played_hand_types: Counter[str] = Counter()
+    preferred_hand_counts: Counter[str] = Counter()
+    missing_role_counts: Counter[str] = Counter()
+    final_preferred_hand: str | None = None
+    shop_choices: list[str] = []
     current_blind: str | None = None
     current_play_count = 0
     observed_win = False
     outcome: str | None = None
     last_state: dict[str, object] = {}
     shop_action_count = 0
+    shop_audit_count = 0
+    shop_skip_count = 0
 
     with path.open("r", encoding="utf-8") as file:
         for line in file:
@@ -302,6 +414,10 @@ def _analyze_file(path: Path) -> tuple[RunReplaySummary | None, int]:
             action = row.get("chosen_action", {})
             action_type = str(action.get("type", "unknown")) if isinstance(action, dict) else "unknown"
             action_counts[action_type] += 1
+            if action_type == "play_hand" and isinstance(action, dict):
+                hand_type = _played_hand_type(row, action)
+                if hand_type:
+                    played_hand_types[hand_type] += 1
             if action_type in {"buy", "sell", "reroll", "open_pack", "choose_pack_card"}:
                 shop_action_count += 1
 
@@ -311,6 +427,24 @@ def _analyze_file(path: Path) -> tuple[RunReplaySummary | None, int]:
                 reason_text = str(reason)
                 reason_counts[reason_text.split()[0]] += 1
                 pressure_values.extend(_pressure_values(reason_text))
+            audit = metadata.get("shop_audit") if isinstance(metadata, dict) else None
+            if isinstance(audit, dict):
+                shop_audit_count += 1
+                profile = audit.get("build_profile")
+                if isinstance(profile, dict):
+                    preferred_hand = profile.get("preferred_hand")
+                    if preferred_hand:
+                        final_preferred_hand = str(preferred_hand)
+                        preferred_hand_counts[final_preferred_hand] += 1
+                    missing_roles = profile.get("missing_roles")
+                    if isinstance(missing_roles, list):
+                        missing_role_counts.update(str(role) for role in missing_roles)
+                if action_type == "end_shop":
+                    shop_skip_count += 1
+                item_label = _chosen_shop_item_label(row, action_type, audit)
+                if item_label:
+                    chosen_shop_items[item_label] += 1
+                shop_choices.append(_shop_choice_line(row, action_type, audit))
 
             blind_key = _blind_key_from_state(state_text)
             if action_type == "play_hand":
@@ -355,6 +489,14 @@ def _analyze_file(path: Path) -> tuple[RunReplaySummary | None, int]:
             final_hands=_int_value(last_state.get("hands")),
             final_jokers=tuple(last_state.get("jokers", ())),
             shop_action_count=shop_action_count,
+            shop_audit_count=shop_audit_count,
+            shop_skip_count=shop_skip_count,
+            played_hand_types=played_hand_types,
+            preferred_hand_counts=preferred_hand_counts,
+            missing_role_counts=missing_role_counts,
+            final_preferred_hand=final_preferred_hand,
+            chosen_shop_items=chosen_shop_items,
+            shop_choices=tuple(shop_choices),
         ),
         malformed_rows,
     )
@@ -395,6 +537,69 @@ def _parse_state_text(state_text: str) -> dict[str, object]:
     }
 
 
+def _played_hand_type(row: dict[str, object], action: dict[str, object]) -> str | None:
+    extra = row.get("extra")
+    if isinstance(extra, dict):
+        score_audit = extra.get("score_audit")
+        if isinstance(score_audit, dict) and score_audit.get("hand_type"):
+            return str(score_audit["hand_type"])
+
+    hand = _parse_detail_hand_cards(row.get("state_detail"))
+    if not hand:
+        state_text = str(row.get("state", ""))
+        hand = _parse_hand_cards(state_text)
+    if not hand:
+        return None
+    indices = action.get("card_indices")
+    if not isinstance(indices, list):
+        return None
+    try:
+        cards = tuple(hand[int(index)] for index in indices if 0 <= int(index) < len(hand))
+    except (TypeError, ValueError):
+        return None
+    if not cards:
+        return None
+    try:
+        return evaluate_played_cards(cards).hand_type.value
+    except ValueError:
+        return None
+
+
+def _parse_hand_cards(state_text: str) -> tuple[Card, ...]:
+    match = HAND_PATTERN.search(state_text)
+    if not match:
+        return ()
+    hand_text = match.group("hand").strip()
+    if not hand_text or hand_text == "-":
+        return ()
+    return tuple(_card_from_short_name(token) for token in hand_text.split())
+
+
+def _parse_detail_hand_cards(detail: object) -> tuple[Card, ...]:
+    if not isinstance(detail, dict):
+        return ()
+    cards = detail.get("hand")
+    if not isinstance(cards, list):
+        return ()
+    parsed: list[Card] = []
+    for card in cards:
+        if not isinstance(card, dict):
+            continue
+        rank = card.get("rank")
+        suit = card.get("suit")
+        if rank is None or suit is None:
+            name = card.get("name")
+            if isinstance(name, str) and len(name) >= 2:
+                parsed.append(_card_from_short_name(name))
+            continue
+        parsed.append(Card(rank=str(rank), suit=str(suit)))
+    return tuple(parsed)
+
+
+def _card_from_short_name(short_name: str) -> Card:
+    return Card(rank=short_name[:-1], suit=short_name[-1])
+
+
 def _state_from_summary_row(row: dict[str, object]) -> dict[str, object]:
     detail = row.get("final_state_detail")
     if isinstance(detail, dict):
@@ -432,6 +637,75 @@ def _pressure_values(reason: str) -> tuple[float, ...]:
     return tuple(float(match.group(1)) for match in PRESSURE_PATTERN.finditer(reason))
 
 
+def _chosen_shop_item_label(row: dict[str, object], action_type: str, audit: dict[str, object]) -> str:
+    if action_type == "reroll":
+        return "reroll"
+    if action_type == "end_shop":
+        return "skip"
+    name = _item_name(row.get("chosen_item"))
+    if not name:
+        name = _item_name(audit.get("chosen_item"))
+    if name:
+        return f"{action_type}:{name}"
+    return action_type
+
+
+def _shop_choice_line(row: dict[str, object], action_type: str, audit: dict[str, object]) -> str:
+    chosen = _chosen_shop_item_label(row, action_type, audit)
+    pressure = audit.get("pressure") if isinstance(audit.get("pressure"), dict) else {}
+    ratio = _float_value(pressure.get("ratio") if isinstance(pressure, dict) else None)
+    threshold = _float_value(audit.get("threshold"))
+    chosen_value = _float_value(audit.get("chosen_value", audit.get("chosen_upgrade")))
+    top = _top_audit_option(audit)
+    return (
+        f"{_row_state_brief(row)} {chosen} "
+        f"value={chosen_value:.1f} threshold={threshold:.1f} pressure={ratio:.2f} top={top}"
+    )
+
+
+def _row_state_brief(row: dict[str, object]) -> str:
+    detail = row.get("state_detail")
+    if isinstance(detail, dict):
+        return f"a{_int_value(detail.get('ante'))} ${_int_value(detail.get('money'))}"
+    state = _parse_state_text(str(row.get("state", "")))
+    if state:
+        return f"a{_int_value(state.get('ante'))} ${_int_value(state.get('money'))}"
+    return "a? $?"
+
+
+def _top_audit_option(audit: dict[str, object]) -> str:
+    options = audit.get("options")
+    if isinstance(options, list) and options:
+        top = options[0]
+        if isinstance(top, dict):
+            name = _item_name(top.get("item")) or str(top.get("type", "option"))
+            return f"{name}:{_float_value(top.get('value')):.1f}"
+    replacement_options = audit.get("replacement_options")
+    if isinstance(replacement_options, list) and replacement_options:
+        top = replacement_options[0]
+        if isinstance(top, dict):
+            return f"{top.get('name', 'replacement')}:{_float_value(top.get('upgrade')):.1f}"
+    return "-"
+
+
+def _item_name(item: object) -> str:
+    if isinstance(item, dict):
+        name = item.get("name")
+        return str(name) if name else ""
+    return ""
+
+
+def _float_value(value: object) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _most_common_counter(counter: Counter, limit: int) -> Counter:
+    return Counter(dict(counter.most_common(limit)))
+
+
 def _format_counter(counter: Counter) -> str:
     if not counter:
         return "{}"
@@ -462,7 +736,16 @@ def _run_json_summary(run: RunReplaySummary) -> dict[str, object]:
         "final_hands": run.final_hands,
         "final_money": run.final_money,
         "final_jokers": list(run.final_jokers),
+        "dominant_played_hand": run.dominant_played_hand,
+        "played_hand_types": _counter_to_json_dict(run.played_hand_types),
+        "final_preferred_hand": run.final_preferred_hand,
+        "preferred_hand_counts": _counter_to_json_dict(run.preferred_hand_counts),
+        "missing_role_counts": _counter_to_json_dict(run.missing_role_counts),
         "shop_action_count": run.shop_action_count,
+        "shop_audit_count": run.shop_audit_count,
+        "shop_skip_count": run.shop_skip_count,
+        "chosen_shop_items": _counter_to_json_dict(run.chosen_shop_items),
+        "shop_choices": list(run.shop_choices[:8]),
     }
 
 

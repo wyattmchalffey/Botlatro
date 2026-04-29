@@ -72,6 +72,15 @@
 - Ran the tuned survival-pressure bot over 100 White Stake seeds with 4 workers: official benchmark win rate 1.0%, average ante 4.00, average final score 10,761.9, average final money 54.7, average runtime 50.25 sec/run. Replay analyzer covered 99 replay files with average max ante 4.04, ante 4+ on 67/99, ante 5+ on 44/99, 148 sell actions, and average played hands per blind 2.14.
 - Made fast benchmarking a real low-overhead path: added summary-only replay rows, GUI/CLI summary replay selection, a `--fast-benchmark` CLI shortcut, and configurable start retries for intermittent bridge start failures.
 - Started consistency analysis on deep losses and early busts: replay analyzer now reports early-failure and deep-loss sections, summary replays include final state/jokers, and future step replays include compact shop/pack/chosen-item details. Tested two first-shop tuning ideas on the same 20 seeds; both underperformed or failed to beat the old baseline, so no unproven bot behavior change was kept.
+- Added structured shop decision audits to `basic_strategy_bot` action metadata: light/score-audit replays now record pressure, thresholds, visible options, chosen item, option values, replacement candidates, skips, and rerolls. Ran a fresh 100-seed, 4-worker light replay in `.data/shop-audit-light-100`: win rate 0.0%, average ante 3.60, ante 5+ on 25/100, ante 6+ on 9/100, 26 early failures, and 9 ante 6-7 losses. Saved the analyzer report to `.data/shop-audit-light-100-analysis.txt`.
+- Improved blind-play tactics in `basic_strategy_bot`: play/discard actions now carry tactical reason metadata, on-pace hands are played unless a discard is expected to reduce hands needed, known-deck discard lookahead is used when available, and unknown-deck discard estimates now prioritize real strong draws instead of speculative redraws.
+- Ran a 20-seed, 4-worker light replay after the tactical play update: benchmark average ante 3.65, analyzer average max ante 4.00, 0 wins, ante 5+ on 8/20, ante 6+ on 4/20, and average played hands per blind 2.16. The run exposed a late-shop reroll-cost legality gap, so `basic_strategy_bot` now keeps a larger bank before rerolling full late-game builds.
+- Added build-role targeting to `basic_strategy_bot` shop decisions: the bot now tracks missing chips, +Mult, xMult, scaling, and economy layers, records that profile in shop audits, and boosts buys/packs/rerolls that fill missing late-game roles.
+- Added archetype observability to replay analysis: played hand-type distributions, dominant hand type by run, shop preferred-hand signals, final preferred-hand signals, and missing build roles now appear in analyzer text/JSON output.
+- Made blind discard selection archetype-aware: flush builds protect suited cores, straight builds protect connected ranks, and rank builds protect duplicate ranks. Replay state details now also persist the visible hand and hand levels for cleaner future archetype analysis.
+- Added play-to-cycle behavior: when a play already meets the same scoring goal, `basic_strategy_bot` prefers legal plays that include low-value non-scoring cards so it can dig deeper through the deck without spending a discard, while avoiding cards the current archetype wants to keep.
+- Ran a 100-seed, 4-worker White Stake summary benchmark after the archetype/cycle-play changes: win rate 3.0%, average ante 4.06, average final score 14,029.6, average final money 55.2, average runtime 75.13 sec/run, with 0 replay errors. Analyzer report saved to `.data/cycle-summary-100-analysis.txt`.
+- Added late-shop spending gates: `basic_strategy_bot` now tracks rerolls/packs per shop, caps safe late role-hunt rerolls, and skips late packs unless pressure is high or the estimated scoring capacity improves after accounting for the money spent. A final 12-seed validation improved from the prior gated run's 1/12 wins and 4.83 average ante to 2/12 wins and 4.92 average ante, while keeping early ante <=2 deaths at 2/12.
 
 ## In Progress
 
@@ -80,6 +89,6 @@
 ## Next Steps
 
 1. Tune replacement thresholds after inspecting bad sells and missed upgrades.
-2. Run a new light/score-audit sample with compact shop item details, then inspect exact early purchases in ante <= 2 failures.
+2. Use the shop-audit dataset to design a targeted experiment for weak follow-through after early purchases and rich late-game shop skips.
 3. Compare losing deep runs against the winning seed to find shop/scoring bottlenecks after ante 6.
 4. Add CSV export to replay analyzer if spreadsheet analysis becomes useful.

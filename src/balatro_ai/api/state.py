@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from itertools import combinations
 from typing import Any
@@ -189,6 +189,8 @@ class GameState:
             run_over=bool(data.get("run_over", phase == GamePhase.RUN_OVER)),
             won=bool(data.get("won", False)),
         )
+        if state.ante >= 9 and not state.run_over and not state.won:
+            return replace(state, ante=8, run_over=True, won=True, legal_actions=())
         if state.legal_actions:
             return _with_augmented_sell_actions(state)
         return _with_derived_legal_actions(state, shop_cards=shop_cards, voucher_cards=voucher_cards, booster_packs=booster_packs)

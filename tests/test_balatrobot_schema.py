@@ -64,6 +64,24 @@ class BalatroBotSchemaTests(unittest.TestCase):
         self.assertIn("shop_cards", state.modifiers)
         self.assertTrue(any(action.action_type == ActionType.PLAY_HAND for action in state.legal_actions))
 
+    def test_ante_nine_state_is_standard_run_win_boundary(self) -> None:
+        state = GameState.from_mapping(
+            {
+                "state": "SELECTING_HAND",
+                "ante_num": 9,
+                "money": 28,
+                "round": {"hands_left": 4, "discards_left": 4, "chips": 0},
+                "blinds": {"current": {"name": "Small Blind", "score": 110000}},
+                "hand": {"cards": [{"value": {"suit": "S", "rank": "A"}}]},
+                "legal_actions": [{"type": "play_hand", "cards": [0]}],
+            }
+        )
+
+        self.assertTrue(state.run_over)
+        self.assertTrue(state.won)
+        self.assertEqual(state.ante, 8)
+        self.assertEqual(state.legal_actions, ())
+
     def test_card_parser_preserves_debuff_state_and_raw_metadata(self) -> None:
         card = GameState.from_mapping(
             {

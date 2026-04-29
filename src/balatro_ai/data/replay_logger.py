@@ -90,6 +90,9 @@ def _state_detail(state: GameState) -> dict[str, object]:
         "hands_remaining": state.hands_remaining,
         "discards_remaining": state.discards_remaining,
         "money": state.money,
+        "deck_size": state.deck_size,
+        "hand": [_card_detail(card) for card in state.hand],
+        "hand_levels": dict(state.hand_levels),
         "jokers": [_joker_detail(joker) for joker in state.jokers],
         "consumables": list(state.consumables),
         "vouchers": list(state.vouchers),
@@ -143,6 +146,18 @@ def _joker_detail(joker) -> dict[str, object]:
         "set": joker.metadata.get("set"),
         "rarity": joker.metadata.get("rarity"),
         "cost": joker.metadata.get("cost"),
+    }
+
+
+def _card_detail(card) -> dict[str, object]:
+    return {
+        "rank": card.rank,
+        "suit": card.suit,
+        "name": card.short_name,
+        "enhancement": card.enhancement,
+        "seal": card.seal,
+        "edition": card.edition,
+        "debuffed": card.debuffed,
     }
 
 
