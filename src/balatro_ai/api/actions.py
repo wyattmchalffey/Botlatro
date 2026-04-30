@@ -27,6 +27,7 @@ class ActionType(StrEnum):
     REROLL = "reroll"
     END_SHOP = "end_shop"
     CASH_OUT = "cash_out"
+    REARRANGE = "rearrange"
     NO_OP = "no_op"
 
 
@@ -81,4 +82,3 @@ def actions_from_mappings(items: list[dict[str, Any]] | tuple[dict[str, Any], ..
     """Convert JSON-style action payloads into immutable actions."""
 
     return tuple(Action.from_mapping(item) for item in items)
-

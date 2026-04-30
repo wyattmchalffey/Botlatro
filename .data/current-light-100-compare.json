@@ -1,0 +1,2838 @@
+{
+  "old": {
+    "runs": 100,
+    "wins": 1,
+    "avg_ante": 3.9,
+    "avg_score": 11215.96,
+    "avg_money": 50.5,
+    "ante_dist": {
+      "1": 6,
+      "2": 16,
+      "3": 15,
+      "4": 28,
+      "5": 20,
+      "6": 12,
+      "7": 2,
+      "9": 1
+    }
+  },
+  "new": {
+    "runs": 100,
+    "wins": 1,
+    "avg_ante": 3.92,
+    "avg_score": 10665.74,
+    "avg_money": 48.37,
+    "ante_dist": {
+      "1": 6,
+      "2": 15,
+      "3": 14,
+      "4": 29,
+      "5": 24,
+      "6": 8,
+      "7": 3,
+      "9": 1
+    }
+  },
+  "rows": [
+    {
+      "seed": 1071573,
+      "old": {
+        "seed": 1071573,
+        "won": false,
+        "ante": 5,
+        "score": 16877,
+        "money": 61,
+        "death": "The House",
+        "blind": "The House",
+        "required": 22000,
+        "runtime": 75.52421379997395
+      },
+      "new": {
+        "seed": 1071573,
+        "won": false,
+        "ante": 5,
+        "score": 21548,
+        "money": 64,
+        "death": "The House",
+        "blind": "The House",
+        "required": 22000,
+        "runtime": 115.29208059993107
+      },
+      "ante_delta": 0,
+      "score_delta": 4671,
+      "money_delta": 3
+    },
+    {
+      "seed": 47950156,
+      "old": {
+        "seed": 47950156,
+        "won": false,
+        "ante": 2,
+        "score": 1140,
+        "money": 9,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 1200,
+        "runtime": 52.45975359994918
+      },
+      "new": {
+        "seed": 47950156,
+        "won": false,
+        "ante": 2,
+        "score": 1140,
+        "money": 8,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 1200,
+        "runtime": 49.63075759995263
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": -1
+    },
+    {
+      "seed": 84145638,
+      "old": {
+        "seed": 84145638,
+        "won": false,
+        "ante": 4,
+        "score": 3360,
+        "money": 58,
+        "death": "The Needle",
+        "blind": "The Needle",
+        "required": 5000,
+        "runtime": 40.33103779994417
+      },
+      "new": {
+        "seed": 84145638,
+        "won": false,
+        "ante": 4,
+        "score": 3360,
+        "money": 59,
+        "death": "The Needle",
+        "blind": "The Needle",
+        "required": 5000,
+        "runtime": 47.01206480001565
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": 1
+    },
+    {
+      "seed": 116049414,
+      "old": {
+        "seed": 116049414,
+        "won": false,
+        "ante": 5,
+        "score": 17724,
+        "money": 63,
+        "death": "The Wheel",
+        "blind": "The Wheel",
+        "required": 22000,
+        "runtime": 74.73584580002353
+      },
+      "new": {
+        "seed": 116049414,
+        "won": false,
+        "ante": 5,
+        "score": 17724,
+        "money": 65,
+        "death": "The Wheel",
+        "blind": "The Wheel",
+        "required": 22000,
+        "runtime": 240.62546919996385
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": 2
+    },
+    {
+      "seed": 119769974,
+      "old": {
+        "seed": 119769974,
+        "won": false,
+        "ante": 5,
+        "score": 15237,
+        "money": 88,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 16500,
+        "runtime": 97.61118499992881
+      },
+      "new": {
+        "seed": 119769974,
+        "won": false,
+        "ante": 5,
+        "score": 10061,
+        "money": 84,
+        "death": "The Goad",
+        "blind": "The Goad",
+        "required": 22000,
+        "runtime": 146.59589910006616
+      },
+      "ante_delta": 0,
+      "score_delta": -5176,
+      "money_delta": -4
+    },
+    {
+      "seed": 125013566,
+      "old": {
+        "seed": 125013566,
+        "won": false,
+        "ante": 4,
+        "score": 9602,
+        "money": 59,
+        "death": "The Pillar",
+        "blind": "The Pillar",
+        "required": 10000,
+        "runtime": 73.27650879998691
+      },
+      "new": {
+        "seed": 125013566,
+        "won": false,
+        "ante": 4,
+        "score": 9602,
+        "money": 49,
+        "death": "The Pillar",
+        "blind": "The Pillar",
+        "required": 10000,
+        "runtime": 83.867869000067
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": -10
+    },
+    {
+      "seed": 131752460,
+      "old": {
+        "seed": 131752460,
+        "won": false,
+        "ante": 3,
+        "score": 470,
+        "money": 36,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 3000,
+        "runtime": 71.14510570000857
+      },
+      "new": {
+        "seed": 131752460,
+        "won": false,
+        "ante": 3,
+        "score": 470,
+        "money": 31,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 3000,
+        "runtime": 97.10309459990822
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": -5
+    },
+    {
+      "seed": 134264875,
+      "old": {
+        "seed": 134264875,
+        "won": false,
+        "ante": 6,
+        "score": 29881,
+        "money": 75,
+        "death": "The Wall",
+        "blind": "The Wall",
+        "required": 80000,
+        "runtime": 153.48088280006777
+      },
+      "new": {
+        "seed": 134264875,
+        "won": false,
+        "ante": 5,
+        "score": 12281,
+        "money": 79,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 16500,
+        "runtime": 123.76538840006106
+      },
+      "ante_delta": -1,
+      "score_delta": -17600,
+      "money_delta": 4
+    },
+    {
+      "seed": 157433408,
+      "old": {
+        "seed": 157433408,
+        "won": false,
+        "ante": 2,
+        "score": 1276,
+        "money": 11,
+        "death": "The Water",
+        "blind": "The Water",
+        "required": 1600,
+        "runtime": 60.88296469999477
+      },
+      "new": {
+        "seed": 157433408,
+        "won": false,
+        "ante": 4,
+        "score": 7581,
+        "money": 46,
+        "death": "The Mark",
+        "blind": "The Mark",
+        "required": 10000,
+        "runtime": 35.940643499954604
+      },
+      "ante_delta": 2,
+      "score_delta": 6305,
+      "money_delta": 35
+    },
+    {
+      "seed": 177625707,
+      "old": {
+        "seed": 177625707,
+        "won": false,
+        "ante": 6,
+        "score": 23403,
+        "money": 91,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 30000,
+        "runtime": 61.843535499996506
+      },
+      "new": {
+        "seed": 177625707,
+        "won": false,
+        "ante": 6,
+        "score": 22120,
+        "money": 71,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 30000,
+        "runtime": 72.30731210007798
+      },
+      "ante_delta": 0,
+      "score_delta": -1283,
+      "money_delta": -20
+    },
+    {
+      "seed": 207514735,
+      "old": {
+        "seed": 207514735,
+        "won": false,
+        "ante": 4,
+        "score": 3009,
+        "money": 77,
+        "death": "The Mouth",
+        "blind": "The Mouth",
+        "required": 10000,
+        "runtime": 55.38097750011366
+      },
+      "new": {
+        "seed": 207514735,
+        "won": false,
+        "ante": 4,
+        "score": 3864,
+        "money": 81,
+        "death": "The Mouth",
+        "blind": "The Mouth",
+        "required": 10000,
+        "runtime": 63.06942650000565
+      },
+      "ante_delta": 0,
+      "score_delta": 855,
+      "money_delta": 4
+    },
+    {
+      "seed": 216095867,
+      "old": {
+        "seed": 216095867,
+        "won": false,
+        "ante": 4,
+        "score": 9153,
+        "money": 32,
+        "death": "The Head",
+        "blind": "The Head",
+        "required": 10000,
+        "runtime": 61.81304869998712
+      },
+      "new": {
+        "seed": 216095867,
+        "won": false,
+        "ante": 4,
+        "score": 9153,
+        "money": 36,
+        "death": "The Head",
+        "blind": "The Head",
+        "required": 10000,
+        "runtime": 81.62233269994613
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": 4
+    },
+    {
+      "seed": 224492453,
+      "old": {
+        "seed": 224492453,
+        "won": false,
+        "ante": 4,
+        "score": 9638,
+        "money": 55,
+        "death": "The Flint",
+        "blind": "The Flint",
+        "required": 10000,
+        "runtime": 83.85508770006709
+      },
+      "new": {
+        "seed": 224492453,
+        "won": false,
+        "ante": 4,
+        "score": 9638,
+        "money": 69,
+        "death": "The Flint",
+        "blind": "The Flint",
+        "required": 10000,
+        "runtime": 81.93278629996348
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": 14
+    },
+    {
+      "seed": 225511985,
+      "old": {
+        "seed": 225511985,
+        "won": false,
+        "ante": 4,
+        "score": 9847,
+        "money": 47,
+        "death": "The Window",
+        "blind": "The Window",
+        "required": 10000,
+        "runtime": 40.34434339997824
+      },
+      "new": {
+        "seed": 225511985,
+        "won": false,
+        "ante": 4,
+        "score": 9847,
+        "money": 44,
+        "death": "The Window",
+        "blind": "The Window",
+        "required": 10000,
+        "runtime": 56.43538180005271
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": -3
+    },
+    {
+      "seed": 242426249,
+      "old": {
+        "seed": 242426249,
+        "won": false,
+        "ante": 5,
+        "score": 10881,
+        "money": 30,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 16500,
+        "runtime": 72.5390977000352
+      },
+      "new": {
+        "seed": 242426249,
+        "won": false,
+        "ante": 5,
+        "score": 10881,
+        "money": 29,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 16500,
+        "runtime": 57.34881769993808
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": -1
+    },
+    {
+      "seed": 280171404,
+      "old": {
+        "seed": 280171404,
+        "won": false,
+        "ante": 5,
+        "score": 15153,
+        "money": 100,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 16500,
+        "runtime": 49.205417399993166
+      },
+      "new": {
+        "seed": 280171404,
+        "won": false,
+        "ante": 5,
+        "score": 14571,
+        "money": 103,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 16500,
+        "runtime": 53.024785300018266
+      },
+      "ante_delta": 0,
+      "score_delta": -582,
+      "money_delta": 3
+    },
+    {
+      "seed": 299138733,
+      "old": {
+        "seed": 299138733,
+        "won": false,
+        "ante": 3,
+        "score": 5281,
+        "money": 21,
+        "death": "The Wall",
+        "blind": "The Wall",
+        "required": 8000,
+        "runtime": 48.2510837999871
+      },
+      "new": {
+        "seed": 299138733,
+        "won": false,
+        "ante": 7,
+        "score": 52440,
+        "money": 77,
+        "death": "The Manacle",
+        "blind": "The Manacle",
+        "required": 70000,
+        "runtime": 113.45712839998305
+      },
+      "ante_delta": 4,
+      "score_delta": 47159,
+      "money_delta": 56
+    },
+    {
+      "seed": 339881143,
+      "old": {
+        "seed": 339881143,
+        "won": false,
+        "ante": 4,
+        "score": 10988,
+        "money": 55,
+        "death": "The Wall",
+        "blind": "The Wall",
+        "required": 20000,
+        "runtime": 99.17870990000665
+      },
+      "new": {
+        "seed": 339881143,
+        "won": false,
+        "ante": 4,
+        "score": 10988,
+        "money": 55,
+        "death": "The Wall",
+        "blind": "The Wall",
+        "required": 20000,
+        "runtime": 90.94212120003067
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": 0
+    },
+    {
+      "seed": 349774307,
+      "old": {
+        "seed": 349774307,
+        "won": false,
+        "ante": 1,
+        "score": 292,
+        "money": 4,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 300,
+        "runtime": 10.604511599987745
+      },
+      "new": {
+        "seed": 349774307,
+        "won": false,
+        "ante": 1,
+        "score": 292,
+        "money": 4,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 300,
+        "runtime": 12.78779219998978
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": 0
+    },
+    {
+      "seed": 365679440,
+      "old": {
+        "seed": 365679440,
+        "won": false,
+        "ante": 2,
+        "score": 554,
+        "money": 15,
+        "death": "The Needle",
+        "blind": "The Needle",
+        "required": 800,
+        "runtime": 22.15539520001039
+      },
+      "new": {
+        "seed": 365679440,
+        "won": false,
+        "ante": 2,
+        "score": 554,
+        "money": 15,
+        "death": "The Needle",
+        "blind": "The Needle",
+        "required": 800,
+        "runtime": 26.13946690002922
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": 0
+    },
+    {
+      "seed": 380312572,
+      "old": {
+        "seed": 380312572,
+        "won": false,
+        "ante": 2,
+        "score": 1328,
+        "money": 32,
+        "death": "The Mouth",
+        "blind": "The Mouth",
+        "required": 1600,
+        "runtime": 49.198799100006
+      },
+      "new": {
+        "seed": 380312572,
+        "won": false,
+        "ante": 2,
+        "score": 960,
+        "money": 31,
+        "death": "The Mouth",
+        "blind": "The Mouth",
+        "required": 1600,
+        "runtime": 38.88131309999153
+      },
+      "ante_delta": 0,
+      "score_delta": -368,
+      "money_delta": -1
+    },
+    {
+      "seed": 383018788,
+      "old": {
+        "seed": 383018788,
+        "won": false,
+        "ante": 1,
+        "score": 403,
+        "money": 4,
+        "death": "The Manacle",
+        "blind": "The Manacle",
+        "required": 600,
+        "runtime": 15.669849499943666
+      },
+      "new": {
+        "seed": 383018788,
+        "won": false,
+        "ante": 1,
+        "score": 403,
+        "money": 4,
+        "death": "The Manacle",
+        "blind": "The Manacle",
+        "required": 600,
+        "runtime": 17.07535729999654
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": 0
+    },
+    {
+      "seed": 443630566,
+      "old": {
+        "seed": 443630566,
+        "won": false,
+        "ante": 3,
+        "score": 5544,
+        "money": 37,
+        "death": "The Wall",
+        "blind": "The Wall",
+        "required": 8000,
+        "runtime": 63.10007079993375
+      },
+      "new": {
+        "seed": 443630566,
+        "won": false,
+        "ante": 3,
+        "score": 6382,
+        "money": 42,
+        "death": "The Wall",
+        "blind": "The Wall",
+        "required": 8000,
+        "runtime": 67.65733810001984
+      },
+      "ante_delta": 0,
+      "score_delta": 838,
+      "money_delta": 5
+    },
+    {
+      "seed": 482637942,
+      "old": {
+        "seed": 482637942,
+        "won": false,
+        "ante": 4,
+        "score": 8368,
+        "money": 27,
+        "death": "The Psychic",
+        "blind": "The Psychic",
+        "required": 10000,
+        "runtime": 86.18262960005086
+      },
+      "new": {
+        "seed": 482637942,
+        "won": false,
+        "ante": 4,
+        "score": 8368,
+        "money": 29,
+        "death": "The Psychic",
+        "blind": "The Psychic",
+        "required": 10000,
+        "runtime": 106.40722960000858
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": 2
+    },
+    {
+      "seed": 483238480,
+      "old": {
+        "seed": 483238480,
+        "won": false,
+        "ante": 6,
+        "score": 28724,
+        "money": 43,
+        "death": "The Window",
+        "blind": "The Window",
+        "required": 40000,
+        "runtime": 166.42261430004146
+      },
+      "new": {
+        "seed": 483238480,
+        "won": false,
+        "ante": 4,
+        "score": 7948,
+        "money": 40,
+        "death": "The Psychic",
+        "blind": "The Psychic",
+        "required": 10000,
+        "runtime": 76.44585500005633
+      },
+      "ante_delta": -2,
+      "score_delta": -20776,
+      "money_delta": -3
+    },
+    {
+      "seed": 501945870,
+      "old": {
+        "seed": 501945870,
+        "won": false,
+        "ante": 6,
+        "score": 17864,
+        "money": 79,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 20000,
+        "runtime": 82.89034859999083
+      },
+      "new": {
+        "seed": 501945870,
+        "won": false,
+        "ante": 5,
+        "score": 20884,
+        "money": 91,
+        "death": "The Serpent",
+        "blind": "The Serpent",
+        "required": 22000,
+        "runtime": 60.466168500017375
+      },
+      "ante_delta": -1,
+      "score_delta": 3020,
+      "money_delta": 12
+    },
+    {
+      "seed": 525563126,
+      "old": {
+        "seed": 525563126,
+        "won": false,
+        "ante": 2,
+        "score": 620,
+        "money": 4,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 800,
+        "runtime": 64.41712749993894
+      },
+      "new": {
+        "seed": 525563126,
+        "won": false,
+        "ante": 2,
+        "score": 620,
+        "money": 8,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 800,
+        "runtime": 45.5081922999816
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": 4
+    },
+    {
+      "seed": 538043824,
+      "old": {
+        "seed": 538043824,
+        "won": false,
+        "ante": 5,
+        "score": 17252,
+        "money": 62,
+        "death": "The Water",
+        "blind": "The Water",
+        "required": 22000,
+        "runtime": 54.277050900040194
+      },
+      "new": {
+        "seed": 538043824,
+        "won": false,
+        "ante": 5,
+        "score": 19030,
+        "money": 62,
+        "death": "The Water",
+        "blind": "The Water",
+        "required": 22000,
+        "runtime": 60.8068537999643
+      },
+      "ante_delta": 0,
+      "score_delta": 1778,
+      "money_delta": 0
+    },
+    {
+      "seed": 545206600,
+      "old": {
+        "seed": 545206600,
+        "won": false,
+        "ante": 4,
+        "score": 3933,
+        "money": 66,
+        "death": "The Mouth",
+        "blind": "The Mouth",
+        "required": 10000,
+        "runtime": 109.04081259993836
+      },
+      "new": {
+        "seed": 545206600,
+        "won": false,
+        "ante": 4,
+        "score": 3933,
+        "money": 56,
+        "death": "The Mouth",
+        "blind": "The Mouth",
+        "required": 10000,
+        "runtime": 133.28334069997072
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": -10
+    },
+    {
+      "seed": 559911976,
+      "old": {
+        "seed": 559911976,
+        "won": false,
+        "ante": 7,
+        "score": 46095,
+        "money": 114,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 52500,
+        "runtime": 94.33371320005972
+      },
+      "new": {
+        "seed": 559911976,
+        "won": false,
+        "ante": 7,
+        "score": 46815,
+        "money": 112,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 52500,
+        "runtime": 153.6989188999869
+      },
+      "ante_delta": 0,
+      "score_delta": 720,
+      "money_delta": -2
+    },
+    {
+      "seed": 604887388,
+      "old": {
+        "seed": 604887388,
+        "won": false,
+        "ante": 6,
+        "score": 28716,
+        "money": 93,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 30000,
+        "runtime": 141.44169090001378
+      },
+      "new": {
+        "seed": 604887388,
+        "won": false,
+        "ante": 6,
+        "score": 28716,
+        "money": 82,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 30000,
+        "runtime": 136.9427171999123
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": -11
+    },
+    {
+      "seed": 607021399,
+      "old": {
+        "seed": 607021399,
+        "won": false,
+        "ante": 2,
+        "score": 523,
+        "money": 5,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 800,
+        "runtime": 28.592081299982965
+      },
+      "new": {
+        "seed": 607021399,
+        "won": false,
+        "ante": 2,
+        "score": 523,
+        "money": 3,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 800,
+        "runtime": 29.527323900023475
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": -2
+    },
+    {
+      "seed": 648813957,
+      "old": {
+        "seed": 648813957,
+        "won": false,
+        "ante": 5,
+        "score": 10243,
+        "money": 41,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 11000,
+        "runtime": 105.82706579996739
+      },
+      "new": {
+        "seed": 648813957,
+        "won": false,
+        "ante": 5,
+        "score": 10763,
+        "money": 42,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 11000,
+        "runtime": 106.77805490000173
+      },
+      "ante_delta": 0,
+      "score_delta": 520,
+      "money_delta": 1
+    },
+    {
+      "seed": 679205356,
+      "old": {
+        "seed": 679205356,
+        "won": false,
+        "ante": 2,
+        "score": 700,
+        "money": 22,
+        "death": "The Needle",
+        "blind": "The Needle",
+        "required": 800,
+        "runtime": 17.840598599985242
+      },
+      "new": {
+        "seed": 679205356,
+        "won": false,
+        "ante": 2,
+        "score": 700,
+        "money": 22,
+        "death": "The Needle",
+        "blind": "The Needle",
+        "required": 800,
+        "runtime": 14.027948600007221
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": 0
+    },
+    {
+      "seed": 685623659,
+      "old": {
+        "seed": 685623659,
+        "won": false,
+        "ante": 1,
+        "score": 308,
+        "money": 6,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 450,
+        "runtime": 18.8486909000203
+      },
+      "new": {
+        "seed": 685623659,
+        "won": false,
+        "ante": 1,
+        "score": 308,
+        "money": 6,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 450,
+        "runtime": 15.486756600090303
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": 0
+    },
+    {
+      "seed": 687438511,
+      "old": {
+        "seed": 687438511,
+        "won": false,
+        "ante": 3,
+        "score": 1545,
+        "money": 47,
+        "death": "The Eye",
+        "blind": "The Eye",
+        "required": 4000,
+        "runtime": 43.08950590004679
+      },
+      "new": {
+        "seed": 687438511,
+        "won": false,
+        "ante": 3,
+        "score": 1545,
+        "money": 47,
+        "death": "The Eye",
+        "blind": "The Eye",
+        "required": 4000,
+        "runtime": 47.50730439997278
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": 0
+    },
+    {
+      "seed": 694280939,
+      "old": {
+        "seed": 694280939,
+        "won": false,
+        "ante": 3,
+        "score": 3030,
+        "money": 54,
+        "death": "The Hook",
+        "blind": "The Hook",
+        "required": 4000,
+        "runtime": 64.2655456000939
+      },
+      "new": {
+        "seed": 694280939,
+        "won": false,
+        "ante": 3,
+        "score": 3030,
+        "money": 54,
+        "death": "The Hook",
+        "blind": "The Hook",
+        "required": 4000,
+        "runtime": 59.42090700007975
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": 0
+    },
+    {
+      "seed": 729840575,
+      "old": {
+        "seed": 729840575,
+        "won": false,
+        "ante": 2,
+        "score": 764,
+        "money": 21,
+        "death": "The Psychic",
+        "blind": "The Psychic",
+        "required": 1600,
+        "runtime": 18.77500530006364
+      },
+      "new": {
+        "seed": 729840575,
+        "won": false,
+        "ante": 2,
+        "score": 764,
+        "money": 26,
+        "death": "The Psychic",
+        "blind": "The Psychic",
+        "required": 1600,
+        "runtime": 24.948205399909057
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": 5
+    },
+    {
+      "seed": 790997537,
+      "old": {
+        "seed": 790997537,
+        "won": false,
+        "ante": 4,
+        "score": 7237,
+        "money": 46,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 7500,
+        "runtime": 65.14655060006771
+      },
+      "new": {
+        "seed": 790997537,
+        "won": false,
+        "ante": 4,
+        "score": 7237,
+        "money": 41,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 7500,
+        "runtime": 48.8240300999023
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": -5
+    },
+    {
+      "seed": 796920518,
+      "old": {
+        "seed": 796920518,
+        "won": false,
+        "ante": 3,
+        "score": 2128,
+        "money": 7,
+        "death": "The Mouth",
+        "blind": "The Mouth",
+        "required": 4000,
+        "runtime": 85.83007289993111
+      },
+      "new": {
+        "seed": 796920518,
+        "won": false,
+        "ante": 3,
+        "score": 1850,
+        "money": 1,
+        "death": "The Mouth",
+        "blind": "The Mouth",
+        "required": 4000,
+        "runtime": 83.96281419997104
+      },
+      "ante_delta": 0,
+      "score_delta": -278,
+      "money_delta": -6
+    },
+    {
+      "seed": 810117241,
+      "old": {
+        "seed": 810117241,
+        "won": false,
+        "ante": 5,
+        "score": 19677,
+        "money": 98,
+        "death": "The Water",
+        "blind": "The Water",
+        "required": 22000,
+        "runtime": 45.60004660009872
+      },
+      "new": {
+        "seed": 810117241,
+        "won": false,
+        "ante": 5,
+        "score": 21405,
+        "money": 88,
+        "death": "The Water",
+        "blind": "The Water",
+        "required": 22000,
+        "runtime": 47.150536999921314
+      },
+      "ante_delta": 0,
+      "score_delta": 1728,
+      "money_delta": -10
+    },
+    {
+      "seed": 839196342,
+      "old": {
+        "seed": 839196342,
+        "won": false,
+        "ante": 5,
+        "score": 8912,
+        "money": 93,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 11000,
+        "runtime": 43.60164939996321
+      },
+      "new": {
+        "seed": 839196342,
+        "won": false,
+        "ante": 5,
+        "score": 8912,
+        "money": 95,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 11000,
+        "runtime": 47.69362019991968
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": 2
+    },
+    {
+      "seed": 870661523,
+      "old": {
+        "seed": 870661523,
+        "won": false,
+        "ante": 2,
+        "score": 1018,
+        "money": 11,
+        "death": "The Flint",
+        "blind": "The Flint",
+        "required": 1600,
+        "runtime": 58.9309607000323
+      },
+      "new": {
+        "seed": 870661523,
+        "won": false,
+        "ante": 3,
+        "score": 500,
+        "money": 32,
+        "death": "The Needle",
+        "blind": "The Needle",
+        "required": 2000,
+        "runtime": 88.03523140004836
+      },
+      "ante_delta": 1,
+      "score_delta": -518,
+      "money_delta": 21
+    },
+    {
+      "seed": 875021186,
+      "old": {
+        "seed": 875021186,
+        "won": false,
+        "ante": 2,
+        "score": 732,
+        "money": 15,
+        "death": "The Needle",
+        "blind": "The Needle",
+        "required": 800,
+        "runtime": 29.666581999976188
+      },
+      "new": {
+        "seed": 875021186,
+        "won": false,
+        "ante": 2,
+        "score": 732,
+        "money": 20,
+        "death": "The Needle",
+        "blind": "The Needle",
+        "required": 800,
+        "runtime": 44.33070940000471
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": 5
+    },
+    {
+      "seed": 901963821,
+      "old": {
+        "seed": 901963821,
+        "won": false,
+        "ante": 5,
+        "score": 15933,
+        "money": 41,
+        "death": "The Water",
+        "blind": "The Water",
+        "required": 22000,
+        "runtime": 58.563890299992636
+      },
+      "new": {
+        "seed": 901963821,
+        "won": false,
+        "ante": 4,
+        "score": 5182,
+        "money": 29,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 7500,
+        "runtime": 73.87897570000496
+      },
+      "ante_delta": -1,
+      "score_delta": -10751,
+      "money_delta": -12
+    },
+    {
+      "seed": 927186178,
+      "old": {
+        "seed": 927186178,
+        "won": false,
+        "ante": 4,
+        "score": 8764,
+        "money": 64,
+        "death": "The Mouth",
+        "blind": "The Mouth",
+        "required": 10000,
+        "runtime": 46.77500209992286
+      },
+      "new": {
+        "seed": 927186178,
+        "won": false,
+        "ante": 4,
+        "score": 8764,
+        "money": 63,
+        "death": "The Mouth",
+        "blind": "The Mouth",
+        "required": 10000,
+        "runtime": 54.19659539998975
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": -1
+    },
+    {
+      "seed": 963653964,
+      "old": {
+        "seed": 963653964,
+        "won": false,
+        "ante": 2,
+        "score": 598,
+        "money": 19,
+        "death": "The Window",
+        "blind": "The Window",
+        "required": 1600,
+        "runtime": 28.709052499965765
+      },
+      "new": {
+        "seed": 963653964,
+        "won": false,
+        "ante": 2,
+        "score": 598,
+        "money": 20,
+        "death": "The Window",
+        "blind": "The Window",
+        "required": 1600,
+        "runtime": 40.141319099930115
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": 1
+    },
+    {
+      "seed": 968186750,
+      "old": {
+        "seed": 968186750,
+        "won": false,
+        "ante": 4,
+        "score": 5289,
+        "money": 43,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 7500,
+        "runtime": 79.77550029999111
+      },
+      "new": {
+        "seed": 968186750,
+        "won": false,
+        "ante": 4,
+        "score": 9828,
+        "money": 35,
+        "death": "The Mouth",
+        "blind": "The Mouth",
+        "required": 10000,
+        "runtime": 62.759807700058445
+      },
+      "ante_delta": 0,
+      "score_delta": 4539,
+      "money_delta": -8
+    },
+    {
+      "seed": 1049061927,
+      "old": {
+        "seed": 1049061927,
+        "won": false,
+        "ante": 2,
+        "score": 1919,
+        "money": 15,
+        "death": "The Wall",
+        "blind": "The Wall",
+        "required": 3200,
+        "runtime": 50.79885649995413
+      },
+      "new": {
+        "seed": 1049061927,
+        "won": false,
+        "ante": 2,
+        "score": 1919,
+        "money": 14,
+        "death": "The Wall",
+        "blind": "The Wall",
+        "required": 3200,
+        "runtime": 63.58532479999121
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": -1
+    },
+    {
+      "seed": 1052529602,
+      "old": {
+        "seed": 1052529602,
+        "won": false,
+        "ante": 5,
+        "score": 13558,
+        "money": 79,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 16500,
+        "runtime": 82.52412269997876
+      },
+      "new": {
+        "seed": 1052529602,
+        "won": false,
+        "ante": 4,
+        "score": 7470,
+        "money": 60,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 7500,
+        "runtime": 74.54170469997916
+      },
+      "ante_delta": -1,
+      "score_delta": -6088,
+      "money_delta": -19
+    },
+    {
+      "seed": 1060693664,
+      "old": {
+        "seed": 1060693664,
+        "won": false,
+        "ante": 7,
+        "score": 63329,
+        "money": 150,
+        "death": "The Eye",
+        "blind": "The Eye",
+        "required": 70000,
+        "runtime": 53.25174350000452
+      },
+      "new": {
+        "seed": 1060693664,
+        "won": true,
+        "ante": 9,
+        "score": 147800,
+        "money": 195,
+        "death": null,
+        "blind": "Big Blind",
+        "required": 165000,
+        "runtime": 105.5476503999671
+      },
+      "ante_delta": 2,
+      "score_delta": 84471,
+      "money_delta": 45
+    },
+    {
+      "seed": 1072159285,
+      "old": {
+        "seed": 1072159285,
+        "won": false,
+        "ante": 3,
+        "score": 2712,
+        "money": 22,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 3000,
+        "runtime": 34.25263270002324
+      },
+      "new": {
+        "seed": 1072159285,
+        "won": false,
+        "ante": 2,
+        "score": 1194,
+        "money": 6,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 1200,
+        "runtime": 30.86088410008233
+      },
+      "ante_delta": -1,
+      "score_delta": -1518,
+      "money_delta": -16
+    },
+    {
+      "seed": 1092638421,
+      "old": {
+        "seed": 1092638421,
+        "won": false,
+        "ante": 5,
+        "score": 20069,
+        "money": 98,
+        "death": "The Pillar",
+        "blind": "The Pillar",
+        "required": 22000,
+        "runtime": 80.13293159997556
+      },
+      "new": {
+        "seed": 1092638421,
+        "won": false,
+        "ante": 4,
+        "score": 6700,
+        "money": 56,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 7500,
+        "runtime": 142.01052669994533
+      },
+      "ante_delta": -1,
+      "score_delta": -13369,
+      "money_delta": -42
+    },
+    {
+      "seed": 1094190033,
+      "old": {
+        "seed": 1094190033,
+        "won": false,
+        "ante": 4,
+        "score": 6656,
+        "money": 30,
+        "death": "The Eye",
+        "blind": "The Eye",
+        "required": 10000,
+        "runtime": 38.795017699943855
+      },
+      "new": {
+        "seed": 1094190033,
+        "won": false,
+        "ante": 5,
+        "score": 6237,
+        "money": 24,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 11000,
+        "runtime": 167.2898114999989
+      },
+      "ante_delta": 1,
+      "score_delta": -419,
+      "money_delta": -6
+    },
+    {
+      "seed": 1104158348,
+      "old": {
+        "seed": 1104158348,
+        "won": false,
+        "ante": 5,
+        "score": 21416,
+        "money": 93,
+        "death": "The Pillar",
+        "blind": "The Pillar",
+        "required": 22000,
+        "runtime": 44.10358930006623
+      },
+      "new": {
+        "seed": 1104158348,
+        "won": false,
+        "ante": 5,
+        "score": 21416,
+        "money": 83,
+        "death": "The Pillar",
+        "blind": "The Pillar",
+        "required": 22000,
+        "runtime": 88.82860290003009
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": -10
+    },
+    {
+      "seed": 1135490781,
+      "old": {
+        "seed": 1135490781,
+        "won": false,
+        "ante": 3,
+        "score": 2642,
+        "money": 28,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 3000,
+        "runtime": 41.5048788000131
+      },
+      "new": {
+        "seed": 1135490781,
+        "won": false,
+        "ante": 3,
+        "score": 2642,
+        "money": 26,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 3000,
+        "runtime": 80.59835750004277
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": -2
+    },
+    {
+      "seed": 1196921577,
+      "old": {
+        "seed": 1196921577,
+        "won": false,
+        "ante": 4,
+        "score": 7102,
+        "money": 70,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 7500,
+        "runtime": 52.97885590000078
+      },
+      "new": {
+        "seed": 1196921577,
+        "won": false,
+        "ante": 4,
+        "score": 7102,
+        "money": 77,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 7500,
+        "runtime": 76.8616857000161
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": 7
+    },
+    {
+      "seed": 1254269343,
+      "old": {
+        "seed": 1254269343,
+        "won": false,
+        "ante": 5,
+        "score": 15410,
+        "money": 62,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 16500,
+        "runtime": 78.19755660009105
+      },
+      "new": {
+        "seed": 1254269343,
+        "won": false,
+        "ante": 5,
+        "score": 15410,
+        "money": 62,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 16500,
+        "runtime": 83.7450269999681
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": 0
+    },
+    {
+      "seed": 1307973524,
+      "old": {
+        "seed": 1307973524,
+        "won": false,
+        "ante": 4,
+        "score": 6292,
+        "money": 38,
+        "death": "The Water",
+        "blind": "The Water",
+        "required": 10000,
+        "runtime": 51.45994720002636
+      },
+      "new": {
+        "seed": 1307973524,
+        "won": false,
+        "ante": 4,
+        "score": 4492,
+        "money": 50,
+        "death": "The Water",
+        "blind": "The Water",
+        "required": 10000,
+        "runtime": 71.6408444000408
+      },
+      "ante_delta": 0,
+      "score_delta": -1800,
+      "money_delta": 12
+    },
+    {
+      "seed": 1342624361,
+      "old": {
+        "seed": 1342624361,
+        "won": false,
+        "ante": 4,
+        "score": 3850,
+        "money": 33,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 5000,
+        "runtime": 99.27507689991035
+      },
+      "new": {
+        "seed": 1342624361,
+        "won": false,
+        "ante": 4,
+        "score": 2658,
+        "money": 31,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 5000,
+        "runtime": 95.07649180002045
+      },
+      "ante_delta": 0,
+      "score_delta": -1192,
+      "money_delta": -2
+    },
+    {
+      "seed": 1356320695,
+      "old": {
+        "seed": 1356320695,
+        "won": false,
+        "ante": 4,
+        "score": 3762,
+        "money": 52,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 5000,
+        "runtime": 56.637555999914184
+      },
+      "new": {
+        "seed": 1356320695,
+        "won": false,
+        "ante": 4,
+        "score": 3762,
+        "money": 49,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 5000,
+        "runtime": 58.48209169995971
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": -3
+    },
+    {
+      "seed": 1385447778,
+      "old": {
+        "seed": 1385447778,
+        "won": false,
+        "ante": 4,
+        "score": 2698,
+        "money": 53,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 7500,
+        "runtime": 51.056804200052284
+      },
+      "new": {
+        "seed": 1385447778,
+        "won": false,
+        "ante": 4,
+        "score": 2698,
+        "money": 55,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 7500,
+        "runtime": 88.45589640003163
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": 2
+    },
+    {
+      "seed": 1414043349,
+      "old": {
+        "seed": 1414043349,
+        "won": true,
+        "ante": 9,
+        "score": 195400,
+        "money": 191,
+        "death": null,
+        "blind": "The Serpent",
+        "required": 220000,
+        "runtime": 234.17330589995254
+      },
+      "new": {
+        "seed": 1414043349,
+        "won": false,
+        "ante": 7,
+        "score": 30292,
+        "money": 122,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 35000,
+        "runtime": 168.37036419997457
+      },
+      "ante_delta": -2,
+      "score_delta": -165108,
+      "money_delta": -69
+    },
+    {
+      "seed": 1422873775,
+      "old": {
+        "seed": 1422873775,
+        "won": false,
+        "ante": 3,
+        "score": 2154,
+        "money": 34,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 3000,
+        "runtime": 52.94745400000829
+      },
+      "new": {
+        "seed": 1422873775,
+        "won": false,
+        "ante": 3,
+        "score": 2154,
+        "money": 36,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 3000,
+        "runtime": 104.3604693999514
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": 2
+    },
+    {
+      "seed": 1432630996,
+      "old": {
+        "seed": 1432630996,
+        "won": false,
+        "ante": 6,
+        "score": 37675,
+        "money": 115,
+        "death": "The Manacle",
+        "blind": "The Manacle",
+        "required": 40000,
+        "runtime": 63.67642229993362
+      },
+      "new": {
+        "seed": 1432630996,
+        "won": false,
+        "ante": 6,
+        "score": 37675,
+        "money": 117,
+        "death": "The Manacle",
+        "blind": "The Manacle",
+        "required": 40000,
+        "runtime": 93.75578859995585
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": 2
+    },
+    {
+      "seed": 1479088600,
+      "old": {
+        "seed": 1479088600,
+        "won": false,
+        "ante": 6,
+        "score": 25874,
+        "money": 111,
+        "death": "The Mouth",
+        "blind": "The Mouth",
+        "required": 40000,
+        "runtime": 26.764803800033405
+      },
+      "new": {
+        "seed": 1479088600,
+        "won": false,
+        "ante": 6,
+        "score": 26164,
+        "money": 113,
+        "death": "The Mouth",
+        "blind": "The Mouth",
+        "required": 40000,
+        "runtime": 32.5778615999734
+      },
+      "ante_delta": 0,
+      "score_delta": 290,
+      "money_delta": 2
+    },
+    {
+      "seed": 1485916522,
+      "old": {
+        "seed": 1485916522,
+        "won": false,
+        "ante": 5,
+        "score": 5040,
+        "money": 72,
+        "death": "The Mouth",
+        "blind": "The Mouth",
+        "required": 22000,
+        "runtime": 96.48923190007918
+      },
+      "new": {
+        "seed": 1485916522,
+        "won": false,
+        "ante": 5,
+        "score": 5040,
+        "money": 62,
+        "death": "The Mouth",
+        "blind": "The Mouth",
+        "required": 22000,
+        "runtime": 147.16565299988724
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": -10
+    },
+    {
+      "seed": 1487162217,
+      "old": {
+        "seed": 1487162217,
+        "won": false,
+        "ante": 1,
+        "score": 219,
+        "money": 4,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 300,
+        "runtime": 5.9020934998989105
+      },
+      "new": {
+        "seed": 1487162217,
+        "won": false,
+        "ante": 1,
+        "score": 219,
+        "money": 4,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 300,
+        "runtime": 11.578665100038052
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": 0
+    },
+    {
+      "seed": 1502037373,
+      "old": {
+        "seed": 1502037373,
+        "won": false,
+        "ante": 4,
+        "score": 8090,
+        "money": 32,
+        "death": "The Window",
+        "blind": "The Window",
+        "required": 10000,
+        "runtime": 66.44752169994172
+      },
+      "new": {
+        "seed": 1502037373,
+        "won": false,
+        "ante": 6,
+        "score": 33168,
+        "money": 36,
+        "death": "The Tooth",
+        "blind": "The Tooth",
+        "required": 40000,
+        "runtime": 170.70030189992394
+      },
+      "ante_delta": 2,
+      "score_delta": 25078,
+      "money_delta": 4
+    },
+    {
+      "seed": 1537483497,
+      "old": {
+        "seed": 1537483497,
+        "won": false,
+        "ante": 3,
+        "score": 1532,
+        "money": 15,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 2000,
+        "runtime": 91.17687289998867
+      },
+      "new": {
+        "seed": 1537483497,
+        "won": false,
+        "ante": 3,
+        "score": 1532,
+        "money": 16,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 2000,
+        "runtime": 105.798555699992
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": 1
+    },
+    {
+      "seed": 1552200554,
+      "old": {
+        "seed": 1552200554,
+        "won": false,
+        "ante": 4,
+        "score": 1687,
+        "money": 25,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 5000,
+        "runtime": 44.6863919000607
+      },
+      "new": {
+        "seed": 1552200554,
+        "won": false,
+        "ante": 4,
+        "score": 1687,
+        "money": 25,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 5000,
+        "runtime": 48.998283899971284
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": 0
+    },
+    {
+      "seed": 1560825109,
+      "old": {
+        "seed": 1560825109,
+        "won": false,
+        "ante": 3,
+        "score": 3975,
+        "money": 50,
+        "death": "The Club",
+        "blind": "The Club",
+        "required": 4000,
+        "runtime": 44.345584099995904
+      },
+      "new": {
+        "seed": 1560825109,
+        "won": false,
+        "ante": 3,
+        "score": 3975,
+        "money": 46,
+        "death": "The Club",
+        "blind": "The Club",
+        "required": 4000,
+        "runtime": 32.92157110001426
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": -4
+    },
+    {
+      "seed": 1563396873,
+      "old": {
+        "seed": 1563396873,
+        "won": false,
+        "ante": 6,
+        "score": 22625,
+        "money": 89,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 30000,
+        "runtime": 71.28452080010902
+      },
+      "new": {
+        "seed": 1563396873,
+        "won": false,
+        "ante": 6,
+        "score": 24741,
+        "money": 76,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 30000,
+        "runtime": 90.63862780004274
+      },
+      "ante_delta": 0,
+      "score_delta": 2116,
+      "money_delta": -13
+    },
+    {
+      "seed": 1563440389,
+      "old": {
+        "seed": 1563440389,
+        "won": false,
+        "ante": 3,
+        "score": 3660,
+        "money": 30,
+        "death": "The Flint",
+        "blind": "The Flint",
+        "required": 4000,
+        "runtime": 65.92156200006139
+      },
+      "new": {
+        "seed": 1563440389,
+        "won": false,
+        "ante": 3,
+        "score": 1980,
+        "money": 19,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 2000,
+        "runtime": 67.63758310000412
+      },
+      "ante_delta": 0,
+      "score_delta": -1680,
+      "money_delta": -11
+    },
+    {
+      "seed": 1579531438,
+      "old": {
+        "seed": 1579531438,
+        "won": false,
+        "ante": 4,
+        "score": 6700,
+        "money": 40,
+        "death": "The Mouth",
+        "blind": "The Mouth",
+        "required": 10000,
+        "runtime": 52.34350620000623
+      },
+      "new": {
+        "seed": 1579531438,
+        "won": false,
+        "ante": 5,
+        "score": 19233,
+        "money": 41,
+        "death": "The Wheel",
+        "blind": "The Wheel",
+        "required": 22000,
+        "runtime": 110.11165340000298
+      },
+      "ante_delta": 1,
+      "score_delta": 12533,
+      "money_delta": 1
+    },
+    {
+      "seed": 1600889079,
+      "old": {
+        "seed": 1600889079,
+        "won": false,
+        "ante": 6,
+        "score": 14699,
+        "money": 75,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 20000,
+        "runtime": 116.370970100048
+      },
+      "new": {
+        "seed": 1600889079,
+        "won": false,
+        "ante": 6,
+        "score": 16692,
+        "money": 61,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 20000,
+        "runtime": 130.41687429999
+      },
+      "ante_delta": 0,
+      "score_delta": 1993,
+      "money_delta": -14
+    },
+    {
+      "seed": 1620116216,
+      "old": {
+        "seed": 1620116216,
+        "won": false,
+        "ante": 5,
+        "score": 15477,
+        "money": 55,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 16500,
+        "runtime": 109.89951130002737
+      },
+      "new": {
+        "seed": 1620116216,
+        "won": false,
+        "ante": 5,
+        "score": 15477,
+        "money": 51,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 16500,
+        "runtime": 110.1280231999699
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": -4
+    },
+    {
+      "seed": 1674064425,
+      "old": {
+        "seed": 1674064425,
+        "won": false,
+        "ante": 3,
+        "score": 6246,
+        "money": 54,
+        "death": "The Wall",
+        "blind": "The Wall",
+        "required": 8000,
+        "runtime": 52.6384746999247
+      },
+      "new": {
+        "seed": 1674064425,
+        "won": false,
+        "ante": 3,
+        "score": 6024,
+        "money": 58,
+        "death": "The Wall",
+        "blind": "The Wall",
+        "required": 8000,
+        "runtime": 44.950098200002685
+      },
+      "ante_delta": 0,
+      "score_delta": -222,
+      "money_delta": 4
+    },
+    {
+      "seed": 1761611313,
+      "old": {
+        "seed": 1761611313,
+        "won": false,
+        "ante": 5,
+        "score": 15872,
+        "money": 94,
+        "death": "The Psychic",
+        "blind": "The Psychic",
+        "required": 22000,
+        "runtime": 100.95109430002049
+      },
+      "new": {
+        "seed": 1761611313,
+        "won": false,
+        "ante": 5,
+        "score": 15872,
+        "money": 85,
+        "death": "The Psychic",
+        "blind": "The Psychic",
+        "required": 22000,
+        "runtime": 92.98393640003633
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": -9
+    },
+    {
+      "seed": 1765143079,
+      "old": {
+        "seed": 1765143079,
+        "won": false,
+        "ante": 1,
+        "score": 454,
+        "money": 6,
+        "death": "The Club",
+        "blind": "The Club",
+        "required": 600,
+        "runtime": 36.82914719998371
+      },
+      "new": {
+        "seed": 1765143079,
+        "won": false,
+        "ante": 1,
+        "score": 454,
+        "money": 6,
+        "death": "The Club",
+        "blind": "The Club",
+        "required": 600,
+        "runtime": 29.589841999928467
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": 0
+    },
+    {
+      "seed": 1789463296,
+      "old": {
+        "seed": 1789463296,
+        "won": false,
+        "ante": 3,
+        "score": 2684,
+        "money": 28,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 3000,
+        "runtime": 35.981030000024475
+      },
+      "new": {
+        "seed": 1789463296,
+        "won": false,
+        "ante": 3,
+        "score": 2684,
+        "money": 26,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 3000,
+        "runtime": 31.402784200035967
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": -2
+    },
+    {
+      "seed": 1811658677,
+      "old": {
+        "seed": 1811658677,
+        "won": false,
+        "ante": 2,
+        "score": 243,
+        "money": 12,
+        "death": "The Needle",
+        "blind": "The Needle",
+        "required": 800,
+        "runtime": 52.03351590002421
+      },
+      "new": {
+        "seed": 1811658677,
+        "won": false,
+        "ante": 2,
+        "score": 243,
+        "money": 12,
+        "death": "The Needle",
+        "blind": "The Needle",
+        "required": 800,
+        "runtime": 42.99730229994748
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": 0
+    },
+    {
+      "seed": 1847067209,
+      "old": {
+        "seed": 1847067209,
+        "won": false,
+        "ante": 4,
+        "score": 9048,
+        "money": 29,
+        "death": "The Flint",
+        "blind": "The Flint",
+        "required": 10000,
+        "runtime": 101.09451689990237
+      },
+      "new": {
+        "seed": 1847067209,
+        "won": false,
+        "ante": 5,
+        "score": 7920,
+        "money": 38,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 11000,
+        "runtime": 107.16195330000482
+      },
+      "ante_delta": 1,
+      "score_delta": -1128,
+      "money_delta": 9
+    },
+    {
+      "seed": 1871614268,
+      "old": {
+        "seed": 1871614268,
+        "won": false,
+        "ante": 4,
+        "score": 8041,
+        "money": 27,
+        "death": "The Water",
+        "blind": "The Water",
+        "required": 10000,
+        "runtime": 40.93792339996435
+      },
+      "new": {
+        "seed": 1871614268,
+        "won": false,
+        "ante": 5,
+        "score": 3095,
+        "money": 23,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 16500,
+        "runtime": 65.18236010009423
+      },
+      "ante_delta": 1,
+      "score_delta": -4946,
+      "money_delta": -4
+    },
+    {
+      "seed": 1894553533,
+      "old": {
+        "seed": 1894553533,
+        "won": false,
+        "ante": 6,
+        "score": 19826,
+        "money": 69,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 30000,
+        "runtime": 138.86371960001998
+      },
+      "new": {
+        "seed": 1894553533,
+        "won": false,
+        "ante": 5,
+        "score": 19244,
+        "money": 53,
+        "death": "The Plant",
+        "blind": "The Plant",
+        "required": 22000,
+        "runtime": 111.6090402000118
+      },
+      "ante_delta": -1,
+      "score_delta": -582,
+      "money_delta": -16
+    },
+    {
+      "seed": 1904475041,
+      "old": {
+        "seed": 1904475041,
+        "won": false,
+        "ante": 5,
+        "score": 11393,
+        "money": 72,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 16500,
+        "runtime": 98.81083019997459
+      },
+      "new": {
+        "seed": 1904475041,
+        "won": false,
+        "ante": 4,
+        "score": 5463,
+        "money": 52,
+        "death": "The Goad",
+        "blind": "The Goad",
+        "required": 10000,
+        "runtime": 94.42929260001983
+      },
+      "ante_delta": -1,
+      "score_delta": -5930,
+      "money_delta": -20
+    },
+    {
+      "seed": 1975736519,
+      "old": {
+        "seed": 1975736519,
+        "won": false,
+        "ante": 5,
+        "score": 4320,
+        "money": 74,
+        "death": "The Eye",
+        "blind": "The Eye",
+        "required": 22000,
+        "runtime": 83.93160590005573
+      },
+      "new": {
+        "seed": 1975736519,
+        "won": false,
+        "ante": 5,
+        "score": 21900,
+        "money": 72,
+        "death": "The Eye",
+        "blind": "The Eye",
+        "required": 22000,
+        "runtime": 114.32261869998183
+      },
+      "ante_delta": 0,
+      "score_delta": 17580,
+      "money_delta": -2
+    },
+    {
+      "seed": 1998939489,
+      "old": {
+        "seed": 1998939489,
+        "won": false,
+        "ante": 2,
+        "score": 1869,
+        "money": 12,
+        "death": "The Wall",
+        "blind": "The Wall",
+        "required": 3200,
+        "runtime": 22.339776700013317
+      },
+      "new": {
+        "seed": 1998939489,
+        "won": false,
+        "ante": 2,
+        "score": 2334,
+        "money": 3,
+        "death": "The Wall",
+        "blind": "The Wall",
+        "required": 3200,
+        "runtime": 56.13494160003029
+      },
+      "ante_delta": 0,
+      "score_delta": 465,
+      "money_delta": -9
+    },
+    {
+      "seed": 2003523267,
+      "old": {
+        "seed": 2003523267,
+        "won": false,
+        "ante": 4,
+        "score": 2968,
+        "money": 44,
+        "death": "The Plant",
+        "blind": "The Plant",
+        "required": 10000,
+        "runtime": 94.82903939997777
+      },
+      "new": {
+        "seed": 2003523267,
+        "won": false,
+        "ante": 4,
+        "score": 2968,
+        "money": 43,
+        "death": "The Plant",
+        "blind": "The Plant",
+        "required": 10000,
+        "runtime": 96.80031860002782
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": -1
+    },
+    {
+      "seed": 2003624183,
+      "old": {
+        "seed": 2003624183,
+        "won": false,
+        "ante": 6,
+        "score": 28736,
+        "money": 153,
+        "death": "The Wall",
+        "blind": "The Wall",
+        "required": 80000,
+        "runtime": 120.70467300002929
+      },
+      "new": {
+        "seed": 2003624183,
+        "won": false,
+        "ante": 4,
+        "score": 9600,
+        "money": 88,
+        "death": "The Fish",
+        "blind": "The Fish",
+        "required": 10000,
+        "runtime": 58.24435669998638
+      },
+      "ante_delta": -2,
+      "score_delta": -19136,
+      "money_delta": -65
+    },
+    {
+      "seed": 2026595128,
+      "old": {
+        "seed": 2026595128,
+        "won": false,
+        "ante": 3,
+        "score": 1878,
+        "money": 14,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 2000,
+        "runtime": 26.319236299954355
+      },
+      "new": {
+        "seed": 2026595128,
+        "won": false,
+        "ante": 3,
+        "score": 1878,
+        "money": 13,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 2000,
+        "runtime": 17.696507000015117
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": -1
+    },
+    {
+      "seed": 2059837045,
+      "old": {
+        "seed": 2059837045,
+        "won": false,
+        "ante": 4,
+        "score": 17955,
+        "money": 74,
+        "death": "The Wall",
+        "blind": "The Wall",
+        "required": 20000,
+        "runtime": 78.4926919999998
+      },
+      "new": {
+        "seed": 2059837045,
+        "won": false,
+        "ante": 4,
+        "score": 18126,
+        "money": 72,
+        "death": "The Wall",
+        "blind": "The Wall",
+        "required": 20000,
+        "runtime": 58.66750960005447
+      },
+      "ante_delta": 0,
+      "score_delta": 171,
+      "money_delta": -2
+    },
+    {
+      "seed": 2063068094,
+      "old": {
+        "seed": 2063068094,
+        "won": false,
+        "ante": 4,
+        "score": 8496,
+        "money": 58,
+        "death": "The Mark",
+        "blind": "The Mark",
+        "required": 10000,
+        "runtime": 35.61901629995555
+      },
+      "new": {
+        "seed": 2063068094,
+        "won": false,
+        "ante": 4,
+        "score": 8496,
+        "money": 55,
+        "death": "The Mark",
+        "blind": "The Mark",
+        "required": 10000,
+        "runtime": 54.777118399972096
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": -3
+    },
+    {
+      "seed": 2069153500,
+      "old": {
+        "seed": 2069153500,
+        "won": false,
+        "ante": 5,
+        "score": 8202,
+        "money": 75,
+        "death": "The Arm",
+        "blind": "The Arm",
+        "required": 22000,
+        "runtime": 88.04266249993816
+      },
+      "new": {
+        "seed": 2069153500,
+        "won": false,
+        "ante": 5,
+        "score": 11307,
+        "money": 63,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 16500,
+        "runtime": 87.41965170006733
+      },
+      "ante_delta": 0,
+      "score_delta": 3105,
+      "money_delta": -12
+    },
+    {
+      "seed": 2086264372,
+      "old": {
+        "seed": 2086264372,
+        "won": false,
+        "ante": 4,
+        "score": 9467,
+        "money": 63,
+        "death": "The Plant",
+        "blind": "The Plant",
+        "required": 10000,
+        "runtime": 104.33412429993041
+      },
+      "new": {
+        "seed": 2086264372,
+        "won": false,
+        "ante": 5,
+        "score": 14960,
+        "money": 70,
+        "death": "Big Blind",
+        "blind": "Big Blind",
+        "required": 16500,
+        "runtime": 163.58690759993624
+      },
+      "ante_delta": 1,
+      "score_delta": 5493,
+      "money_delta": 7
+    },
+    {
+      "seed": 2097732365,
+      "old": {
+        "seed": 2097732365,
+        "won": false,
+        "ante": 2,
+        "score": 344,
+        "money": 14,
+        "death": "The Mouth",
+        "blind": "The Mouth",
+        "required": 1600,
+        "runtime": 64.46403150004335
+      },
+      "new": {
+        "seed": 2097732365,
+        "won": false,
+        "ante": 2,
+        "score": 344,
+        "money": 19,
+        "death": "The Mouth",
+        "blind": "The Mouth",
+        "required": 1600,
+        "runtime": 65.39966850006022
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": 5
+    },
+    {
+      "seed": 2102993602,
+      "old": {
+        "seed": 2102993602,
+        "won": false,
+        "ante": 1,
+        "score": 288,
+        "money": 4,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 300,
+        "runtime": 8.86849510006141
+      },
+      "new": {
+        "seed": 2102993602,
+        "won": false,
+        "ante": 1,
+        "score": 288,
+        "money": 4,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 300,
+        "runtime": 11.053364100051112
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": 0
+    },
+    {
+      "seed": 2120732055,
+      "old": {
+        "seed": 2120732055,
+        "won": false,
+        "ante": 2,
+        "score": 652,
+        "money": 21,
+        "death": "The Needle",
+        "blind": "The Needle",
+        "required": 800,
+        "runtime": 22.87502839998342
+      },
+      "new": {
+        "seed": 2120732055,
+        "won": false,
+        "ante": 2,
+        "score": 652,
+        "money": 21,
+        "death": "The Needle",
+        "blind": "The Needle",
+        "required": 800,
+        "runtime": 22.196773599949665
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": 0
+    },
+    {
+      "seed": 2142736029,
+      "old": {
+        "seed": 2142736029,
+        "won": false,
+        "ante": 6,
+        "score": 3432,
+        "money": 68,
+        "death": "The Needle",
+        "blind": "The Needle",
+        "required": 20000,
+        "runtime": 85.97312249999959
+      },
+      "new": {
+        "seed": 2142736029,
+        "won": false,
+        "ante": 6,
+        "score": 3432,
+        "money": 59,
+        "death": "The Needle",
+        "blind": "The Needle",
+        "required": 20000,
+        "runtime": 125.48852979997173
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": -9
+    },
+    {
+      "seed": 2142990556,
+      "old": {
+        "seed": 2142990556,
+        "won": false,
+        "ante": 4,
+        "score": 2946,
+        "money": 43,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 5000,
+        "runtime": 64.35171710001305
+      },
+      "new": {
+        "seed": 2142990556,
+        "won": false,
+        "ante": 4,
+        "score": 2946,
+        "money": 39,
+        "death": "Small Blind",
+        "blind": "Small Blind",
+        "required": 5000,
+        "runtime": 99.39471190003678
+      },
+      "ante_delta": 0,
+      "score_delta": 0,
+      "money_delta": -4
+    }
+  ]
+}

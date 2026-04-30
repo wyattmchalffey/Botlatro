@@ -16,6 +16,14 @@ class SeedSetTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(len(set(first.seeds)), 10)
 
+    def test_primary_benchmark_seed_label_is_stable(self) -> None:
+        seed_set = make_seed_set("white:primary-score-audit-100", 5)
+
+        self.assertEqual(
+            seed_set.seeds,
+            (349774307, 380312572, 2059837045, 685623659, 2097732365),
+        )
+
     def test_seed_set_round_trip(self) -> None:
         seed_set = SeedSet(label="demo", seeds=(1, 2, 3))
 

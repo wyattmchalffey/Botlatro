@@ -101,6 +101,34 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("Profile: P2", text)
         self.assertIn("Unlocks: profile-default", text)
 
+    def test_run_benchmark_reports_seed_metadata(self) -> None:
+        original_run_seed = runner._run_seed
+        messages: list[str] = []
+
+        def fake_run_seed(*, seed: int, endpoint: str, options: BenchmarkOptions) -> RunResult:
+            return RunResult(
+                bot_version=options.bot,
+                seed=seed,
+                stake=options.stake,
+                won=False,
+                ante_reached=1,
+                final_score=100,
+                final_money=5,
+                runtime_seconds=1.0,
+            )
+
+        try:
+            runner._run_seed = fake_run_seed
+            run_benchmark(
+                BenchmarkOptions(bot="random_bot", seed_values=(42,), label="manual"),
+                progress=messages.append,
+            )
+        finally:
+            runner._run_seed = original_run_seed
+
+        self.assertIn("Seed label: white:manual:explicit", messages)
+        self.assertIn("First seed: 42", messages)
+
     def test_run_benchmark_can_stop_before_any_seed(self) -> None:
         result = run_benchmark(
             BenchmarkOptions(bot="random_bot", seed_values=(1, 2, 3)),

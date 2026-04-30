@@ -14,7 +14,7 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from queue import Empty, Queue
-from tkinter import BooleanVar, IntVar, StringVar, Tk, filedialog, messagebox
+from tkinter import BooleanVar, IntVar, StringVar, TclError, Tk, filedialog, messagebox
 from tkinter import Text as TkText
 from tkinter import ttk
 
@@ -23,6 +23,9 @@ from balatro_ai.eval.seed_sets import parse_seed_values
 from balatro_ai.tools.clean_bridge_logs import clean_logs, summarize_results
 from balatro_ai.tools.headless_exe import ensure_tiny_startup_copy
 
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+CURRENT_BENCHMARK_SEEDS_PATH = PROJECT_ROOT / ".data" / "current-light-100-seeds.txt"
 
 BOT_NAMES = ("basic_strategy_bot", "greedy_bot", "random_bot")
 STAKES = ("white", "red", "green", "black", "blue", "purple", "orange", "gold")
@@ -67,19 +70,21 @@ class BenchmarkApp:
         self.stop_event = threading.Event()
         self.bridge_processes: list[BridgeProcess] = []
         self.log_lines: list[str] = []
+        self.log_lock = threading.Lock()
 
         self.bot = StringVar(value="basic_strategy_bot")
         self.stake = StringVar(value="white")
         self.deck = StringVar(value="RED")
         self.profile_name = StringVar(value="P1")
         self.unlock_state = StringVar(value="all")
-        self.seed_count = IntVar(value=50)
+        self.seed_count = IntVar(value=100)
         self.seed_list = StringVar(value="")
-        self.label = StringVar(value="default")
+        self.label = StringVar(value="primary-score-audit-100")
         self.max_steps = IntVar(value=800)
         self.timeout_seconds = StringVar(value="30")
         self.start_retries = IntVar(value=1)
-        self.replay_dir = StringVar(value="")
+        self.retry_failed_seeds = IntVar(value=1)
+        self.replay_dir = StringVar(value=str(Path(".data") / "gui-replays"))
         self.output_file = StringVar(value=str(Path(".data") / "gui_benchmark.txt"))
 
         self.host = StringVar(value="127.0.0.1")
@@ -129,6 +134,7 @@ class BenchmarkApp:
         _entry(benchmark, "Max steps", self.max_steps, 1, 0)
         _entry(benchmark, "Timeout", self.timeout_seconds, 1, 2)
         _entry(benchmark, "Start retries", self.start_retries, 1, 4)
+        _entry(benchmark, "Failed retries", self.retry_failed_seeds, 1, 6)
         _path_entry(benchmark, "Replay dir", self.replay_dir, 2, 0, self._browse_replay_dir, column_span=7)
         _path_entry(benchmark, "Output file", self.output_file, 3, 0, self._browse_output_file, column_span=7)
         _wide_entry(benchmark, "Seed list", self.seed_list, 4, 0, column_span=7)
@@ -185,6 +191,12 @@ class BenchmarkApp:
             row=5, column=7, sticky="ew", padx=(8, 0), pady=3
         )
         _combo(benchmark, "Replay mode", self.replay_mode, REPLAY_DETAIL_MODES, 6, 0)
+        ttk.Button(benchmark, text="Use Benchmark Seeds", command=self._use_benchmark_seeds).grid(
+            row=6, column=2, columnspan=2, sticky="ew", padx=(8, 0), pady=3
+        )
+        ttk.Button(benchmark, text="Generated Seeds", command=self._use_generated_seeds).grid(
+            row=6, column=4, columnspan=2, sticky="ew", padx=(8, 0), pady=3
+        )
 
         controls = ttk.Frame(outer)
         controls.grid(row=3, column=0, sticky="ew", pady=(10, 0))
@@ -291,6 +303,34 @@ class BenchmarkApp:
         self.animation_fps.set(30)
         self._log_message("Applied watch speed preset: visible, gamespeed 1, animation FPS 30.")
 
+    def _use_benchmark_seeds(self) -> None:
+        if CURRENT_BENCHMARK_SEEDS_PATH.exists():
+            seeds = parse_seed_values(CURRENT_BENCHMARK_SEEDS_PATH.read_text(encoding="utf-8"))
+            self.seed_list.set(",".join(str(seed) for seed in seeds))
+            self.seed_count.set(len(seeds))
+            self.label.set("current-light-100")
+            self._log_message(f"Loaded {len(seeds)} current benchmark seeds from {CURRENT_BENCHMARK_SEEDS_PATH}.")
+            return
+
+        self.seed_list.set("")
+        self.seed_count.set(100)
+        self.label.set("primary-score-audit-100")
+        self._log_message(
+            "Current seed file was not found; using generated 100-seed label primary-score-audit-100."
+        )
+
+    def _use_generated_seeds(self) -> None:
+        self.seed_list.set("")
+        try:
+            seed_count = int(self.seed_count.get())
+        except (TclError, TypeError, ValueError):
+            seed_count = 0
+        if seed_count < 1:
+            self.seed_count.set(100)
+        self._log_message(
+            f"Using generated deterministic seeds from stake={self.stake.get()} label={self.label.get()}."
+        )
+
     def _headless_toggled(self) -> None:
         if self.headless.get() and self.render_on_api.get():
             self.render_on_api.set(False)
@@ -306,9 +346,24 @@ class BenchmarkApp:
                 self._log_message("Headless and render-on-API conflict in BalatroBot; disabled render-on-API.")
 
     def _read_config(self) -> dict[str, object]:
-        worker_count = int(self.workers.get())
+        worker_count = _int_value(self.workers, "Workers")
         if worker_count < 1:
             raise ValueError("Workers must be at least 1.")
+        seed_count = _int_value(self.seed_count, "Seeds")
+        if seed_count < 0:
+            raise ValueError("Seeds must be zero or greater.")
+        max_steps = _int_value(self.max_steps, "Max steps")
+        if max_steps < 1:
+            raise ValueError("Max steps must be at least 1.")
+        start_retries = _int_value(self.start_retries, "Start retries")
+        if start_retries < 0:
+            raise ValueError("Start retries must be zero or greater.")
+        failed_retries = _int_value(self.retry_failed_seeds, "Failed retries")
+        if failed_retries < 0:
+            raise ValueError("Failed retries must be zero or greater.")
+        timeout_seconds = _float_value(self.timeout_seconds, "Timeout")
+        if timeout_seconds <= 0:
+            raise ValueError("Timeout must be greater than zero.")
 
         seed_values = parse_seed_values(self.seed_list.get())
         replay_dir = Path(self.replay_dir.get()) if self.replay_dir.get().strip() else None
@@ -320,15 +375,16 @@ class BenchmarkApp:
                 deck=self.deck.get(),
                 profile_name=self.profile_name.get(),
                 unlock_state=self.unlock_state.get(),
-                seeds=int(self.seed_count.get()),
+                seeds=seed_count,
                 seed_values=seed_values or None,
                 label=self.label.get(),
-                endpoints=endpoint_urls(self.host.get(), int(self.base_port.get()), worker_count),
-                timeout_seconds=float(self.timeout_seconds.get()),
-                max_steps=int(self.max_steps.get()),
+                endpoints=endpoint_urls(self.host.get(), _int_value(self.base_port, "Base port"), worker_count),
+                timeout_seconds=timeout_seconds,
+                max_steps=max_steps,
                 replay_dir=replay_dir,
                 replay_mode=self.replay_mode.get(),
-                start_retries=int(self.start_retries.get()),
+                start_retries=start_retries,
+                retry_failed_seeds=failed_retries,
             ),
             "worker_count": worker_count,
             "output_file": output_file,
@@ -353,7 +409,9 @@ class BenchmarkApp:
             output_file = config["output_file"]
             if isinstance(output_file, Path):
                 output_file.parent.mkdir(parents=True, exist_ok=True)
-                output_file.write_text("\n".join(self.log_lines) + "\n", encoding="utf-8")
+                with self.log_lock:
+                    lines = list(self.log_lines)
+                output_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
                 self._log_message(f"Saved output to {output_file}")
         except Exception as exc:  # noqa: BLE001 - GUI should surface all failures.
             self._log_message(f"ERROR: {exc}")
@@ -449,11 +507,11 @@ class BenchmarkApp:
             "--port",
             str(port),
             "--fps-cap",
-            str(int(self.fps_cap.get())),
+            str(_int_value(self.fps_cap, "FPS cap")),
             "--gamespeed",
-            str(int(self.gamespeed.get())),
+            str(_int_value(self.gamespeed, "Game speed")),
             "--animation-fps",
-            str(int(self.animation_fps.get())),
+            str(_int_value(self.animation_fps, "Anim FPS")),
             "--logs-path",
             str(log_dir),
             "--love-path",
@@ -483,8 +541,9 @@ class BenchmarkApp:
 
     def _health_check(self) -> None:
         try:
-            worker_count = int(self.workers.get())
-            ports = [int(self.base_port.get()) + index for index in range(worker_count)]
+            worker_count = _int_value(self.workers, "Workers")
+            base_port = _int_value(self.base_port, "Base port")
+            ports = [base_port + index for index in range(worker_count)]
         except ValueError:
             messagebox.showerror("Invalid Parameters", "Workers and base port must be integers.")
             return
@@ -555,10 +614,13 @@ class BenchmarkApp:
         time.sleep(2)
 
     def _clear_log(self) -> None:
-        self.log_lines.clear()
+        with self.log_lock:
+            self.log_lines.clear()
         self.log.delete("1.0", "end")
 
     def _log_message(self, message: str) -> None:
+        with self.log_lock:
+            self.log_lines.append(message)
         self.messages.put(message)
 
     def _request_stop(self) -> None:
@@ -576,7 +638,6 @@ class BenchmarkApp:
                 self.start_button.configure(state="normal")
                 self.stop_button.configure(state="disabled")
             else:
-                self.log_lines.append(message)
                 self.log.insert("end", message + "\n")
                 self.log.see("end")
         self.root.after(100, self._poll_messages)
@@ -627,6 +688,20 @@ def _path_entry(
         row=row, column=column + 1, columnspan=column_span, sticky="ew", pady=3
     )
     ttk.Button(parent, text="Browse", command=command).grid(row=row, column=column + column_span + 1, sticky="e", pady=3)
+
+
+def _int_value(variable: IntVar, label: str) -> int:
+    try:
+        return int(variable.get())
+    except (TclError, TypeError, ValueError) as exc:
+        raise ValueError(f"{label} must be an integer.") from exc
+
+
+def _float_value(variable: StringVar, label: str) -> float:
+    try:
+        return float(variable.get())
+    except (TclError, TypeError, ValueError) as exc:
+        raise ValueError(f"{label} must be a number.") from exc
 
 
 def _health_ok(host: str, port: int) -> bool:

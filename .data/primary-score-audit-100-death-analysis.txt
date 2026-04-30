@@ -1,0 +1,318 @@
+Primary 100-seed death analysis
+================================
+Files scanned: 100
+Runs parsed: 100
+Malformed rows: 0
+Wins: 1  Losses: 99
+Average ante all/losses/wins: 3.90 / 3.85 / 9
+Median ante losses: 4
+Average final money losses: 49.08
+Average final score ratio losses: 0.721
+Action counts: {'buy': 574, 'cash_out': 1017, 'choose_pack_card': 232, 'discard': 1298, 'end_shop': 1017, 'open_pack': 228, 'play_hand': 2399, 'reroll': 123, 'select_blind': 1117, 'sell': 165}
+
+Death funnel
+------------
+ante 1: 6 losses (6.1%); avg money 4.67; avg score ratio 0.796
+ante 2: 16 losses (16.2%); avg money 14.88; avg score ratio 0.656
+ante 3-4: 43 losses (43.4%); avg money 42.26; avg score ratio 0.729
+ante 5+: 34 losses (34.3%); avg money 81.65; avg score ratio 0.729
+
+Death margins
+-------------
+>=95% of blind: 10 losses (10.1%); avg ante 3.40; avg money 46
+85-95% of blind: 24 losses (24.2%); avg ante 4.33; avg money 62.12
+50-85% of blind: 48 losses (48.5%); avg ante 3.67; avg money 41.19
+<50% of blind: 17 losses (17.2%); avg ante 3.94; avg money 54.76
+Close-ish losses >=85%: 34 / 99 (34.3%)
+Blowout losses <50%: 17 / 99 (17.2%)
+Closest losses:
+  seed=1560825109 ante=3 blind=The Club score=3975/4000 ratio=0.99 money=50 dom=Two Pair jokers=Square Joker, Baseball Card, Jolly Joker, Seeing Double, Abstract Joker
+  seed=225511985 ante=4 blind=The Window score=9847/10000 ratio=0.98 money=47 dom=High Card jokers=Lusty Joker, Rocket, Cavendish, Odd Todd, Cartomancer
+  seed=1104158348 ante=5 blind=The Pillar score=21416/22000 ratio=0.97 money=93 dom=High Card jokers=Hanging Chad, Scholar, Ramen, Odd Todd, Crafty Joker
+  seed=349774307 ante=1 blind=Small Blind score=292/300 ratio=0.97 money=4 dom=Two Pair jokers=none
+  seed=790997537 ante=4 blind=Big Blind score=7237/7500 ratio=0.96 money=46 dom=Pair jokers=Wrathful Joker, Scary Face, Half Joker
+  seed=224492453 ante=4 blind=The Flint score=9638/10000 ratio=0.96 money=55 dom=Two Pair jokers=Mad Joker, Clever Joker, The Duo, Hiker, Fortune Teller
+  seed=125013566 ante=4 blind=The Pillar score=9602/10000 ratio=0.96 money=59 dom=Two Pair jokers=Blue Joker, Runner, Joker, Wrathful Joker, Smiley Face
+  seed=2102993602 ante=1 blind=Small Blind score=288/300 ratio=0.96 money=4 dom=Two Pair jokers=none
+  seed=604887388 ante=6 blind=Big Blind score=28716/30000 ratio=0.96 money=93 dom=Two Pair jokers=Green Joker, Odd Todd, Even Steven, Ancient Joker, Flower Pot
+  seed=47950156 ante=2 blind=Big Blind score=1140/1200 ratio=0.95 money=9 dom=Two Pair jokers=Scary Face, Fortune Teller, Castle
+Largest blowout losses:
+  seed=131752460 ante=3 blind=Big Blind score=470/3000 ratio=0.16 money=36 dom=Two Pair jokers=Vampire, Even Steven, Flower Pot, Arrowhead
+  seed=2142736029 ante=6 blind=The Needle score=3432/20000 ratio=0.17 money=68 dom=High Card jokers=Fibonacci, Scholar, Mail-In Rebate, Hanging Chad, Abstract Joker
+  seed=1975736519 ante=5 blind=The Eye score=4320/22000 ratio=0.20 money=74 dom=Two Pair jokers=Lusty Joker, Bull, Ancient Joker, Odd Todd, Gros Michel
+  seed=2097732365 ante=2 blind=The Mouth score=344/1600 ratio=0.21 money=14 dom=Full House jokers=Fortune Teller, Runner, Odd Todd
+  seed=1485916522 ante=5 blind=The Mouth score=5040/22000 ratio=0.23 money=72 dom=Straight jokers=Certificate, Joker, Devious Joker, Drunkard
+  seed=2003523267 ante=4 blind=The Plant score=2968/10000 ratio=0.30 money=44 dom=Two Pair jokers=Sock and Buskin, Lusty Joker, Scary Face, Droll Joker, Photograph
+  seed=207514735 ante=4 blind=The Mouth score=3009/10000 ratio=0.30 money=77 dom=High Card jokers=Banner, Zany Joker, Swashbuckler, Throwback, Walkie Talkie
+  seed=1811658677 ante=2 blind=The Needle score=243/800 ratio=0.30 money=12 dom=Two Pair jokers=Mystic Summit, Clever Joker, Fortune Teller, Crazy Joker
+  seed=1552200554 ante=4 blind=Small Blind score=1687/5000 ratio=0.34 money=25 dom=Pair jokers=Scholar, Arrowhead, Odd Todd, Obelisk, Droll Joker
+  seed=2003624183 ante=6 blind=The Wall score=28736/80000 ratio=0.36 money=153 dom=High Card jokers=Golden Joker, The Trio, Walkie Talkie, Stuntman, Even Steven
+
+Blind/death commonalities
+------------------------
+Boss losses: 61 / 99 (61.6%)
+Top boss death blinds:
+  The Wall: 9
+  The Mouth: 9
+  The Needle: 7
+  The Water: 6
+  The Eye: 4
+  The Window: 4
+  The Flint: 4
+  The Pillar: 3
+  The Psychic: 3
+  The Manacle: 2
+  The Club: 2
+  The Plant: 2
+Top non-boss death blinds:
+  Big Blind: 23
+  Small Blind: 15
+The Eye losses: 4; The Mouth: 9; The Arm: 1; The Wall: 9
+Boss zero-score hand rows, likely hand disabled/restricted by boss:
+  The Mouth: 26
+  The Eye: 6
+
+Hand/archetype commonalities
+---------------------------
+One-hand blind clears: 363/1117 (32.5%); 4+ hand blinds: 155/1117 (13.9%)
+Dominant hand by losing run:
+  Two Pair: 41
+  High Card: 21
+  Pair: 17
+  Full House: 10
+  Flush: 6
+  Straight: 4
+All played hand counts in losses:
+  Two Pair: 571
+  High Card: 472
+  Pair: 464
+  Full House: 280
+  Straight: 211
+  Flush: 197
+  Three of a Kind: 120
+  Four of a Kind: 20
+  Straight Flush: 3
+Last-shop preferred hand before death:
+  Pair: 28
+  Flush: 18
+  Straight: 12
+  Three of a Kind: 11
+  Full House: 8
+  Two Pair: 3
+  Straight Flush: 1
+Average death ante by dominant hand:
+  High Card: avg ante 4.76, avg death ratio 0.747, runs 21
+  Straight: avg ante 4.00, avg death ratio 0.601, runs 4
+  Pair: avg ante 3.82, avg death ratio 0.751, runs 17
+  Two Pair: avg ante 3.73, avg death ratio 0.730, runs 41
+  Flush: avg ante 3.67, avg death ratio 0.671, runs 6
+  Full House: avg ante 2.50, avg death ratio 0.657, runs 10
+Losses whose final blind used 3+ hands and mostly weak hands (High Card/Pair/Two Pair): 87
+  seed=1060693664 ante=7 blind=The Eye score=63329/70000 ratio=0.90 money=150 dom=High Card jokers=Stuntman, Banner, Bootstraps, Half Joker, The Trio
+  seed=559911976 ante=7 blind=Big Blind score=46095/52500 ratio=0.88 money=114 dom=Two Pair jokers=Mad Joker, Jolly Joker, Bull, Banner, Abstract Joker
+  seed=134264875 ante=6 blind=The Wall score=29881/80000 ratio=0.37 money=75 dom=Two Pair jokers=Spare Trousers, Photograph, Hanging Chad, Banner, Gros Michel
+  seed=1432630996 ante=6 blind=The Manacle score=37675/40000 ratio=0.94 money=115 dom=High Card jokers=The Duo, Stuntman, Green Joker, Even Steven, Walkie Talkie
+  seed=1479088600 ante=6 blind=The Mouth score=25874/40000 ratio=0.65 money=111 dom=High Card jokers=Abstract Joker, Bull, Ramen, Flower Pot, Blue Joker
+  seed=1563396873 ante=6 blind=Big Blind score=22625/30000 ratio=0.75 money=89 dom=High Card jokers=Scary Face, Photograph, Hanging Chad, Green Joker, Gros Michel
+  seed=1600889079 ante=6 blind=Small Blind score=14699/20000 ratio=0.73 money=75 dom=Straight jokers=Even Steven, Abstract Joker, Odd Todd, Devious Joker, Rocket
+  seed=177625707 ante=6 blind=Big Blind score=23403/30000 ratio=0.78 money=91 dom=High Card jokers=Droll Joker, Green Joker, Crafty Joker, Blue Joker, Lusty Joker
+
+Joker role commonalities at death
+---------------------------------
+Final joker role counts on losses:
+  mult: 194
+  chips: 116
+  xmult: 70
+  scaling: 70
+  economy: 9
+Last-shop missing role signals before loss:
+  scaling: 36
+  xmult: 36
+  economy: 24
+  chips: 13
+  mult: 4
+Losses with full joker slots but no xmult role: 24
+Losses with full joker slots but no scaling role: 24
+Losses missing xmult in last shop audit: 36
+Losses missing scaling in last shop audit: 36
+Losses missing mult/chips in last shop audit: 4 / 13
+Most common final jokers in losses:
+  Blue Joker: 18
+  Smiley Face: 16
+  Banner: 15
+  Lusty Joker: 14
+  Abstract Joker: 14
+  Odd Todd: 12
+  Scary Face: 12
+  Half Joker: 11
+  Green Joker: 11
+  Droll Joker: 10
+  Scholar: 10
+  Even Steven: 10
+  Ramen: 8
+  Hanging Chad: 8
+  Gros Michel: 8
+  Jolly Joker: 8
+  Walkie Talkie: 8
+  Mad Joker: 7
+  Crafty Joker: 7
+  Ride the Bus: 7
+
+Shop/economy commonalities
+-------------------------
+Average final money on losses: 49.08; median 44
+High-money losses money >=75: 21; money >=100: 6
+High-money losses with missing critical role at last shop: 31
+High-money loss examples:
+  seed=2003624183 ante=6 blind=The Wall score=28736/80000 ratio=0.36 money=153 dom=High Card jokers=Golden Joker, The Trio, Walkie Talkie, Stuntman, Even Steven
+  seed=1060693664 ante=7 blind=The Eye score=63329/70000 ratio=0.90 money=150 dom=High Card jokers=Stuntman, Banner, Bootstraps, Half Joker, The Trio
+  seed=1432630996 ante=6 blind=The Manacle score=37675/40000 ratio=0.94 money=115 dom=High Card jokers=The Duo, Stuntman, Green Joker, Even Steven, Walkie Talkie
+  seed=559911976 ante=7 blind=Big Blind score=46095/52500 ratio=0.88 money=114 dom=Two Pair jokers=Mad Joker, Jolly Joker, Bull, Banner, Abstract Joker
+  seed=1479088600 ante=6 blind=The Mouth score=25874/40000 ratio=0.65 money=111 dom=High Card jokers=Abstract Joker, Bull, Ramen, Flower Pot, Blue Joker
+  seed=280171404 ante=5 blind=Big Blind score=15153/16500 ratio=0.92 money=100 dom=High Card jokers=Lusty Joker, Even Steven, Ramen, Arrowhead, Smiley Face
+  seed=1092638421 ante=5 blind=The Pillar score=20069/22000 ratio=0.91 money=98 dom=High Card jokers=Scholar, Lusty Joker, Half Joker, Ramen, Blue Joker
+  seed=810117241 ante=5 blind=The Water score=19677/22000 ratio=0.89 money=98 dom=Pair jokers=Green Joker, Half Joker, Banner, Splash, Scary Face
+  seed=1761611313 ante=5 blind=The Psychic score=15872/22000 ratio=0.72 money=94 dom=High Card jokers=Smiley Face, Banner, Blue Joker, Abstract Joker, Hanging Chad
+  seed=1104158348 ante=5 blind=The Pillar score=21416/22000 ratio=0.97 money=93 dom=High Card jokers=Hanging Chad, Scholar, Ramen, Odd Todd, Crafty Joker
+Losses with any reroll: 54; total rerolls in losses: 120
+Rerolls in loss runs by final death ante:
+  4: 52
+  5: 26
+  6: 26
+  2: 6
+  7: 5
+  3: 5
+Most common bought items in losses:
+  Gros Michel: 20
+  Blue Joker: 17
+  Banner: 16
+  Abstract Joker: 16
+  Scholar: 16
+  Smiley Face: 14
+  Lusty Joker: 13
+  Scary Face: 12
+  Half Joker: 12
+  Odd Todd: 12
+  Mad Joker: 11
+  Ride the Bus: 11
+  Jolly Joker: 11
+  Green Joker: 11
+  Misprint: 10
+  Hanging Chad: 10
+  Even Steven: 10
+  Square Joker: 10
+  Droll Joker: 9
+  Swashbuckler: 9
+Most common opened packs in losses:
+  Buffoon Pack: 91
+  Celestial Pack: 66
+  Jumbo Celestial Pack: 25
+  Standard Pack: 18
+  Jumbo Standard Pack: 9
+  Jumbo Buffoon Pack: 8
+  Mega Celestial Pack: 4
+  Spectral Pack: 2
+  Mega Buffoon Pack: 2
+  Mega Standard Pack: 1
+  Mega Spectral Pack: 1
+Most common pack picks in losses:
+  Mercury: 16
+  Venus: 13
+  Earth: 11
+  Neptune: 11
+  Jupiter: 8
+  Saturn: 7
+  Stone Card: 4
+  Sly Joker: 3
+  Mystic Summit: 3
+  Misprint: 3
+  Even Steven: 3
+  Crafty Joker: 3
+  Shoot the Moon: 3
+  Square Joker: 3
+  Red Card: 3
+  Wild Card: 3
+  Lusty Joker: 3
+  Lucky Card: 2
+  Odd Todd: 2
+  Mult Card: 2
+
+Early-loss commonalities
+-----------------------
+Early losses ante <=2: 22
+  no final jokers: 3
+  one final joker: 4
+  avg money: 12.09; avg score ratio: 0.694
+Early loss dominant hands:
+  Two Pair: 8
+  Full House: 7
+  Pair: 4
+  Flush: 1
+  High Card: 1
+  Straight: 1
+Early loss examples:
+  seed=383018788 ante=1 blind=The Manacle score=403/600 ratio=0.67 money=4 dom=Straight jokers=Card Sharp
+  seed=685623659 ante=1 blind=Big Blind score=308/450 ratio=0.68 money=6 dom=Full House jokers=Red Card
+  seed=1487162217 ante=1 blind=Small Blind score=219/300 ratio=0.73 money=4 dom=Two Pair jokers=none
+  seed=1765143079 ante=1 blind=The Club score=454/600 ratio=0.76 money=6 dom=Full House jokers=Seeing Double, Square Joker
+  seed=2102993602 ante=1 blind=Small Blind score=288/300 ratio=0.96 money=4 dom=Two Pair jokers=none
+  seed=349774307 ante=1 blind=Small Blind score=292/300 ratio=0.97 money=4 dom=Two Pair jokers=none
+  seed=2097732365 ante=2 blind=The Mouth score=344/1600 ratio=0.21 money=14 dom=Full House jokers=Fortune Teller, Runner, Odd Todd
+  seed=1811658677 ante=2 blind=The Needle score=243/800 ratio=0.30 money=12 dom=Two Pair jokers=Mystic Summit, Clever Joker, Fortune Teller, Crazy Joker
+  seed=963653964 ante=2 blind=The Window score=598/1600 ratio=0.37 money=19 dom=Pair jokers=Hologram, Even Steven, Crazy Joker
+  seed=729840575 ante=2 blind=The Psychic score=764/1600 ratio=0.48 money=21 dom=Pair jokers=Half Joker, Acrobat, Fortune Teller
+  seed=1998939489 ante=2 blind=The Wall score=1869/3200 ratio=0.58 money=12 dom=Two Pair jokers=Credit Card, Gluttonous Joker, Wily Joker
+  seed=1049061927 ante=2 blind=The Wall score=1919/3200 ratio=0.60 money=15 dom=Flush jokers=Driver's License, Droll Joker, Banner
+
+Final-blind score model risk
+----------------------------
+Losses where final blind predicted total was >1.5x actual and miss >=5000: 13
+  seed=1060693664 ante=7 blind=The Eye pred_total=110177 actual_total=63329 delta=46848 jokers=Stuntman, Banner, Bootstraps, Half Joker, The Trio hands={'Pair': 1, 'High Card': 3}
+  seed=1975736519 ante=5 blind=The Eye pred_total=40176 actual_total=4320 delta=35856 jokers=Lusty Joker, Bull, Ancient Joker, Odd Todd, Gros Michel hands={'Two Pair': 4}
+  seed=242426249 ante=5 blind=Big Blind pred_total=42174 actual_total=10881 delta=31293 jokers=Madness, Blue Joker, Green Joker hands={'Two Pair': 1, 'Pair': 2, 'High Card': 1}
+  seed=1432630996 ante=6 blind=The Manacle pred_total=61807 actual_total=37675 delta=24132 jokers=The Duo, Stuntman, Green Joker, Even Steven, Walkie Talkie hands={'Pair': 3, 'High Card': 1}
+  seed=604887388 ante=6 blind=Big Blind pred_total=50623 actual_total=28716 delta=21907 jokers=Green Joker, Odd Todd, Even Steven, Ancient Joker, Flower Pot hands={'Three of a Kind': 2, 'Flush': 1, 'Two Pair': 1}
+  seed=1479088600 ante=6 blind=The Mouth pred_total=44771 actual_total=25874 delta=18897 jokers=Abstract Joker, Bull, Ramen, Flower Pot, Blue Joker hands={'Straight': 2, 'Pair': 2}
+  seed=1620116216 ante=5 blind=Big Blind pred_total=33788 actual_total=15477 delta=18311 jokers=Ancient Joker, Scary Face, Abstract Joker, Brainstorm, Photograph hands={'Straight': 1, 'Full House': 1, 'High Card': 1, 'Two Pair': 1}
+  seed=648813957 ante=5 blind=Small Blind pred_total=23869 actual_total=10243 delta=13626 jokers=Walkie Talkie, Red Card, Hack, Gros Michel, Ancient Joker hands={'Two Pair': 4}
+  seed=1579531438 ante=4 blind=The Mouth pred_total=16038 actual_total=6700 delta=9338 jokers=Abstract Joker, Spare Trousers, Sly Joker, Gros Michel, Jolly Joker hands={'Full House': 1, 'Pair': 2, 'Straight': 1}
+  seed=545206600 ante=4 blind=The Mouth pred_total=12794 actual_total=3933 delta=8861 jokers=Mad Joker, Supernova, Arrowhead, The Idol, Smiley Face hands={'Full House': 1, 'Two Pair': 1, 'Straight': 1, 'High Card': 1}
+
+Most likely large commonalities
+--------------------------------
+1. Scaling/xmult scarcity: the last-shop audit still marks xmult/scaling missing in most losses, and many full-slot deaths have no xmult role. The bot often has money but not enough multiplicative/scaling power.
+2. Weak hand mix: losing runs are dominated by Two Pair, High Card, and Pair. Two Pair is still the top dominant hand, but its average death ante is poor unless supported by Spare Trousers or high levels.
+3. Boss-specific tactical failures: The Eye and The Mouth create zero-score hands and/or overconfident predicted scoring. The bot needs boss-aware play planning, not just generic best-hand scoring.
+4. Economy is now too passive in many mid/late losses: ante 5+ losses average very high cash. Holding interest is good, but the bot needs stronger emergency conversion from cash into scoring/scaling before pressure blinds.
+5. Early deaths are mostly failed first/second blind execution: a chunk of ante <=2 deaths end with few/no jokers, so immediate hand construction and first-shop Buffoon/scoring purchase priority still matter.
+6. Scoring evaluator mismatch clusters around complex jokers/bosses: Straight/The Order, The Eye, Green Joker timing, Ramen, Obelisk, and randomness still make some decisions overconfident.
+
+Ranked next improvements from this data
+---------------------------------------
+1. Add pressure-aware spending: when projected survival margin is low or ante >=4, spend above interest aggressively on xmult/scaling/high-impact packs instead of ending shops rich.
+2. Make boss-aware hand planning for The Eye/The Mouth/TheArm/TheWater/TheNeedle/TheWall: avoid repeated disabled hand types and simulate the boss constraint during action selection.
+3. Further penalize unsupported Two Pair/Pair archetypes; let them become primary only with explicit enablers such as Spare Trousers, strong pair jokers, high levels, or deck shape.
+4. Improve replacement logic for full joker slots by comparing marginal role improvement, not only raw item value. Full-slot no-xmult deaths suggest the bot keeps mediocre additive jokers too long.
+5. Improve emergency pack/reroll gates: high-money losses with missing roles should trigger rerolls/Buffoon/Celestial search before leaving shop.
+6. Add final-blind/postmortem replay labels: close loss, blowout, boss trap, scoring-model miss, weak-archetype, high-money-under-spend. These labels will make the replay analyzer and future training cleaner.
+
+Cause-label counts across 99 losses
+-----------------------------------
+weak_final_hand_mix: 87
+boss_death: 61
+low_ceiling_pair_archetype: 58
+close_loss: 34
+money_held_while_missing_power: 31
+full_slots_no_scaling: 24
+full_slots_no_xmult: 24
+early_death: 22
+very_high_money_death: 21
+blowout_loss: 17
+score_model_overconfident: 13
+boss_restriction_zero_score: 12
+
+Cause labels by ante bucket
+--------------------------
+early<=2: early_death=22, weak_final_hand_mix=16, boss_death=15, low_ceiling_pair_archetype=12, close_loss=5, blowout_loss=4, boss_restriction_zero_score=2
+mid3-4: weak_final_hand_mix=39, low_ceiling_pair_archetype=29, boss_death=28, close_loss=16, full_slots_no_xmult=14, money_held_while_missing_power=7, blowout_loss=7, boss_restriction_zero_score=6, full_slots_no_scaling=6, score_model_overconfident=4, very_high_money_death=1
+late5+: weak_final_hand_mix=32, money_held_while_missing_power=24, very_high_money_death=20, boss_death=18, full_slots_no_scaling=18, low_ceiling_pair_archetype=17, close_loss=13, full_slots_no_xmult=10, score_model_overconfident=9, blowout_loss=6, boss_restriction_zero_score=4

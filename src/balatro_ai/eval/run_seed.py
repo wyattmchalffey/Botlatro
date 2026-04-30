@@ -154,6 +154,7 @@ def _step_extra(*, state: GameState, next_state: GameState, action: Action) -> d
         held_cards=held_cards,
         deck_size=state.deck_size,
         money=state.money,
+        played_hand_types_this_round=_played_hand_types_this_round(state),
     )
     actual_score_delta = next_state.current_score - state.current_score
     return {
@@ -183,6 +184,29 @@ def _step_extra(*, state: GameState, next_state: GameState, action: Action) -> d
             "joker_details": [_joker_audit_payload(joker) for joker in state.jokers],
         }
     }
+
+
+def _played_hand_types_this_round(state: GameState) -> tuple[str, ...]:
+    hands = state.modifiers.get("hands", {})
+    if not isinstance(hands, dict):
+        return ()
+
+    played: list[tuple[int, str]] = []
+    for name, value in hands.items():
+        if not isinstance(value, dict):
+            continue
+        try:
+            played_count = int(value.get("played_this_round", 0) or 0)
+        except (TypeError, ValueError):
+            played_count = 0
+        if played_count <= 0:
+            continue
+        try:
+            order = int(value.get("order", 0) or 0)
+        except (TypeError, ValueError):
+            order = 0
+        played.extend((order, str(name)) for _ in range(played_count))
+    return tuple(name for _, name in sorted(played, key=lambda item: item[0]))
 
 
 def _card_audit_payload(card) -> dict[str, str | None]:

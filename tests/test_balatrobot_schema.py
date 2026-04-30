@@ -48,7 +48,7 @@ class BalatroBotSchemaTests(unittest.TestCase):
                     ]
                 },
                 "jokers": {"cards": [{"key": "j_joker", "label": "Joker", "cost": {"sell": 1}}]},
-                "hands": {"Pair": {"level": 2}},
+                "hands": {"Pair": {"level": 2, "played_this_round": 1}},
             }
         )
 
@@ -61,6 +61,7 @@ class BalatroBotSchemaTests(unittest.TestCase):
         self.assertEqual(state.jokers[0].metadata["key"], "j_joker")
         self.assertEqual(state.modifiers["joker_cards"][0]["key"], "j_joker")
         self.assertEqual(state.hand_levels["Pair"], 2)
+        self.assertEqual(state.modifiers["hands"]["Pair"]["played_this_round"], 1)
         self.assertIn("shop_cards", state.modifiers)
         self.assertTrue(any(action.action_type == ActionType.PLAY_HAND for action in state.legal_actions))
 
@@ -121,6 +122,20 @@ class BalatroBotSchemaTests(unittest.TestCase):
 
         self.assertEqual(client.calls[1], ("start", {"deck": "BLUE", "stake": "WHITE", "seed": "123"}))
 
+    def test_pack_action_sends_target_cards(self) -> None:
+        client = RecordingClient()
+        client.send_action(
+            Action(
+                ActionType.CHOOSE_PACK_CARD,
+                card_indices=(1, 3),
+                target_id="card",
+                amount=0,
+                metadata={"kind": "card", "index": 0},
+            )
+        )
+
+        self.assertEqual(client.calls[0], ("pack", {"card": 0, "cards": [1, 3]}))
+
     def test_shop_actions_filter_unaffordable_buys(self) -> None:
         state = GameState.from_mapping(
             {
@@ -139,6 +154,34 @@ class BalatroBotSchemaTests(unittest.TestCase):
 
         self.assertEqual(len(buy_actions), 1)
         self.assertEqual(buy_actions[0].amount, 0)
+
+    def test_shop_actions_filter_normal_joker_buys_when_slots_are_full(self) -> None:
+        state = GameState.from_mapping(
+            {
+                "state": "SHOP",
+                "money": 20,
+                "jokers": {
+                    "cards": [
+                        {"label": "Joker"},
+                        {"label": "Jolly Joker"},
+                        {"label": "Sly Joker"},
+                        {"label": "Half Joker"},
+                        {"label": "Banner"},
+                    ]
+                },
+                "shop": {
+                    "cards": [
+                        {"label": "Cavendish", "set": "JOKER", "cost": {"buy": 4}},
+                        {"label": "Negative Joker", "set": "JOKER", "edition": "NEGATIVE", "cost": {"buy": 4}},
+                        {"label": "Mars", "set": "PLANET", "cost": {"buy": 3}},
+                    ]
+                },
+            }
+        )
+
+        buy_actions = [action for action in state.legal_actions if action.action_type == ActionType.BUY]
+
+        self.assertEqual(tuple(action.amount for action in buy_actions), (1, 2))
 
     def test_shop_actions_include_joker_sells(self) -> None:
         state = GameState.from_mapping(

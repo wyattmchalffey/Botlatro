@@ -1,0 +1,35 @@
+Current light 100 vs primary-score-audit-100
+runs: old=100 new=100
+wins: old=1 new=1
+avg_ante: old=3.9 new=3.92
+avg_score: old=11215.96 new=10665.74
+avg_money: old=50.5 new=48.37
+ante_dist: old={'1': 6, '2': 16, '3': 15, '4': 28, '5': 20, '6': 12, '7': 2, '9': 1} new={'1': 6, '2': 15, '3': 14, '4': 29, '5': 24, '6': 8, '7': 3, '9': 1}
+
+Biggest ante improvements:
++ 4 seed=299138733 old=A3 The Wall 5281/8000 new=A7 The Manacle 52440/70000
++ 2 seed=1060693664 old=A7 The Eye 63329/70000 new=A9 Big Blind 147800/165000
++ 2 seed=1502037373 old=A4 The Window 8090/10000 new=A6 The Tooth 33168/40000
++ 2 seed=157433408 old=A2 The Water 1276/1600 new=A4 The Mark 7581/10000
++ 1 seed=1579531438 old=A4 The Mouth 6700/10000 new=A5 The Wheel 19233/22000
++ 1 seed=2086264372 old=A4 The Plant 9467/10000 new=A5 Big Blind 14960/16500
++ 1 seed=1094190033 old=A4 The Eye 6656/10000 new=A5 Small Blind 6237/11000
++ 1 seed=870661523 old=A2 The Flint 1018/1600 new=A3 The Needle 500/2000
++ 1 seed=1847067209 old=A4 The Flint 9048/10000 new=A5 Small Blind 7920/11000
++ 1 seed=1871614268 old=A4 The Water 8041/10000 new=A5 Big Blind 3095/16500
++ 0 seed=1975736519 old=A5 The Eye 4320/22000 new=A5 The Eye 21900/22000
++ 0 seed=1071573 old=A5 The House 16877/22000 new=A5 The House 21548/22000
+
+Biggest ante regressions:
+ -2 seed=1414043349 old=A9 The Serpent 195400/220000 new=A7 Small Blind 30292/35000
+ -2 seed=483238480 old=A6 The Window 28724/40000 new=A4 The Psychic 7948/10000
+ -2 seed=2003624183 old=A6 The Wall 28736/80000 new=A4 The Fish 9600/10000
+ -1 seed=134264875 old=A6 The Wall 29881/80000 new=A5 Big Blind 12281/16500
+ -1 seed=1092638421 old=A5 The Pillar 20069/22000 new=A4 Big Blind 6700/7500
+ -1 seed=901963821 old=A5 The Water 15933/22000 new=A4 Big Blind 5182/7500
+ -1 seed=1052529602 old=A5 Big Blind 13558/16500 new=A4 Big Blind 7470/7500
+ -1 seed=1904475041 old=A5 Big Blind 11393/16500 new=A4 The Goad 5463/10000
+ -1 seed=1072159285 old=A3 Big Blind 2712/3000 new=A2 Big Blind 1194/1200
+ -1 seed=1894553533 old=A6 Big Blind 19826/30000 new=A5 The Plant 19244/22000
+ -1 seed=501945870 old=A6 Small Blind 17864/20000 new=A5 The Serpent 20884/22000
+ +0 seed=119769974 old=A5 Big Blind 15237/16500 new=A5 The Goad 10061/22000

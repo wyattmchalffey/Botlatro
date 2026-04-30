@@ -1,0 +1,147 @@
+Bot: basic_strategy_bot
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Seeds: 100
+First seed: 349774307
+Bot: basic_strategy_bot
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Seeds: 100
+Endpoints: http://127.0.0.1:12346, http://127.0.0.1:12347, http://127.0.0.1:12348, http://127.0.0.1:12349
+Replay mode: score_audit
+Start retries: 2
+Failed seed retries: 2
+[1/100] seed=349774307 won=False ante=1 score=292 money=4 runtime=10.60s
+[2/100] seed=685623659 won=False ante=1 score=308 money=6 runtime=18.85s
+[3/100] seed=380312572 won=False ante=2 score=1328 money=32 runtime=49.20s
+[4/100] seed=2097732365 won=False ante=2 score=344 money=14 runtime=64.46s
+[5/100] seed=2059837045 won=False ante=4 score=17955 money=74 runtime=78.49s
+[6/100] seed=119769974 won=False ante=5 score=15237 money=88 runtime=97.61s
+[7/100] seed=157433408 won=False ante=2 score=1276 money=11 runtime=60.88s
+[8/100] seed=525563126 won=False ante=2 score=620 money=4 runtime=64.42s
+[9/100] seed=1342624361 won=False ante=4 score=3850 money=33 runtime=99.28s
+[10/100] seed=796920518 won=False ante=3 score=2128 money=7 runtime=85.83s
+[11/100] seed=2120732055 won=False ante=2 score=652 money=21 runtime=22.88s
+[12/100] seed=339881143 won=False ante=4 score=10988 money=55 runtime=99.18s
+[13/100] seed=134264875 won=False ante=6 score=29881 money=75 runtime=153.48s
+[14/100] seed=1254269343 won=False ante=5 score=15410 money=62 runtime=78.20s
+[15/100] seed=483238480 won=False ante=6 score=28724 money=43 runtime=166.42s
+[16/100] seed=125013566 won=False ante=4 score=9602 money=59 runtime=73.28s
+[17/100] seed=131752460 won=False ante=3 score=470 money=36 runtime=71.15s
+[18/100] seed=1052529602 won=False ante=0 score=0 money=0 runtime=64.66s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'BAD_REQUEST'}, 'code': -32001, 'message': 'Cannot purchase joker card, jo
+[19/100] seed=604887388 won=False ante=6 score=28716 money=93 runtime=141.44s
+[20/100] seed=1196921577 won=False ante=4 score=7102 money=70 runtime=52.98s
+[21/100] seed=1847067209 won=False ante=4 score=9048 money=29 runtime=101.09s
+[22/100] seed=648813957 won=False ante=5 score=10243 money=41 runtime=105.83s
+[23/100] seed=2003624183 won=False ante=6 score=28736 money=153 runtime=120.70s
+[24/100] seed=790997537 won=False ante=4 score=7237 money=46 runtime=65.15s
+[25/100] seed=365679440 won=False ante=2 score=554 money=15 runtime=22.16s
+[26/100] seed=1871614268 won=False ante=4 score=8041 money=27 runtime=40.94s
+[27/100] seed=1385447778 won=False ante=4 score=2698 money=53 runtime=51.06s
+[28/100] seed=927186178 won=False ante=4 score=8764 money=64 runtime=46.78s
+[29/100] seed=870661523 won=False ante=2 score=1018 money=11 runtime=58.93s
+[30/100] seed=224492453 won=False ante=4 score=9638 money=55 runtime=83.86s
+[31/100] seed=1674064425 won=False ante=3 score=6246 money=54 runtime=52.64s
+[32/100] seed=694280939 won=False ante=3 score=3030 money=54 runtime=64.27s
+[33/100] seed=1761611313 won=False ante=5 score=15872 money=94 runtime=100.95s
+[34/100] seed=242426249 won=False ante=5 score=10881 money=30 runtime=72.54s
+[35/100] seed=1620116216 won=False ante=5 score=15477 money=55 runtime=109.90s
+[36/100] seed=383018788 won=False ante=1 score=403 money=4 runtime=15.67s
+[37/100] seed=810117241 won=False ante=5 score=19677 money=98 runtime=45.60s
+[38/100] seed=2063068094 won=False ante=4 score=8496 money=58 runtime=35.62s
+[39/100] seed=729840575 won=False ante=2 score=764 money=21 runtime=18.78s
+[40/100] seed=1432630996 won=False ante=6 score=37675 money=115 runtime=63.68s
+[41/100] seed=1104158348 won=False ante=5 score=21416 money=93 runtime=44.10s
+[42/100] seed=963653964 won=False ante=2 score=598 money=19 runtime=28.71s
+[43/100] seed=1060693664 won=False ante=7 score=63329 money=150 runtime=53.25s
+[44/100] seed=1094190033 won=False ante=0 score=0 money=0 runtime=244.37s death=error:ConnectionError: Could not reach Balatro bridge at http://127.0.0.1:12346
+[45/100] seed=443630566 won=False ante=3 score=5544 money=37 runtime=63.10s
+[46/100] seed=1811658677 won=False ante=2 score=243 money=12 runtime=52.03s
+[47/100] seed=545206600 won=False ante=4 score=3933 money=66 runtime=109.04s
+[48/100] seed=1356320695 won=False ante=4 score=3762 money=52 runtime=56.64s
+[49/100] seed=1560825109 won=False ante=3 score=3975 money=50 runtime=44.35s
+[50/100] seed=47950156 won=False ante=2 score=1140 money=9 runtime=52.46s
+[51/100] seed=1072159285 won=False ante=3 score=2712 money=22 runtime=34.25s
+[52/100] seed=968186750 won=False ante=4 score=5289 money=43 runtime=79.78s
+[53/100] seed=1414043349 won=True ante=9 score=195400 money=191 runtime=234.17s
+[54/100] seed=1765143079 won=False ante=1 score=454 money=6 runtime=36.83s
+[55/100] seed=1537483497 won=False ante=3 score=1532 money=15 runtime=91.18s
+[56/100] seed=1789463296 won=False ante=3 score=2684 money=28 runtime=35.98s
+[57/100] seed=607021399 won=False ante=2 score=523 money=5 runtime=28.59s
+[58/100] seed=1579531438 won=False ante=4 score=6700 money=40 runtime=52.34s
+[59/100] seed=1894553533 won=False ante=0 score=0 money=0 runtime=118.84s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'BAD_REQUEST'}, 'code': -32001, 'message': 'Cannot purchase joker card, jo
+[60/100] seed=1479088600 won=False ante=0 score=0 money=0 runtime=248.88s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'INVALID_STATE'}, 'code': -32002, 'message': 'No pack is currently open'}
+Retired unhealthy endpoint http://127.0.0.1:12347; failed seed 116049414 will retry later.
+[61/100] seed=116049414 won=False ante=0 score=0 money=0 runtime=6.28s death=error:ConnectionError: Could not reach Balatro bridge at http://127.0.0.1:12347
+[62/100] seed=280171404 won=False ante=5 score=15153 money=100 runtime=49.21s
+[63/100] seed=177625707 won=False ante=6 score=23403 money=91 runtime=61.84s
+[64/100] seed=216095867 won=False ante=4 score=9153 money=32 runtime=61.81s
+[65/100] seed=1502037373 won=False ante=4 score=8090 money=32 runtime=66.45s
+[66/100] seed=1092638421 won=False ante=5 score=20069 money=98 runtime=80.13s
+[67/100] seed=1975736519 won=False ante=5 score=4320 money=74 runtime=83.93s
+[68/100] seed=1135490781 won=False ante=3 score=2642 money=28 runtime=41.50s
+[69/100] seed=1563396873 won=False ante=6 score=22625 money=89 runtime=71.28s
+[70/100] seed=559911976 won=False ante=0 score=0 money=0 runtime=95.31s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'BAD_REQUEST'}, 'code': -32001, 'message': 'Cannot purchase joker card, jo
+[71/100] seed=1552200554 won=False ante=4 score=1687 money=25 runtime=44.69s
+[72/100] seed=482637942 won=False ante=4 score=8368 money=27 runtime=86.18s
+[73/100] seed=538043824 won=False ante=5 score=17252 money=62 runtime=54.28s
+[74/100] seed=1422873775 won=False ante=3 score=2154 money=34 runtime=52.95s
+[75/100] seed=1307973524 won=False ante=4 score=6292 money=38 runtime=51.46s
+[76/100] seed=2069153500 won=False ante=5 score=8202 money=75 runtime=88.04s
+[77/100] seed=299138733 won=False ante=3 score=5281 money=21 runtime=48.25s
+[78/100] seed=1998939489 won=False ante=0 score=0 money=0 runtime=104.09s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'BAD_REQUEST'}, 'code': -32001, 'message': 'Cannot purchase joker card, jo
+[79/100] seed=1049061927 won=False ante=2 score=1919 money=15 runtime=50.80s
+[80/100] seed=2086264372 won=False ante=4 score=9467 money=63 runtime=104.33s
+[81/100] seed=2102993602 won=False ante=1 score=288 money=4 runtime=8.87s
+[82/100] seed=679205356 won=False ante=2 score=700 money=22 runtime=17.84s
+[83/100] seed=2003523267 won=False ante=4 score=2968 money=44 runtime=94.83s
+[84/100] seed=1563440389 won=False ante=3 score=3660 money=30 runtime=65.92s
+[85/100] seed=839196342 won=False ante=5 score=8912 money=93 runtime=43.60s
+[86/100] seed=2026595128 won=False ante=3 score=1878 money=14 runtime=26.32s
+[87/100] seed=875021186 won=False ante=2 score=732 money=15 runtime=29.67s
+[88/100] seed=1600889079 won=False ante=0 score=0 money=0 runtime=82.09s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'BAD_REQUEST'}, 'code': -32001, 'message': 'Cannot purchase joker card, jo
+[89/100] seed=84145638 won=False ante=4 score=3360 money=58 runtime=40.33s
+[90/100] seed=225511985 won=False ante=4 score=9847 money=47 runtime=40.34s
+[91/100] seed=1904475041 won=False ante=5 score=11393 money=72 runtime=98.81s
+[92/100] seed=901963821 won=False ante=5 score=15933 money=41 runtime=58.56s
+[93/100] seed=1485916522 won=False ante=5 score=5040 money=72 runtime=96.49s
+[94/100] seed=501945870 won=False ante=0 score=0 money=0 runtime=57.69s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'BAD_REQUEST'}, 'code': -32001, 'message': 'Cannot purchase joker card, jo
+[95/100] seed=1487162217 won=False ante=1 score=219 money=4 runtime=5.90s
+[96/100] seed=1071573 won=False ante=5 score=16877 money=61 runtime=75.52s
+[97/100] seed=687438511 won=False ante=3 score=1545 money=47 runtime=43.09s
+[98/100] seed=207514735 won=False ante=4 score=3009 money=77 runtime=55.38s
+[99/100] seed=2142990556 won=False ante=4 score=2946 money=43 runtime=64.35s
+[100/100] seed=2142736029 won=False ante=6 score=3432 money=68 runtime=85.97s
+Retry 1: rerunning 9 failed seed(s) on healthy endpoint(s).
+[retry 1] seed=116049414 won=False ante=5 score=17724 money=63 runtime=74.74s
+[retry 1] seed=501945870 won=False ante=0 score=0 money=0 runtime=26.55s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'BAD_REQUEST'}, 'code': -32001, 'message': 'Cannot purchase joker card, jo
+[retry 1] seed=559911976 won=False ante=0 score=0 money=0 runtime=51.81s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'BAD_REQUEST'}, 'code': -32001, 'message': 'Cannot purchase joker card, jo
+[retry 1] seed=1052529602 won=False ante=0 score=0 money=0 runtime=23.06s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'BAD_REQUEST'}, 'code': -32001, 'message': 'Cannot purchase joker card, jo
+[retry 1] seed=1094190033 won=False ante=0 score=0 money=0 runtime=203.46s death=error:ConnectionError: Could not reach Balatro bridge at http://127.0.0.1:12348
+[retry 1] seed=1479088600 won=False ante=6 score=25874 money=111 runtime=26.76s
+[retry 1] seed=1600889079 won=False ante=0 score=0 money=0 runtime=46.83s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'BAD_REQUEST'}, 'code': -32001, 'message': 'Cannot purchase joker card, jo
+[retry 1] seed=1894553533 won=False ante=0 score=0 money=0 runtime=55.30s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'BAD_REQUEST'}, 'code': -32001, 'message': 'Cannot purchase joker card, jo
+[retry 1] seed=1998939489 won=False ante=2 score=1869 money=12 runtime=22.34s
+Retry 2: rerunning 6 failed seed(s) on healthy endpoint(s).
+[retry 2] seed=501945870 won=False ante=0 score=0 money=0 runtime=27.31s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'BAD_REQUEST'}, 'code': -32001, 'message': 'Cannot purchase joker card, jo
+[retry 2] seed=559911976 won=False ante=0 score=0 money=0 runtime=53.01s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'BAD_REQUEST'}, 'code': -32001, 'message': 'Cannot purchase joker card, jo
+[retry 2] seed=1052529602 won=False ante=0 score=0 money=0 runtime=22.67s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'BAD_REQUEST'}, 'code': -32001, 'message': 'Cannot purchase joker card, jo
+[retry 2] seed=1094190033 won=False ante=0 score=0 money=0 runtime=203.55s death=error:ConnectionError: Could not reach Balatro bridge at http://127.0.0.1:12346
+[retry 2] seed=1600889079 won=False ante=0 score=0 money=0 runtime=49.31s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'BAD_REQUEST'}, 'code': -32001, 'message': 'Cannot purchase joker card, jo
+[retry 2] seed=1894553533 won=False ante=0 score=0 money=0 runtime=54.76s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'BAD_REQUEST'}, 'code': -32001, 'message': 'Cannot purchase joker card, jo
+
+Bot: basic_strategy_bot
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Runs: 100
+Win rate: 1.0%
+Average ante: 3.56
+Average final score: 10029.0
+Average final money: 46.0
+Average runtime: 64.45 sec/run

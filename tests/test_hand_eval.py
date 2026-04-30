@@ -110,7 +110,7 @@ class HandEvaluatorTests(unittest.TestCase):
             jokers=(Joker("Joker", edition="POLY"),),
         )
 
-        self.assertEqual(evaluation.score, 576)
+        self.assertEqual(evaluation.score, 384)
 
     def test_holographic_short_edition_is_applied(self) -> None:
         evaluation = evaluate_played_cards(
@@ -200,6 +200,47 @@ class HandEvaluatorTests(unittest.TestCase):
 
         self.assertEqual(evaluation.score, 0)
 
+    def test_the_eye_zeroes_repeated_hand_type(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["KS", "KC"]),
+            blind_name="The Eye",
+            played_hand_types_this_round=(HandType.PAIR,),
+        )
+
+        self.assertEqual(evaluation.hand_type, HandType.PAIR)
+        self.assertEqual(evaluation.score, 0)
+
+    def test_the_mouth_zeroes_different_hand_type_after_first_play(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["AS", "KS", "QS", "JS", "TS"]),
+            blind_name="The Mouth",
+            played_hand_types_this_round=(HandType.PAIR,),
+        )
+
+        self.assertEqual(evaluation.hand_type, HandType.STRAIGHT_FLUSH)
+        self.assertEqual(evaluation.score, 0)
+
+    def test_card_sharp_applies_xmult_to_repeated_hand_type(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["KS", "KC"]),
+            jokers=(Joker("Card Sharp"),),
+            played_hand_types_this_round=(HandType.PAIR,),
+        )
+
+        self.assertEqual(evaluation.hand_type, HandType.PAIR)
+        self.assertEqual(evaluation.effect_xmult, 3)
+        self.assertEqual(evaluation.score, 180)
+
+    def test_best_play_respects_the_mouth_existing_hand_type(self) -> None:
+        evaluation = best_play_from_hand(
+            cards(["KS", "KC", "AS", "QS", "JS", "TS", "9S"]),
+            blind_name="The Mouth",
+            played_hand_types_this_round=(HandType.PAIR,),
+        )
+
+        self.assertEqual(evaluation.hand_type, HandType.PAIR)
+        self.assertGreater(evaluation.score, 0)
+
     def test_arrowhead_is_applied(self) -> None:
         evaluation = evaluate_played_cards(
             cards(["QD", "JS", "TS", "9S", "8H"]),
@@ -234,7 +275,7 @@ class HandEvaluatorTests(unittest.TestCase):
 
         self.assertEqual(evaluation.mult, 18)
         self.assertEqual(evaluation.effect_xmult, 2.25)
-        self.assertEqual(evaluation.score, 648)
+        self.assertEqual(evaluation.score, 568)
 
     def test_blackboard_and_blue_joker_are_applied(self) -> None:
         evaluation = evaluate_played_cards(

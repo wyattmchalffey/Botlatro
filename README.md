@@ -75,13 +75,16 @@ python -m balatro_ai.gui.benchmark_app
 ```
 
 The GUI lets you configure bot, stake, seed count, max steps, replay/output
-paths, worker count, bridge ports, deck, profile/unlock labels, and BalatroBot launch options. To use
+paths, worker count, bridge ports, deck, profile/unlock labels, failed-seed
+retries, and BalatroBot launch options. To use
 parallel workers, set `Workers` above 1 and enable `Launch bridge workers`; the
 GUI will start one BalatroBot bridge per consecutive port. Leave `Stop existing
 first` enabled when launching workers so stale bridge processes cannot occupy
 the requested ports. Put exact seeds in `Seed list` for one-off or hand-picked
 runs; comma, spaces, and newlines all work, and this overrides the `Seeds`
-count. Use `Stop Run` to cancel the active benchmark; it stops owned workers and
+count. Use `Use Benchmark Seeds` to load the current 100-seed comparison set
+from `.data/current-light-100-seeds.txt`; use `Generated Seeds` to go back to
+deterministic label-based seed generation. Use `Stop Run` to cancel the active benchmark; it stops owned workers and
 prevents new seeds from being scheduled. Use the `Benchmark Speed` preset for
 fast headless sweeps; it sets headless mode, fast mode, no shaders, quiet bridge
 logs, summary replay mode, `fps-cap` 2000, `gamespeed` 32, and animation FPS 1.

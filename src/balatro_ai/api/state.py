@@ -179,6 +179,7 @@ class GameState:
             modifiers={
                 **dict(data.get("modifiers", {})),
                 "current_blind": current_blind,
+                "hands": data.get("hands", data.get("hand_levels", {})),
                 "joker_cards": joker_cards,
                 "shop_cards": shop_cards,
                 "voucher_cards": voucher_cards,
@@ -192,7 +193,7 @@ class GameState:
         if state.ante >= 9 and not state.run_over and not state.won:
             return replace(state, ante=8, run_over=True, won=True, legal_actions=())
         if state.legal_actions:
-            return _with_augmented_sell_actions(state)
+            return _with_augmented_sell_actions(_with_sanitized_legal_actions(state))
         return _with_derived_legal_actions(state, shop_cards=shop_cards, voucher_cards=voucher_cards, booster_packs=booster_packs)
 
 
@@ -336,7 +337,7 @@ def _derive_legal_actions(
         for index in range(len(state.jokers)):
             actions.append(Action(ActionType.SELL, target_id="joker", amount=index, metadata={"kind": "joker", "index": index}))
         for index in range(len(shop_cards)):
-            if _is_affordable(shop_cards[index], state.money):
+            if _is_affordable(shop_cards[index], state.money) and _shop_card_can_be_bought(state, shop_cards[index]):
                 actions.append(Action(ActionType.BUY, target_id="card", amount=index, metadata={"kind": "card", "index": index}))
         for index in range(len(voucher_cards)):
             if _is_affordable(voucher_cards[index], state.money):
@@ -354,6 +355,80 @@ def _derive_legal_actions(
     elif state.phase not in {GamePhase.RUN_OVER, GamePhase.UNKNOWN}:
         actions.append(Action(ActionType.NO_OP))
     return tuple(actions)
+
+
+def _with_sanitized_legal_actions(state: GameState) -> GameState:
+    if state.phase != GamePhase.SHOP:
+        return state
+    legal_actions = tuple(action for action in state.legal_actions if _action_can_be_taken(state, action))
+    if legal_actions == state.legal_actions:
+        return state
+    return replace(state, legal_actions=legal_actions)
+
+
+def _action_can_be_taken(state: GameState, action: Action) -> bool:
+    if action.action_type != ActionType.BUY:
+        return True
+    kind = str(action.metadata.get("kind", action.target_id or ""))
+    if kind != "card":
+        return True
+    index = _action_index(action)
+    shop_cards = state.modifiers.get("shop_cards", ())
+    if index is None or not 0 <= index < len(shop_cards):
+        return True
+    return _shop_card_can_be_bought(state, shop_cards[index])
+
+
+def _action_index(action: Action) -> int | None:
+    raw = action.metadata.get("index", action.amount)
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _shop_card_can_be_bought(state: GameState, card: Any) -> bool:
+    if not _is_joker_shop_card(card):
+        return True
+    if not _shop_joker_uses_normal_slot(card):
+        return True
+    return _normal_joker_slots_used(state) < _normal_joker_slot_limit(state)
+
+
+def _is_joker_shop_card(card: Any) -> bool:
+    if not isinstance(card, dict):
+        return False
+    label = str(card.get("label", card.get("name", card.get("key", ""))))
+    key = str(card.get("key", ""))
+    card_set = str(card.get("set", "")).upper()
+    return card_set == "JOKER" or "joker" in label.lower() or key.startswith("j_")
+
+
+def _shop_joker_uses_normal_slot(card: Any) -> bool:
+    if not isinstance(card, dict):
+        return True
+    modifier = _mapping_or_empty(card.get("modifier"))
+    edition = str(card.get("edition", modifier.get("edition", "")) or "").lower()
+    return "negative" not in edition
+
+
+def _normal_joker_slots_used(state: GameState) -> int:
+    return sum(1 for joker in state.jokers if _joker_uses_normal_slot(joker))
+
+
+def _joker_uses_normal_slot(joker: Joker) -> bool:
+    return "negative" not in (joker.edition or "").lower()
+
+
+def _normal_joker_slot_limit(state: GameState) -> int:
+    for key in ("joker_slot_limit", "joker_slots"):
+        raw = state.modifiers.get(key)
+        try:
+            if raw is not None:
+                return max(0, int(raw))
+        except (TypeError, ValueError):
+            continue
+    return 5
 
 
 def _with_augmented_sell_actions(state: GameState) -> GameState:

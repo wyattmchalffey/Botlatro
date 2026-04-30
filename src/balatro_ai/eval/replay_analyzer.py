@@ -11,7 +11,8 @@ import re
 from statistics import mean
 from typing import Iterable
 
-from balatro_ai.api.state import Card
+from balatro_ai.api.state import Card, Joker
+from balatro_ai.bots.basic_strategy_bot import _joker_roles
 from balatro_ai.rules.hand_evaluator import evaluate_played_cards
 
 
@@ -24,6 +25,40 @@ STATE_PATTERN = re.compile(
     r"score=(?P<score>\d+)/(?P<required>\d+) money=(?P<money>-?\d+) "
     r"hands=(?P<hands>\d+) discards=(?P<discards>\d+) .* jokers=\[(?P<jokers>.*?)\]"
 )
+BOSS_BLINDS = frozenset(
+    {
+        "The Hook",
+        "The Ox",
+        "The House",
+        "The Wall",
+        "The Wheel",
+        "The Arm",
+        "The Club",
+        "The Fish",
+        "The Psychic",
+        "The Goad",
+        "The Water",
+        "The Window",
+        "The Manacle",
+        "The Eye",
+        "The Mouth",
+        "The Plant",
+        "The Serpent",
+        "The Pillar",
+        "The Needle",
+        "The Head",
+        "The Tooth",
+        "The Flint",
+        "The Mark",
+        "Amber Acorn",
+        "Verdant Leaf",
+        "Violet Vessel",
+        "Crimson Heart",
+        "Cerulean Bell",
+    }
+)
+WEAK_HAND_TYPES = frozenset({"High Card", "Pair", "Two Pair"})
+CRITICAL_ROLES = frozenset({"chips", "mult", "xmult", "scaling"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,6 +88,12 @@ class RunReplaySummary:
     preferred_hand_counts: Counter[str] = field(default_factory=Counter)
     missing_role_counts: Counter[str] = field(default_factory=Counter)
     final_preferred_hand: str | None = None
+    final_missing_roles: tuple[str, ...] = ()
+    final_blind_played_hand_types: Counter[str] = field(default_factory=Counter)
+    final_blind_predicted_score: int = 0
+    final_blind_actual_score: int = 0
+    final_blind_zero_score_hands: int = 0
+    postmortem_labels: tuple[str, ...] = ()
     chosen_shop_items: Counter[str] = field(default_factory=Counter)
     shop_choices: tuple[str, ...] = ()
 
@@ -77,6 +118,7 @@ class ReplayAnalysis:
     final_preferred_hands: Counter[str] = field(default_factory=Counter)
     missing_role_counts: Counter[str] = field(default_factory=Counter)
     chosen_shop_items: Counter[str] = field(default_factory=Counter)
+    postmortem_label_counts: Counter[str] = field(default_factory=Counter)
     shop_audit_count: int = 0
     shop_skip_count: int = 0
 
@@ -175,6 +217,15 @@ class ReplayAnalysis:
                     f"Shop preferred hand signals: {_format_counter(_most_common_counter(self.preferred_hand_counts, 12))}",
                     f"Final preferred hand signals: {_format_counter(self.final_preferred_hands)}",
                     f"Missing role signals: {_format_counter(self.missing_role_counts)}",
+                )
+            )
+
+        if self.postmortem_label_counts:
+            lines.extend(
+                (
+                    "",
+                    "Postmortem labels:",
+                    f"Cause labels: {_format_counter(_most_common_counter(self.postmortem_label_counts, 14))}",
                 )
             )
 
@@ -287,6 +338,7 @@ class ReplayAnalysis:
                 "final_preferred_hands": _counter_to_json_dict(self.final_preferred_hands),
                 "missing_role_counts": _counter_to_json_dict(self.missing_role_counts),
             },
+            "postmortem_labels": _counter_to_json_dict(self.postmortem_label_counts),
             "early_failures": {
                 "count": len(self.early_failures),
                 "sample": [_run_json_summary(run) for run in sorted(self.early_failures, key=lambda item: (item.max_ante, item.seed))[:5]],
@@ -323,6 +375,7 @@ def analyze_replays(paths: Iterable[Path]) -> ReplayAnalysis:
     missing_role_counts: Counter[str] = Counter()
     shop_audit_count = 0
     shop_skip_count = 0
+    postmortem_label_counts: Counter[str] = Counter()
     for run in run_summaries:
         action_counts.update(run.action_counts)
         shop_reason_counts.update(run.shop_reason_counts)
@@ -336,6 +389,7 @@ def analyze_replays(paths: Iterable[Path]) -> ReplayAnalysis:
         if run.final_preferred_hand:
             final_preferred_hands[run.final_preferred_hand] += 1
         missing_role_counts.update(run.missing_role_counts)
+        postmortem_label_counts.update(run.postmortem_labels)
         shop_audit_count += run.shop_audit_count
         shop_skip_count += run.shop_skip_count
 
@@ -352,6 +406,7 @@ def analyze_replays(paths: Iterable[Path]) -> ReplayAnalysis:
         final_preferred_hands=final_preferred_hands,
         missing_role_counts=missing_role_counts,
         chosen_shop_items=chosen_shop_items,
+        postmortem_label_counts=postmortem_label_counts,
         shop_audit_count=shop_audit_count,
         shop_skip_count=shop_skip_count,
     )
@@ -371,9 +426,18 @@ def _analyze_file(path: Path) -> tuple[RunReplaySummary | None, int]:
     preferred_hand_counts: Counter[str] = Counter()
     missing_role_counts: Counter[str] = Counter()
     final_preferred_hand: str | None = None
+    final_missing_roles: tuple[str, ...] = ()
     shop_choices: list[str] = []
     current_blind: str | None = None
     current_play_count = 0
+    current_blind_played_hand_types: Counter[str] = Counter()
+    current_blind_predicted_score = 0
+    current_blind_actual_score = 0
+    current_blind_zero_score_hands = 0
+    final_blind_played_hand_types: Counter[str] = Counter()
+    final_blind_predicted_score = 0
+    final_blind_actual_score = 0
+    final_blind_zero_score_hands = 0
     observed_win = False
     outcome: str | None = None
     last_state: dict[str, object] = {}
@@ -414,6 +478,7 @@ def _analyze_file(path: Path) -> tuple[RunReplaySummary | None, int]:
             action = row.get("chosen_action", {})
             action_type = str(action.get("type", "unknown")) if isinstance(action, dict) else "unknown"
             action_counts[action_type] += 1
+            hand_type = None
             if action_type == "play_hand" and isinstance(action, dict):
                 hand_type = _played_hand_type(row, action)
                 if hand_type:
@@ -438,7 +503,8 @@ def _analyze_file(path: Path) -> tuple[RunReplaySummary | None, int]:
                         preferred_hand_counts[final_preferred_hand] += 1
                     missing_roles = profile.get("missing_roles")
                     if isinstance(missing_roles, list):
-                        missing_role_counts.update(str(role) for role in missing_roles)
+                        final_missing_roles = tuple(str(role) for role in missing_roles)
+                        missing_role_counts.update(final_missing_roles)
                 if action_type == "end_shop":
                     shop_skip_count += 1
                 item_label = _chosen_shop_item_label(row, action_type, audit)
@@ -451,22 +517,69 @@ def _analyze_file(path: Path) -> tuple[RunReplaySummary | None, int]:
                 if current_blind is None:
                     current_blind = blind_key
                     current_play_count = 0
+                    current_blind_played_hand_types = Counter()
+                    current_blind_predicted_score = 0
+                    current_blind_actual_score = 0
+                    current_blind_zero_score_hands = 0
                 if blind_key != current_blind:
                     if current_play_count:
                         hands_per_blind.append(current_play_count)
+                        final_blind_played_hand_types = current_blind_played_hand_types
+                        final_blind_predicted_score = current_blind_predicted_score
+                        final_blind_actual_score = current_blind_actual_score
+                        final_blind_zero_score_hands = current_blind_zero_score_hands
                     current_blind = blind_key
                     current_play_count = 0
+                    current_blind_played_hand_types = Counter()
+                    current_blind_predicted_score = 0
+                    current_blind_actual_score = 0
+                    current_blind_zero_score_hands = 0
                 current_play_count += 1
+                if hand_type:
+                    current_blind_played_hand_types[hand_type] += 1
+                predicted, actual = _score_audit_totals(row)
+                current_blind_predicted_score += predicted
+                current_blind_actual_score += actual
+                if predicted > 0 and actual == 0:
+                    current_blind_zero_score_hands += 1
             elif action_type in {"cash_out", "select_blind", "skip_blind"}:
                 if current_play_count:
                     hands_per_blind.append(current_play_count)
+                    final_blind_played_hand_types = current_blind_played_hand_types
+                    final_blind_predicted_score = current_blind_predicted_score
+                    final_blind_actual_score = current_blind_actual_score
+                    final_blind_zero_score_hands = current_blind_zero_score_hands
                     current_play_count = 0
                     current_blind = None
+                    current_blind_played_hand_types = Counter()
+                    current_blind_predicted_score = 0
+                    current_blind_actual_score = 0
+                    current_blind_zero_score_hands = 0
 
     if current_play_count:
         hands_per_blind.append(current_play_count)
+        final_blind_played_hand_types = current_blind_played_hand_types
+        final_blind_predicted_score = current_blind_predicted_score
+        final_blind_actual_score = current_blind_actual_score
+        final_blind_zero_score_hands = current_blind_zero_score_hands
     if row_count == 0:
         return None, malformed_rows
+
+    postmortem_labels = _postmortem_labels(
+        observed_win=observed_win,
+        max_ante=max_ante,
+        final_blind=str(last_state.get("blind", "")),
+        final_score=_int_value(last_state.get("score")),
+        final_required_score=_int_value(last_state.get("required")),
+        final_money=_int_value(last_state.get("money")),
+        final_jokers=tuple(last_state.get("jokers", ())),
+        final_missing_roles=final_missing_roles,
+        played_hand_types=played_hand_types,
+        final_blind_played_hand_types=final_blind_played_hand_types,
+        final_blind_predicted_score=final_blind_predicted_score,
+        final_blind_actual_score=final_blind_actual_score,
+        final_blind_zero_score_hands=final_blind_zero_score_hands,
+    )
 
     return (
         RunReplaySummary(
@@ -495,6 +608,12 @@ def _analyze_file(path: Path) -> tuple[RunReplaySummary | None, int]:
             preferred_hand_counts=preferred_hand_counts,
             missing_role_counts=missing_role_counts,
             final_preferred_hand=final_preferred_hand,
+            final_missing_roles=final_missing_roles,
+            final_blind_played_hand_types=final_blind_played_hand_types,
+            final_blind_predicted_score=final_blind_predicted_score,
+            final_blind_actual_score=final_blind_actual_score,
+            final_blind_zero_score_hands=final_blind_zero_score_hands,
+            postmortem_labels=postmortem_labels,
             chosen_shop_items=chosen_shop_items,
             shop_choices=tuple(shop_choices),
         ),
@@ -563,6 +682,94 @@ def _played_hand_type(row: dict[str, object], action: dict[str, object]) -> str 
         return evaluate_played_cards(cards).hand_type.value
     except ValueError:
         return None
+
+
+def _score_audit_totals(row: dict[str, object]) -> tuple[int, int]:
+    extra = row.get("extra")
+    if not isinstance(extra, dict):
+        return (0, 0)
+    score_audit = extra.get("score_audit")
+    if not isinstance(score_audit, dict):
+        return (0, 0)
+
+    predicted = _int_value(score_audit.get("predicted_score"))
+    actual = score_audit.get("actual_score_delta")
+    if actual is None:
+        before = score_audit.get("score_before")
+        after = score_audit.get("score_after")
+        if before is not None and after is not None:
+            actual = _int_value(after) - _int_value(before)
+    return (predicted, _int_value(actual))
+
+
+def _postmortem_labels(
+    *,
+    observed_win: bool,
+    max_ante: int,
+    final_blind: str,
+    final_score: int,
+    final_required_score: int,
+    final_money: int,
+    final_jokers: tuple[str, ...],
+    final_missing_roles: tuple[str, ...],
+    played_hand_types: Counter[str],
+    final_blind_played_hand_types: Counter[str],
+    final_blind_predicted_score: int,
+    final_blind_actual_score: int,
+    final_blind_zero_score_hands: int,
+) -> tuple[str, ...]:
+    if observed_win:
+        return ()
+
+    labels: list[str] = []
+    ratio = final_score / final_required_score if final_required_score > 0 else 0.0
+    dominant_hand = played_hand_types.most_common(1)[0][0] if played_hand_types else None
+    weak_final_plays = sum(final_blind_played_hand_types.get(hand, 0) for hand in WEAK_HAND_TYPES)
+    final_plays = sum(final_blind_played_hand_types.values())
+    missing = set(final_missing_roles)
+    roles = _joker_role_set(final_jokers)
+
+    if max_ante <= 2:
+        labels.append("early_death")
+    if final_blind in BOSS_BLINDS:
+        labels.append("boss_death")
+    if ratio >= 0.95:
+        labels.append("near_miss_95")
+    elif ratio >= 0.85:
+        labels.append("close_loss")
+    elif ratio < 0.50:
+        labels.append("blowout_loss")
+    if final_plays >= 3 and weak_final_plays >= 2:
+        labels.append("weak_final_hand_mix")
+    if dominant_hand in {"Pair", "Two Pair"}:
+        labels.append("low_ceiling_pair_archetype")
+    if final_money >= 50 and missing & CRITICAL_ROLES:
+        labels.append("money_held_while_missing_power")
+    if final_money >= 75:
+        labels.append("very_high_money_death")
+    if len(final_jokers) >= 5 and "xmult" not in roles:
+        labels.append("full_slots_no_xmult")
+    if len(final_jokers) >= 5 and "scaling" not in roles:
+        labels.append("full_slots_no_scaling")
+    if (
+        final_blind_predicted_score
+        and final_blind_predicted_score > final_blind_actual_score * 1.5
+        and final_blind_predicted_score - final_blind_actual_score >= 5000
+    ):
+        labels.append("score_model_overconfident")
+    if final_blind in {"The Eye", "The Mouth"} and final_blind_zero_score_hands > 0:
+        labels.append("boss_restriction_zero_score")
+    return tuple(labels)
+
+
+def _joker_role_set(joker_names: tuple[str, ...]) -> set[str]:
+    roles: set[str] = set()
+    for name in joker_names:
+        try:
+            roles.update(_joker_roles(Joker(name=name)))
+        except Exception:
+            continue
+    return roles
 
 
 def _parse_hand_cards(state_text: str) -> tuple[Card, ...]:
@@ -739,6 +946,12 @@ def _run_json_summary(run: RunReplaySummary) -> dict[str, object]:
         "dominant_played_hand": run.dominant_played_hand,
         "played_hand_types": _counter_to_json_dict(run.played_hand_types),
         "final_preferred_hand": run.final_preferred_hand,
+        "final_missing_roles": list(run.final_missing_roles),
+        "postmortem_labels": list(run.postmortem_labels),
+        "final_blind_played_hand_types": _counter_to_json_dict(run.final_blind_played_hand_types),
+        "final_blind_predicted_score": run.final_blind_predicted_score,
+        "final_blind_actual_score": run.final_blind_actual_score,
+        "final_blind_zero_score_hands": run.final_blind_zero_score_hands,
         "preferred_hand_counts": _counter_to_json_dict(run.preferred_hand_counts),
         "missing_role_counts": _counter_to_json_dict(run.missing_role_counts),
         "shop_action_count": run.shop_action_count,

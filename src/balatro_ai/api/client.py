@@ -107,13 +107,19 @@ class JsonRpcBalatroClient:
         if action.action_type.value == "cash_out":
             return "cash_out", None
         if action.action_type.value == "choose_pack_card":
-            return "pack", _indexed_params(action, default_kind="card")
+            params = _indexed_params(action, default_kind="card")
+            if action.card_indices:
+                params["cards"] = list(action.card_indices)
+            return "pack", params
         if action.action_type.value == "open_pack":
             return "buy", _indexed_params(action, default_kind="pack")
         if action.action_type.value == "buy":
             return "buy", _indexed_params(action, default_kind="card")
         if action.action_type.value == "sell":
             return "sell", _indexed_params(action, default_kind="joker")
+        if action.action_type.value == "rearrange":
+            kind = str(action.metadata.get("kind") or action.target_id or "jokers")
+            return "rearrange", {kind: list(action.card_indices)}
         if action.action_type.value == "use_consumable":
             params = _indexed_params(action, default_kind="consumable")
             if action.card_indices:

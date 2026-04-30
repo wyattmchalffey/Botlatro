@@ -1,0 +1,133 @@
+Bot: basic_strategy_bot
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Seeds: 100
+First seed: 1049061927
+Bot: basic_strategy_bot
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Seeds: 100
+Endpoints: http://127.0.0.1:12346, http://127.0.0.1:12347, http://127.0.0.1:12348, http://127.0.0.1:12349
+Replay mode: summary
+Start retries: 2
+Failed seed retries: 2
+[1/100] seed=1049061927 won=False ante=2 score=1919 money=14 runtime=63.59s
+[2/100] seed=1052529602 won=False ante=4 score=7470 money=60 runtime=74.54s
+[3/100] seed=1072159285 won=False ante=2 score=1194 money=6 runtime=30.86s
+[4/100] seed=1060693664 won=True ante=9 score=147800 money=195 runtime=105.55s
+[5/100] seed=1071573 won=False ante=5 score=21548 money=64 runtime=115.29s
+[6/100] seed=1104158348 won=False ante=5 score=21416 money=83 runtime=88.83s
+[7/100] seed=1135490781 won=False ante=3 score=2642 money=26 runtime=80.60s
+[8/100] seed=1092638421 won=False ante=4 score=6700 money=56 runtime=142.01s
+[9/100] seed=1094190033 won=False ante=5 score=6237 money=24 runtime=167.29s
+[10/100] seed=1196921577 won=False ante=4 score=7102 money=77 runtime=76.86s
+[11/100] seed=125013566 won=False ante=4 score=9602 money=49 runtime=83.87s
+[12/100] seed=1254269343 won=False ante=5 score=15410 money=62 runtime=83.75s
+[13/100] seed=119769974 won=False ante=5 score=10061 money=84 runtime=146.60s
+[14/100] seed=1307973524 won=False ante=4 score=4492 money=50 runtime=71.64s
+[15/100] seed=116049414 won=False ante=5 score=17724 money=65 runtime=240.63s
+[16/100] seed=131752460 won=False ante=3 score=470 money=31 runtime=97.10s
+[17/100] seed=1342624361 won=False ante=4 score=2658 money=31 runtime=95.08s
+[18/100] seed=1356320695 won=False ante=4 score=3762 money=49 runtime=58.48s
+[19/100] seed=134264875 won=False ante=5 score=12281 money=79 runtime=123.77s
+[20/100] seed=1385447778 won=False ante=4 score=2698 money=55 runtime=88.46s
+[21/100] seed=1422873775 won=False ante=3 score=2154 money=36 runtime=104.36s
+[22/100] seed=1414043349 won=False ante=7 score=30292 money=122 runtime=168.37s
+[23/100] seed=1432630996 won=False ante=6 score=37675 money=117 runtime=93.76s
+[24/100] seed=1487162217 won=False ante=1 score=219 money=4 runtime=11.58s
+[25/100] seed=1537483497 won=False ante=3 score=1532 money=16 runtime=105.80s
+[26/100] seed=1485916522 won=False ante=5 score=5040 money=62 runtime=147.17s
+[27/100] seed=1560825109 won=False ante=3 score=3975 money=46 runtime=32.92s
+[28/100] seed=1552200554 won=False ante=4 score=1687 money=25 runtime=49.00s
+[29/100] seed=1479088600 won=False ante=0 score=0 money=0 runtime=261.02s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'INVALID_STATE'}, 'code': -32002, 'message': 'No pack is currently open'}
+[30/100] seed=1502037373 won=False ante=6 score=33168 money=36 runtime=170.70s
+Retired unhealthy endpoint http://127.0.0.1:12349; failed seed 157433408 will retry later.
+[31/100] seed=157433408 won=False ante=0 score=0 money=0 runtime=5.69s death=error:ConnectionError: Could not reach Balatro bridge at http://127.0.0.1:12349
+[32/100] seed=1563440389 won=False ante=3 score=1980 money=19 runtime=67.64s
+[33/100] seed=1563396873 won=False ante=6 score=24741 money=76 runtime=90.64s
+[34/100] seed=1579531438 won=False ante=5 score=19233 money=41 runtime=110.11s
+[35/100] seed=1674064425 won=False ante=3 score=6024 money=58 runtime=44.95s
+[36/100] seed=1620116216 won=False ante=5 score=15477 money=51 runtime=110.13s
+[37/100] seed=1600889079 won=False ante=6 score=16692 money=61 runtime=130.42s
+[38/100] seed=1765143079 won=False ante=1 score=454 money=6 runtime=29.59s
+[39/100] seed=1789463296 won=False ante=3 score=2684 money=26 runtime=31.40s
+[40/100] seed=1761611313 won=False ante=5 score=15872 money=85 runtime=92.98s
+[41/100] seed=177625707 won=False ante=6 score=22120 money=71 runtime=72.31s
+[42/100] seed=1811658677 won=False ante=2 score=243 money=12 runtime=43.00s
+[43/100] seed=1871614268 won=False ante=5 score=3095 money=23 runtime=65.18s
+[44/100] seed=1847067209 won=False ante=5 score=7920 money=38 runtime=107.16s
+[45/100] seed=1894553533 won=False ante=5 score=19244 money=53 runtime=111.61s
+[46/100] seed=1904475041 won=False ante=4 score=5463 money=52 runtime=94.43s
+[47/100] seed=1998939489 won=False ante=2 score=2334 money=3 runtime=56.13s
+[48/100] seed=1975736519 won=False ante=5 score=21900 money=72 runtime=114.32s
+[49/100] seed=2026595128 won=False ante=3 score=1878 money=13 runtime=17.70s
+[50/100] seed=2003624183 won=False ante=4 score=9600 money=88 runtime=58.24s
+[51/100] seed=2003523267 won=False ante=4 score=2968 money=43 runtime=96.80s
+[52/100] seed=2059837045 won=False ante=4 score=18126 money=72 runtime=58.67s
+[53/100] seed=2063068094 won=False ante=4 score=8496 money=55 runtime=54.78s
+[54/100] seed=2069153500 won=False ante=5 score=11307 money=63 runtime=87.42s
+[55/100] seed=207514735 won=False ante=4 score=3864 money=81 runtime=63.07s
+[56/100] seed=2102993602 won=False ante=1 score=288 money=4 runtime=11.05s
+[57/100] seed=2120732055 won=False ante=2 score=652 money=21 runtime=22.20s
+[58/100] seed=2097732365 won=False ante=2 score=344 money=19 runtime=65.40s
+[59/100] seed=2086264372 won=False ante=5 score=14960 money=70 runtime=163.59s
+[60/100] seed=2142990556 won=False ante=4 score=2946 money=39 runtime=99.39s
+[61/100] seed=2142736029 won=False ante=6 score=3432 money=59 runtime=125.49s
+[62/100] seed=216095867 won=False ante=4 score=9153 money=36 runtime=81.62s
+[63/100] seed=225511985 won=False ante=4 score=9847 money=44 runtime=56.44s
+[64/100] seed=224492453 won=False ante=4 score=9638 money=69 runtime=81.93s
+[65/100] seed=242426249 won=False ante=5 score=10881 money=29 runtime=57.35s
+[66/100] seed=280171404 won=False ante=5 score=14571 money=103 runtime=53.02s
+[67/100] seed=349774307 won=False ante=1 score=292 money=4 runtime=12.79s
+[68/100] seed=365679440 won=False ante=2 score=554 money=15 runtime=26.14s
+[69/100] seed=339881143 won=False ante=4 score=10988 money=55 runtime=90.94s
+[70/100] seed=380312572 won=False ante=2 score=960 money=31 runtime=38.88s
+[71/100] seed=299138733 won=False ante=7 score=52440 money=77 runtime=113.46s
+[72/100] seed=383018788 won=False ante=1 score=403 money=4 runtime=17.08s
+[73/100] seed=47950156 won=False ante=2 score=1140 money=8 runtime=49.63s
+[74/100] seed=443630566 won=False ante=3 score=6382 money=42 runtime=67.66s
+[75/100] seed=482637942 won=False ante=4 score=8368 money=29 runtime=106.41s
+[76/100] seed=501945870 won=False ante=5 score=20884 money=91 runtime=60.47s
+[77/100] seed=483238480 won=False ante=4 score=7948 money=40 runtime=76.45s
+[78/100] seed=525563126 won=False ante=2 score=620 money=8 runtime=45.51s
+[79/100] seed=538043824 won=False ante=5 score=19030 money=62 runtime=60.81s
+[80/100] seed=545206600 won=False ante=4 score=3933 money=56 runtime=133.28s
+[81/100] seed=607021399 won=False ante=2 score=523 money=3 runtime=29.53s
+[82/100] seed=559911976 won=False ante=7 score=46815 money=112 runtime=153.70s
+[83/100] seed=604887388 won=False ante=6 score=28716 money=82 runtime=136.94s
+[84/100] seed=679205356 won=False ante=2 score=700 money=22 runtime=14.03s
+[85/100] seed=685623659 won=False ante=1 score=308 money=6 runtime=15.49s
+[86/100] seed=687438511 won=False ante=3 score=1545 money=47 runtime=47.51s
+[87/100] seed=694280939 won=False ante=3 score=3030 money=54 runtime=59.42s
+[88/100] seed=648813957 won=False ante=5 score=10763 money=42 runtime=106.78s
+[89/100] seed=729840575 won=False ante=2 score=764 money=26 runtime=24.95s
+[90/100] seed=790997537 won=False ante=4 score=7237 money=41 runtime=48.82s
+[91/100] seed=810117241 won=False ante=5 score=21405 money=88 runtime=47.15s
+[92/100] seed=796920518 won=False ante=3 score=1850 money=1 runtime=83.96s
+[93/100] seed=839196342 won=False ante=5 score=8912 money=95 runtime=47.69s
+[94/100] seed=84145638 won=False ante=4 score=3360 money=59 runtime=47.01s
+[95/100] seed=875021186 won=False ante=2 score=732 money=20 runtime=44.33s
+[96/100] seed=901963821 won=False ante=4 score=5182 money=29 runtime=73.88s
+[97/100] seed=870661523 won=False ante=3 score=500 money=32 runtime=88.04s
+[98/100] seed=927186178 won=False ante=4 score=8764 money=63 runtime=54.20s
+[99/100] seed=963653964 won=False ante=2 score=598 money=20 runtime=40.14s
+[100/100] seed=968186750 won=False ante=4 score=9828 money=35 runtime=62.76s
+Retry 1: rerunning 2 failed seed(s) on healthy endpoint(s).
+[retry 1] seed=157433408 won=False ante=4 score=7581 money=46 runtime=35.94s
+[retry 1] seed=1479088600 won=False ante=6 score=26164 money=113 runtime=32.58s
+
+Bot: basic_strategy_bot
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Runs: 100
+Win rate: 1.0%
+Average ante: 3.92
+Average final score: 10665.7
+Average final money: 48.4
+Average runtime: 77.39 sec/run

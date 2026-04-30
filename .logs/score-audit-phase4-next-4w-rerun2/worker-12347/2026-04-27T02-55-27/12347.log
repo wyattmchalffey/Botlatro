@@ -1,9 +1,0 @@
-INFO - [♥] Lovely 0.9.0
-INFO - [♥] Game directory is at "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.balatro-headless"
-INFO - [♥] Writing logs to "C:\\Users\\Wyatt\\AppData\\Roaming\\Balatro\\Mods\\lovely\\log"
-INFO - [♥] Using mod directory at "C:\\Users\\Wyatt\\AppData\\Roaming\\Balatro\\Mods"
-INFO - [♥] No blacklist.txt in Mods/lovely.
-INFO - [♥] Cleaning up game-dump directory at "C:\\Users\\Wyatt\\AppData\\Roaming\\Balatro\\Mods\\lovely\\game-dump"
-ERROR - [♥] lovely-injector has crashed: 
-panicked at crates\lovely-core\src\lib.rs:211:17:
-Failed to recursively delete game-dump directory at "C:\\Users\\Wyatt\\AppData\\Roaming\\Balatro\\Mods\\lovely\\game-dump": Os { code: 5, kind: PermissionDenied, message: "Access is denied." }

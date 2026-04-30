@@ -78,6 +78,8 @@ def run_benchmark(
     _emit(progress, f"Profile: {options.profile_name}")
     _emit(progress, f"Unlocks: {options.unlock_state}")
     _emit(progress, f"Seeds: {len(seed_set.seeds)}")
+    _emit(progress, f"Seed label: {seed_set.label}")
+    _emit(progress, f"First seed: {seed_set.seeds[0] if seed_set.seeds else '-'}")
     _emit(progress, f"Endpoints: {', '.join(options.endpoints)}")
     _emit(progress, f"Replay mode: {options.replay_mode}")
     _emit(progress, f"Start retries: {options.start_retries}")
