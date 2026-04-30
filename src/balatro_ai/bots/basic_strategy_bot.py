@@ -40,6 +40,9 @@ class _ShopPressure:
     raw_ratio: float
     safety_multiplier: float
     capacity_safety_factor: float
+    boss_name: str | None = None
+    boss_target_multiplier: float = 1.0
+    boss_capacity_factor: float = 1.0
 
     @property
     def danger(self) -> float:
@@ -54,6 +57,11 @@ class _ShopPressure:
 class _BuildProfile:
     preferred_hand: HandType | None
     archetype: str
+    chip_score: float
+    mult_score: float
+    xmult_score: float
+    scaling_score: float
+    economy_score: float
     has_chips: bool
     has_mult: bool
     has_xmult: bool
@@ -86,6 +94,24 @@ class _BuildProfile:
     @property
     def late(self) -> bool:
         return self.ante >= 5
+
+    def role_score(self, role: str) -> float:
+        return {
+            "chips": self.chip_score,
+            "mult": self.mult_score,
+            "xmult": self.xmult_score,
+            "scaling": self.scaling_score,
+            "economy": self.economy_score,
+        }.get(role, 0.0)
+
+    def role_requirement(self, role: str) -> float:
+        return _role_requirement(role, self.ante)
+
+    def role_deficit_ratio(self, role: str) -> float:
+        requirement = self.role_requirement(role)
+        if requirement <= 0:
+            return 0.0
+        return max(0.0, min(1.0, (requirement - self.role_score(role)) / requirement))
 
 
 @dataclass(frozen=True, slots=True)
@@ -662,8 +688,8 @@ def _shop_item_payload(item: object) -> dict[str, object]:
     }
 
 
-def _pressure_payload(pressure: _ShopPressure) -> dict[str, float]:
-    return {
+def _pressure_payload(pressure: _ShopPressure) -> dict[str, object]:
+    payload: dict[str, float | str | None] = {
         "target_score": round(pressure.target_score, 2),
         "build_capacity": round(pressure.build_capacity, 2),
         "ratio": round(pressure.ratio, 4),
@@ -672,7 +698,11 @@ def _pressure_payload(pressure: _ShopPressure) -> dict[str, float]:
         "safe_margin": round(pressure.safe_margin, 4),
         "safety_multiplier": round(pressure.safety_multiplier, 3),
         "capacity_safety_factor": round(pressure.capacity_safety_factor, 3),
+        "boss_name": pressure.boss_name,
+        "boss_target_multiplier": round(pressure.boss_target_multiplier, 3),
+        "boss_capacity_factor": round(pressure.boss_capacity_factor, 3),
     }
+    return payload
 
 
 def _owned_joker_value_payloads(state: GameState) -> list[dict[str, object]]:
@@ -762,6 +792,10 @@ def _minimum_reroll_bank(state: GameState, pressure: _ShopPressure | None = None
         if _normal_joker_open_slots(state) <= 0:
             reserve = max(reserve, _interest_cap_money(state))
         return reserve + 5
+    if state.ante <= 1 and not _has_real_scoring_joker(state) and not _visible_early_power_path(state):
+        return 5
+    if state.ante <= 2 and not _has_real_scoring_joker(state) and pressure is not None and pressure.ratio >= 1.1:
+        return 6
     if _has_money_scaling_joker(state):
         return min(_desired_money_reserve(state, pressure) + 5, 30)
     return 9
@@ -772,6 +806,8 @@ def _early_reroll_is_allowed(state: GameState, pressure: _ShopPressure) -> bool:
         return True
     if _visible_early_power_path(state):
         return False
+    if not _has_real_scoring_joker(state):
+        return state.money >= _minimum_reroll_bank(state, pressure)
     if state.money < 9:
         return False
     return pressure.ratio >= 1.1 or not _has_real_scoring_joker(state)
@@ -822,8 +858,10 @@ def _late_reroll_is_worth_it(
 def _late_reroll_limit(state: GameState, pressure: _ShopPressure, profile: _BuildProfile) -> int:
     if state.ante < 5:
         return 99
-    if pressure.raw_ratio >= 1.15:
+    if pressure.raw_ratio >= 1.35:
         return 3 if _urgent_late_role_hunt(state, pressure, profile) else 2
+    if pressure.raw_ratio >= 1.15:
+        return 2
     if _urgent_late_role_hunt(state, pressure, profile):
         return 2
     if _rich_late_role_hunt(profile):
@@ -893,7 +931,7 @@ def _target_required_tarot_is_supported(state: GameState, card: object) -> bool:
     if rare_plan is not None and _tarot_supports_rare_hand(name, rare_plan):
         return True
     preferred = _preferred_hand_type(state)
-    if preferred not in FLUSH_ARCHETYPE_HANDS:
+    if preferred not in FLUSH_ARCHETYPE_HANDS and _hand_archetype_support_count(state, HandType.FLUSH) <= 0:
         return False
     target_suit = SUIT_TAROT_TARGET_SUITS.get(name)
     if target_suit is None:
@@ -987,9 +1025,9 @@ def _replacement_role_upgrade_bonus(
     bonus = 0.0
 
     if "xmult" in candidate_roles and "xmult" in missing and "xmult" not in sold_roles:
-        bonus += 30.0
+        bonus += 30.0 * max(0.35, profile.role_deficit_ratio("xmult"))
     if "scaling" in candidate_roles and "scaling" in missing and "scaling" not in sold_roles:
-        bonus += 24.0
+        bonus += 24.0 * max(0.35, profile.role_deficit_ratio("scaling"))
     if _urgent_late_role_hunt(state, pressure, profile) and candidate_roles & {"xmult", "scaling"}:
         bonus += 14.0
     if sold_roles & {"xmult", "scaling"} and not candidate_roles & {"xmult", "scaling"}:
@@ -1002,6 +1040,9 @@ def _replacement_role_upgrade_bonus(
 
 
 def _shop_pressure(state: GameState) -> _ShopPressure:
+    boss_name = _upcoming_boss_blind_name(state)
+    boss_target_multiplier = _effective_boss_target_multiplier(state, boss_name)
+    boss_capacity_factor = _weighted_boss_capacity_factor(state, boss_name)
     raw_target = _estimated_next_required_score(state)
     safety_multiplier = _shop_target_safety_multiplier(state)
     target = raw_target * safety_multiplier
@@ -1009,7 +1050,7 @@ def _shop_pressure(state: GameState) -> _ShopPressure:
     hands = float(state.hands_remaining or 4)
     preferred_hands = max(2.0, min(4.0, hands) - 0.5)
     raw_capacity = max(1.0, current_score * preferred_hands * 0.85)
-    capacity_safety_factor = _shop_capacity_safety_factor(state)
+    capacity_safety_factor = _shop_capacity_safety_factor(state) * boss_capacity_factor
     capacity = max(1.0, raw_capacity * capacity_safety_factor)
     raw_ratio = raw_target / raw_capacity
     ratio = max(target / capacity, _early_build_pressure_floor(state))
@@ -1020,6 +1061,9 @@ def _shop_pressure(state: GameState) -> _ShopPressure:
         raw_ratio=raw_ratio,
         safety_multiplier=safety_multiplier,
         capacity_safety_factor=capacity_safety_factor,
+        boss_name=boss_name,
+        boss_target_multiplier=boss_target_multiplier,
+        boss_capacity_factor=boss_capacity_factor,
     )
 
 
@@ -1039,6 +1083,9 @@ def _shop_target_safety_multiplier(state: GameState) -> float:
         multiplier += 0.08
     elif state.blind in {"The Water", "The Arm"}:
         multiplier += 0.06
+    boss_name = _upcoming_boss_blind_name(state)
+    if boss_name is not None:
+        multiplier += _boss_target_safety_bonus(boss_name) * _boss_preview_weight(state)
     return min(1.45, multiplier)
 
 
@@ -1096,12 +1143,165 @@ def _estimated_next_required_score(state: GameState) -> float:
     if state.blind == "Small Blind":
         return small * 1.5
     if state.blind == "Big Blind":
-        return small * 2.0
+        boss_base = small * 2.0
+        boss_score = _upcoming_boss_score(state)
+        if boss_score > 0:
+            return max(boss_base, boss_score)
+        boss_name = _upcoming_boss_blind_name(state)
+        return boss_base * _boss_score_target_multiplier(boss_name)
     if state.required_score > 0 and state.blind:
         return max(next_small, state.required_score * 1.25)
     if state.required_score > 0:
         return state.required_score * 1.5
     return small
+
+
+def _upcoming_boss_blind_name(state: GameState) -> str | None:
+    direct_keys = ("upcoming_boss", "next_boss", "boss_blind", "boss")
+    for key in direct_keys:
+        name = _blind_name_from_mapping(state.modifiers.get(key))
+        if name:
+            return name
+
+    blinds = state.modifiers.get("blinds")
+    if isinstance(blinds, dict):
+        for key in ("boss", "Boss", "boss_blind"):
+            name = _blind_name_from_mapping(blinds.get(key))
+            if name:
+                return name
+        for value in blinds.values():
+            if not isinstance(value, dict):
+                continue
+            blind_type = str(value.get("type", value.get("kind", ""))).upper()
+            if blind_type == "BOSS":
+                name = _blind_name_from_mapping(value)
+                if name:
+                    return name
+    return None
+
+
+def _upcoming_boss_score(state: GameState) -> float:
+    direct_keys = ("upcoming_boss", "next_boss", "boss_blind", "boss")
+    for key in direct_keys:
+        score = _blind_score_from_mapping(state.modifiers.get(key))
+        if score > 0:
+            return score
+
+    blinds = state.modifiers.get("blinds")
+    if isinstance(blinds, dict):
+        for key in ("boss", "Boss", "boss_blind"):
+            score = _blind_score_from_mapping(blinds.get(key))
+            if score > 0:
+                return score
+        for value in blinds.values():
+            if not isinstance(value, dict):
+                continue
+            blind_type = str(value.get("type", value.get("kind", ""))).upper()
+            if blind_type == "BOSS":
+                score = _blind_score_from_mapping(value)
+                if score > 0:
+                    return score
+    return 0.0
+
+
+def _blind_name_from_mapping(value: object) -> str | None:
+    if isinstance(value, str):
+        return value or None
+    if not isinstance(value, dict):
+        return None
+    name = str(value.get("name", value.get("label", "")))
+    return name or None
+
+
+def _blind_score_from_mapping(value: object) -> float:
+    if not isinstance(value, dict):
+        return 0.0
+    for key in ("score", "required_score", "score_required", "chips"):
+        try:
+            raw = value.get(key)
+            if raw is not None:
+                return float(raw)
+        except (TypeError, ValueError):
+            continue
+    return 0.0
+
+
+def _effective_boss_target_multiplier(state: GameState, boss_name: str | None) -> float:
+    if state.blind != "Big Blind" or _upcoming_boss_score(state) > 0:
+        return 1.0
+    return _boss_score_target_multiplier(boss_name)
+
+
+def _boss_score_target_multiplier(boss_name: str | None) -> float:
+    if boss_name == "The Wall":
+        return 2.0
+    if boss_name == "Violet Vessel":
+        return 3.0
+    return 1.0
+
+
+def _boss_target_safety_bonus(boss_name: str) -> float:
+    if boss_name in {"The Wall", "The Needle", "Violet Vessel"}:
+        return 0.14
+    if boss_name in {"The Eye", "The Mouth", "The Pillar", "The Psychic", "The Flint"}:
+        return 0.10
+    if boss_name in {"The Tooth", "The Water", "The Arm", "The Manacle"}:
+        return 0.07
+    if boss_name in {"The Club", "The Goad", "The Head", "The Window"}:
+        return 0.06
+    return 0.04
+
+
+def _weighted_boss_capacity_factor(state: GameState, boss_name: str | None) -> float:
+    if boss_name is None:
+        return 1.0
+    weight = _boss_preview_weight(state)
+    if weight <= 0:
+        return 1.0
+    factor = _boss_capacity_factor(state, boss_name)
+    return 1.0 - ((1.0 - factor) * weight)
+
+
+def _boss_preview_weight(state: GameState) -> float:
+    if state.blind == "Big Blind":
+        return 1.0
+    if state.blind == "Small Blind":
+        return 0.45
+    return 0.0
+
+
+def _boss_capacity_factor(state: GameState, boss_name: str) -> float:
+    if boss_name == "The Flint":
+        return 0.66
+    if boss_name == "The Needle":
+        return 0.74
+    if boss_name in {"The Eye", "The Mouth"}:
+        return 0.8
+    if boss_name == "The Pillar":
+        return 0.82
+    if boss_name == "The Psychic":
+        return 0.86
+    if boss_name in {"The Water", "The Manacle"}:
+        return 0.88
+    if boss_name == "The Arm":
+        return 0.9
+    if boss_name == "The Tooth":
+        return 0.95
+    if boss_name in {"The Club", "The Goad", "The Head", "The Window"}:
+        return _suit_boss_capacity_factor(state, boss_name)
+    return 1.0
+
+
+def _suit_boss_capacity_factor(state: GameState, boss_name: str) -> float:
+    debuffed = debuffed_suits_for_blind(boss_name)
+    if not debuffed:
+        return 1.0
+    dominant = _dominant_suit(state)
+    if dominant is not None and _normalize_suit(dominant) in debuffed:
+        return 0.76
+    if _preferred_hand_type(state) in FLUSH_ARCHETYPE_HANDS:
+        return 0.86
+    return 0.92
 
 
 def _extrapolated_small_blind_score(ante: int) -> float:
@@ -1361,25 +1561,140 @@ def _format_xmult(value: float) -> str:
 
 
 def _sample_build_score(state: GameState, jokers: tuple[Joker, ...]) -> float:
-    scores = []
-    for sample in SAMPLE_HANDS:
-        scores.append(
+    scoring_state = replace(state, jokers=jokers)
+    weighted_total = 0.0
+    total_weight = 0.0
+    raw_scores: list[float] = []
+
+    for sample in _score_samples_for_state(scoring_state):
+        score = float(
             evaluate_played_cards(
                 sample.cards,
-                state.hand_levels,
-                debuffed_suits=debuffed_suits_for_blind(state.blind),
-                blind_name=state.blind,
+                scoring_state.hand_levels,
+                debuffed_suits=debuffed_suits_for_blind(scoring_state.blind),
+                blind_name=scoring_state.blind,
                 jokers=jokers,
-                discards_remaining=state.discards_remaining,
-                hands_remaining=max(1, state.hands_remaining),
+                discards_remaining=scoring_state.discards_remaining,
+                hands_remaining=max(1, scoring_state.hands_remaining),
                 held_cards=sample.held_cards,
-                deck_size=max(30, state.deck_size),
-                money=state.money,
+                deck_size=max(30, scoring_state.deck_size),
+                money=scoring_state.money,
             ).score
         )
-    best = max(scores, default=0)
-    average_top = sum(sorted(scores, reverse=True)[:3]) / 3
-    return (best * 0.65) + (average_top * 0.35)
+        weighted_total += score * sample.weight
+        total_weight += sample.weight
+        raw_scores.append(score)
+
+    visible_score = _visible_hand_sample_score(scoring_state, jokers)
+    if visible_score > 0:
+        weighted_total += visible_score * 1.15
+        total_weight += 1.15
+        raw_scores.append(float(visible_score))
+
+    if total_weight <= 0 or not raw_scores:
+        return 0.0
+    expected = weighted_total / total_weight
+    average_top = sum(sorted(raw_scores, reverse=True)[:3]) / min(3, len(raw_scores))
+    return (expected * 0.78) + (average_top * 0.22)
+
+
+def _score_samples_for_state(state: GameState) -> tuple["_SampleHand", ...]:
+    preferred = _preferred_hand_type(state)
+    samples = list(WHITE_STAKE_SAMPLE_HANDS)
+    samples.extend(_archetype_score_samples(state, preferred))
+    return tuple(samples)
+
+
+def _archetype_score_samples(state: GameState, preferred: HandType | None) -> tuple["_SampleHand", ...]:
+    if preferred == HandType.PAIR:
+        return (
+            _SampleHand((Card("3", "S"), Card("3", "H")), (Card("9", "D"), Card("5", "C")), weight=1.2),
+            _SampleHand((Card("8", "S"), Card("8", "D")), (Card("K", "C"), Card("4", "H")), weight=1.0),
+            _SampleHand((Card("4", "S"), Card("4", "H"), Card("9", "D"), Card("9", "C")), weight=0.6),
+        )
+    if preferred == HandType.TWO_PAIR:
+        return (
+            _SampleHand((Card("4", "S"), Card("4", "H"), Card("9", "D"), Card("9", "C")), weight=1.4),
+            _SampleHand((Card("6", "S"), Card("6", "D"), Card("J", "H"), Card("J", "C")), weight=1.0),
+            _SampleHand((Card("7", "S"), Card("7", "H")), (Card("Q", "D"), Card("3", "C")), weight=0.6),
+        )
+    if preferred in {HandType.THREE_OF_A_KIND, HandType.FULL_HOUSE}:
+        return (
+            _SampleHand((Card("7", "S"), Card("7", "H"), Card("7", "D")), weight=1.0),
+            _SampleHand((Card("6", "S"), Card("6", "H"), Card("6", "D"), Card("J", "S"), Card("J", "C")), weight=0.8),
+            _SampleHand((Card("5", "S"), Card("5", "H")), (Card("Q", "D"), Card("4", "C")), weight=0.8),
+        )
+    if preferred in {HandType.FLUSH, HandType.STRAIGHT_FLUSH, HandType.FLUSH_HOUSE, HandType.FLUSH_FIVE}:
+        dominant = _dominant_suit(state) or "H"
+        samples = [
+            _SampleHand(
+                (
+                    Card("A", dominant),
+                    Card("Q", dominant),
+                    Card("9", dominant),
+                    Card("6", dominant),
+                    Card("3", dominant),
+                ),
+                weight=1.4,
+            ),
+            _SampleHand(
+                (
+                    Card("K", dominant),
+                    Card("J", dominant),
+                    Card("8", dominant),
+                    Card("5", dominant),
+                    Card("2", dominant),
+                ),
+                weight=1.0,
+            ),
+        ]
+        if _rare_hand_deck_manipulation_need(state, preferred) <= 0:
+            samples.append(
+                _SampleHand(
+                    (
+                        Card("7", dominant),
+                        Card("7", dominant),
+                        Card("7", dominant),
+                        Card("4", dominant),
+                        Card("4", dominant),
+                    ),
+                    weight=0.6,
+                )
+            )
+        return tuple(samples)
+    if preferred in {HandType.STRAIGHT, HandType.STRAIGHT_FLUSH}:
+        return (
+            _SampleHand((Card("9", "S"), Card("8", "H"), Card("7", "D"), Card("6", "C"), Card("5", "S")), weight=1.35),
+            _SampleHand((Card("A", "S"), Card("K", "H"), Card("Q", "D"), Card("J", "C"), Card("10", "S")), weight=0.9),
+            _SampleHand((Card("6", "S"), Card("6", "H")), (Card("Q", "D"), Card("4", "C")), weight=0.6),
+        )
+    if preferred in {HandType.FOUR_OF_A_KIND, HandType.FIVE_OF_A_KIND}:
+        if _rare_hand_deck_manipulation_need(state, preferred) > 0:
+            return (
+                _SampleHand((Card("8", "S"), Card("8", "H"), Card("8", "D")), weight=0.8),
+                _SampleHand((Card("5", "S"), Card("5", "H")), (Card("Q", "D"), Card("4", "C")), weight=0.8),
+            )
+        return (
+            _SampleHand((Card("8", "S"), Card("8", "H"), Card("8", "D"), Card("8", "C")), weight=1.0),
+            _SampleHand((Card("6", "S"), Card("6", "H"), Card("6", "D"), Card("J", "S"), Card("J", "C")), weight=0.6),
+        )
+    return ()
+
+
+def _visible_hand_sample_score(state: GameState, jokers: tuple[Joker, ...]) -> int:
+    if not state.hand:
+        return 0
+    return best_play_from_hand(
+        state.hand,
+        state.hand_levels,
+        debuffed_suits=debuffed_suits_for_blind(state.blind),
+        blind_name=state.blind,
+        jokers=jokers,
+        discards_remaining=state.discards_remaining,
+        hands_remaining=max(1, state.hands_remaining),
+        deck_size=max(30, state.deck_size),
+        money=state.money,
+    ).score
 
 
 def _joker_heuristic_value(state: GameState, joker: Joker) -> float:
@@ -1419,14 +1734,24 @@ def _joker_sample_reliability(state: GameState, joker: Joker) -> float:
 def _build_profile(state: GameState) -> _BuildProfile:
     joker_roles = [_joker_roles(joker) for joker in state.jokers]
     preferred = _preferred_hand_type(state)
+    role_scores = _build_role_scores(state)
     return _BuildProfile(
         preferred_hand=preferred,
         archetype=_build_archetype(state, preferred),
-        has_chips=any("chips" in roles for roles in joker_roles),
-        has_mult=any("mult" in roles for roles in joker_roles),
-        has_xmult=any("xmult" in roles for roles in joker_roles),
-        has_scaling=any("scaling" in roles for roles in joker_roles),
-        has_economy=state.money >= _interest_cap_money(state) or any("economy" in roles for roles in joker_roles),
+        chip_score=role_scores["chips"],
+        mult_score=role_scores["mult"],
+        xmult_score=role_scores["xmult"],
+        scaling_score=role_scores["scaling"],
+        economy_score=role_scores["economy"],
+        has_chips=role_scores["chips"] >= _role_requirement("chips", state.ante),
+        has_mult=role_scores["mult"] >= _role_requirement("mult", state.ante),
+        has_xmult=role_scores["xmult"] >= _role_requirement("xmult", state.ante),
+        has_scaling=role_scores["scaling"] >= _role_requirement("scaling", state.ante),
+        has_economy=(
+            state.money >= _interest_cap_money(state)
+            or any("economy" in roles for roles in joker_roles)
+            or role_scores["economy"] >= _role_requirement("economy", state.ante)
+        ),
         open_joker_slots=_normal_joker_open_slots(state),
         money=state.money,
         spendable_money=_spendable_money(state),
@@ -1438,6 +1763,20 @@ def _build_profile_payload(profile: _BuildProfile) -> dict[str, object]:
     return {
         "preferred_hand": profile.preferred_hand.value if profile.preferred_hand is not None else None,
         "archetype": profile.archetype,
+        "role_scores": {
+            "chips": round(profile.chip_score, 2),
+            "mult": round(profile.mult_score, 2),
+            "xmult": round(profile.xmult_score, 2),
+            "scaling": round(profile.scaling_score, 2),
+            "economy": round(profile.economy_score, 2),
+        },
+        "role_requirements": {
+            "chips": round(profile.role_requirement("chips"), 2),
+            "mult": round(profile.role_requirement("mult"), 2),
+            "xmult": round(profile.role_requirement("xmult"), 2),
+            "scaling": round(profile.role_requirement("scaling"), 2),
+            "economy": round(profile.role_requirement("economy"), 2),
+        },
         "has_chips": profile.has_chips,
         "has_mult": profile.has_mult,
         "has_xmult": profile.has_xmult,
@@ -1451,6 +1790,109 @@ def _build_profile_payload(profile: _BuildProfile) -> dict[str, object]:
     }
 
 
+def _role_requirement(role: str, ante: int) -> float:
+    if role == "chips":
+        if ante <= 2:
+            return 28.0
+        if ante <= 4:
+            return 55.0
+        return 85.0
+    if role == "mult":
+        if ante <= 2:
+            return 8.0
+        if ante <= 4:
+            return 16.0
+        return 24.0
+    if role == "xmult":
+        return 26.0 if ante <= 4 else 34.0
+    if role == "scaling":
+        return 22.0 if ante <= 4 else 30.0
+    if role == "economy":
+        return 18.0
+    return 0.0
+
+
+def _build_role_scores(state: GameState) -> dict[str, float]:
+    scores = {"chips": 0.0, "mult": 0.0, "xmult": 0.0, "scaling": 0.0, "economy": 0.0}
+    for joker in state.jokers:
+        joker_scores = _joker_role_scores(joker)
+        for role, value in joker_scores.items():
+            scores[role] += value
+    scores["economy"] += min(18.0, max(0.0, state.money - 5) * 0.6)
+    if state.money >= _interest_cap_money(state):
+        scores["economy"] += 18.0
+    return scores
+
+
+def _joker_role_scores(joker: Joker) -> dict[str, float]:
+    name = joker.name
+    scores = {
+        "chips": float(_edition_chips_value(joker.edition) + _joker_current_plus_value(joker, suffix="chips")),
+        "mult": float(_edition_mult_value(joker.edition) + _joker_current_plus_value(joker, suffix="mult")),
+        "xmult": max(0.0, (_edition_xmult_value(joker.edition) - 1.0) * 42.0),
+        "scaling": 0.0,
+        "economy": float(JOKER_ECONOMY_VALUES.get(name, 0)),
+    }
+
+    current_xmult = _joker_current_xmult_value(joker)
+    if current_xmult > 1.0:
+        scores["xmult"] += (current_xmult - 1.0) * 42.0
+
+    scores["chips"] += _static_chip_role_score(name)
+    scores["mult"] += _static_mult_role_score(name)
+    scores["xmult"] += _static_xmult_role_score(name)
+    if name in SCALING_JOKERS or name in JOKER_SCALING_VALUES:
+        scores["scaling"] += float(JOKER_SCALING_VALUES.get(name, 24))
+        if name in {"Green Joker", "Ride the Bus", "Square Joker", "Runner", "Spare Trousers"}:
+            scores["scaling"] += max(0.0, _joker_current_plus_value(joker, suffix="mult") * 0.8)
+            scores["scaling"] += max(0.0, _joker_current_plus_value(joker, suffix="chips") * 0.25)
+        if current_xmult > 1.0 and name in {"Hologram", "Constellation", "Lucky Cat", "Glass Joker", "Campfire"}:
+            scores["scaling"] += min(24.0, (current_xmult - 1.0) * 22.0)
+    return scores
+
+
+def _static_chip_role_score(name: str) -> float:
+    if name == "Stuntman":
+        return 240.0
+    if name == "Bull":
+        return 95.0
+    if name == "Blue Joker":
+        return 70.0
+    if name in {"Banner", "Ice Cream", "Runner", "Square Joker", "Wee Joker", "Castle"}:
+        return 55.0
+    if name in CHIP_JOKERS:
+        return 34.0
+    return 0.0
+
+
+def _static_mult_role_score(name: str) -> float:
+    if name == "Joker":
+        return 4.0
+    if name in {"Gros Michel", "Popcorn", "Mystic Summit", "Half Joker"}:
+        return 16.0
+    if name in {"Abstract Joker", "Swashbuckler", "Bootstraps"}:
+        return 14.0
+    if name in {"Green Joker", "Ride the Bus", "Spare Trousers", "Red Card", "Flash Card"}:
+        return 10.0
+    if name in MULT_JOKERS:
+        return 8.0
+    return 0.0
+
+
+def _static_xmult_role_score(name: str) -> float:
+    if name == "Loyalty Card":
+        return 0.0
+    if name in {"Cavendish", "Joker Stencil"}:
+        return 70.0
+    if name in {"The Duo", "The Trio", "The Family", "The Order", "The Tribe", "Seeing Double", "Blackboard"}:
+        return 42.0
+    if name in {"Acrobat", "Card Sharp", "Driver's License", "Ancient Joker", "The Idol", "Flower Pot"}:
+        return 36.0
+    if name in XMULT_JOKERS:
+        return 30.0
+    return 0.0
+
+
 def _joker_roles(joker: Joker) -> frozenset[str]:
     roles: set[str] = set()
     name = joker.name
@@ -1458,7 +1900,7 @@ def _joker_roles(joker: Joker) -> frozenset[str]:
         roles.add("chips")
     if name in MULT_JOKERS:
         roles.add("mult")
-    if name in XMULT_JOKERS:
+    if name in XMULT_JOKERS and name != "Loyalty Card":
         roles.add("xmult")
     if name in JOKER_SCALING_VALUES or name in SCALING_JOKERS:
         roles.add("scaling")
@@ -1485,13 +1927,13 @@ def _joker_role_bonus(state: GameState, joker: Joker) -> float:
     bonus = 0.0
     for role in profile.missing_roles:
         if role in roles:
-            bonus += ROLE_MISSING_BONUSES[role]
+            bonus += ROLE_MISSING_BONUSES[role] * max(0.35, profile.role_deficit_ratio(role))
 
     if profile.late and profile.rich:
         if "xmult" in roles and not profile.has_xmult:
-            bonus += 22
+            bonus += 22 * max(0.4, profile.role_deficit_ratio("xmult"))
         if "scaling" in roles and not profile.has_scaling:
-            bonus += 16
+            bonus += 16 * max(0.4, profile.role_deficit_ratio("scaling"))
         if "economy" in roles and profile.has_economy:
             bonus -= 10
     if profile.ante <= 2 and ("chips" in roles or "mult" in roles):
@@ -1512,13 +1954,15 @@ def _pressure_joker_role_bonus(state: GameState, joker: Joker, pressure: _ShopPr
     roles = _joker_roles(joker)
     bonus = 0.0
     if "scaling" in roles and not profile.has_scaling:
-        bonus += 18.0 + pressure.danger * 28.0 + max(0, state.ante - 2) * 4.0
+        deficit = max(0.35, profile.role_deficit_ratio("scaling"))
+        bonus += (18.0 + pressure.danger * 28.0 + max(0, state.ante - 2) * 4.0) * deficit
         if _urgent_late_role_hunt(state, pressure, profile):
-            bonus += 16.0
+            bonus += 16.0 * deficit
     if "xmult" in roles and (not profile.has_xmult or pressure.ratio >= 1.15):
-        bonus += 10.0 + pressure.danger * 18.0
+        deficit = max(0.35, profile.role_deficit_ratio("xmult"))
+        bonus += (10.0 + pressure.danger * 18.0) * deficit
         if _urgent_late_role_hunt(state, pressure, profile):
-            bonus += 18.0
+            bonus += 18.0 * deficit
     if roles.isdisjoint({"xmult", "scaling"}) and profile.open_joker_slots <= 1 and pressure.ratio >= 1.1:
         bonus -= 10.0
     if roles.isdisjoint({"xmult", "scaling"}) and _urgent_late_role_hunt(state, pressure, profile):
@@ -1659,11 +2103,11 @@ def _reroll_role_hunt_bonus(profile: _BuildProfile, pressure: _ShopPressure) -> 
         return 0.0
     bonus = 0.0
     if not profile.has_xmult and (profile.late or pressure.ratio >= 1.0):
-        bonus += 16
+        bonus += 16 * max(0.35, profile.role_deficit_ratio("xmult"))
     if not profile.has_scaling and (profile.late or pressure.ratio >= 1.0):
-        bonus += 10
+        bonus += 10 * max(0.35, profile.role_deficit_ratio("scaling"))
     if not profile.has_scaling and pressure.ratio >= 1.15:
-        bonus += 12
+        bonus += 12 * max(0.35, profile.role_deficit_ratio("scaling"))
     if profile.open_joker_slots >= 2 and ("chips" in profile.missing_roles or "mult" in profile.missing_roles):
         bonus += 8
     return bonus
@@ -1872,6 +2316,17 @@ def _planet_card_value(state: GameState, card: object) -> float:
     preferred = _preferred_hand_type(state)
     current_level = state.hand_levels.get(hand_type.value, 1)
     value = 14 + min(current_level, 5) * 2
+    capacity_gain = _planet_capacity_gain(state, hand_type)
+    flexible = _flexible_hand_types(state)
+    alignment_score = _hand_joker_alignment_score(state, hand_type)
+    if hand_type == preferred:
+        value += min(48.0, capacity_gain / 12.0)
+        value += min(20.0, alignment_score * 5.0)
+    elif hand_type in flexible:
+        value += min(24.0, capacity_gain / 18.0)
+        value += min(10.0, alignment_score * 3.0)
+    else:
+        value += min(6.0, capacity_gain / 36.0)
     if hand_type in RARE_HAND_TYPES:
         value -= _rare_hand_investment_penalty(state, hand_type) * 0.8
     value -= _weak_hand_plan_penalty(state, hand_type)
@@ -1881,11 +2336,33 @@ def _planet_card_value(state: GameState, card: object) -> float:
             value -= 10
         elif state.ante >= 4 and not _build_profile(state).has_scaling:
             value += 8
-    elif hand_type in _flexible_hand_types(state):
+    elif hand_type in flexible:
         value += 8
+        if state.ante <= 2 and alignment_score <= 0 and current_level <= 1:
+            value -= 20
     else:
         value -= 8
+        if state.ante <= 2:
+            value -= 24
     return value
+
+
+def _planet_capacity_gain(state: GameState, hand_type: HandType) -> float:
+    current = _sample_build_score(state, state.jokers)
+    hand_levels = dict(state.hand_levels)
+    hand_levels[hand_type.value] = hand_levels.get(hand_type.value, 1) + 1
+    leveled = replace(state, hand_levels=hand_levels)
+    return max(0.0, _sample_build_score(leveled, leveled.jokers) - current)
+
+
+def _hand_joker_alignment_score(state: GameState, hand_type: HandType) -> float:
+    score = 0.0
+    for joker in state.jokers:
+        if hand_type == JOKER_PRIMARY_HAND.get(joker.name):
+            score += 1.25
+        elif hand_type in JOKER_HAND_SYNERGY.get(joker.name, ()):
+            score += 1.0
+    return score
 
 
 def _black_hole_card_value(state: GameState) -> float:
@@ -3930,6 +4407,8 @@ def _preferred_hand_type(state: GameState) -> HandType | None:
             combined[HandType.TWO_PAIR] -= 2
         best, score = combined.most_common(1)[0]
         if score > 0:
+            if _single_narrow_chip_signal_is_noise(state, best, score):
+                return HandType.PAIR if state.ante <= 3 else None
             return best
     if any(joker.name in {"Smeared Joker", "Four Fingers", "The Tribe", "Droll Joker"} for joker in state.jokers):
         return HandType.FLUSH
@@ -3945,6 +4424,10 @@ def _primary_hand_vote_weight(state: GameState, joker_name: str, hand_type: Hand
         return 1 if state.ante <= 2 else 0
     if hand_type == HandType.TWO_PAIR and joker_name not in DEDICATED_TWO_PAIR_BUILD_JOKERS:
         return 1 if state.ante <= 2 else 0
+    if joker_name in NARROW_CHIP_PRIMARY_JOKERS and state.ante <= 3:
+        if _hand_archetype_support_count(state, hand_type) <= 1 and _hand_level_vote(state, hand_type) <= 0:
+            return 1
+        return 2
     return 3
 
 
@@ -3955,6 +4438,24 @@ def _hand_level_vote(state: GameState, hand_type: HandType) -> int:
     if hand_type == HandType.TWO_PAIR and not _has_dedicated_two_pair_plan(state):
         return max(0, level - 1)
     return level
+
+
+def _single_narrow_chip_signal_is_noise(state: GameState, hand_type: HandType, score: int) -> bool:
+    if state.ante > 3 or score > 1:
+        return False
+    if hand_type not in {HandType.STRAIGHT, HandType.FLUSH}:
+        return False
+    return any(JOKER_PRIMARY_HAND.get(joker.name) == hand_type for joker in state.jokers if joker.name in NARROW_CHIP_PRIMARY_JOKERS)
+
+
+def _hand_archetype_support_count(state: GameState, hand_type: HandType) -> int:
+    count = 0
+    for joker in state.jokers:
+        if JOKER_PRIMARY_HAND.get(joker.name) == hand_type:
+            count += 1
+        elif hand_type in JOKER_HAND_SYNERGY.get(joker.name, ()):
+            count += 1
+    return count
 
 
 def _has_dedicated_pair_plan(state: GameState) -> bool:
@@ -3997,16 +4498,19 @@ def _dominant_suit(state: GameState) -> str | None:
 class _SampleHand:
     cards: tuple[Card, ...]
     held_cards: tuple[Card, ...] = ()
+    weight: float = 1.0
 
 
-SAMPLE_HANDS = (
-    _SampleHand((Card("A", "S"),), (Card("K", "H"), Card("Q", "C"), Card("7", "D"))),
-    _SampleHand((Card("A", "S"), Card("A", "H")), (Card("K", "D"), Card("4", "C"))),
-    _SampleHand((Card("K", "S"), Card("K", "H"), Card("7", "D"), Card("7", "C"))),
-    _SampleHand((Card("Q", "S"), Card("Q", "H"), Card("Q", "D"))),
-    _SampleHand((Card("T", "S"), Card("9", "H"), Card("8", "D"), Card("7", "C"), Card("6", "S"))),
-    _SampleHand((Card("A", "H"), Card("K", "H"), Card("Q", "H"), Card("7", "H"), Card("2", "H"))),
-    _SampleHand((Card("J", "S"), Card("J", "H"), Card("J", "D"), Card("4", "S"), Card("4", "C"))),
+WHITE_STAKE_SAMPLE_HANDS = (
+    _SampleHand((Card("A", "S"),), (Card("K", "H"), Card("Q", "C"), Card("7", "D")), weight=0.55),
+    _SampleHand((Card("2", "S"), Card("2", "H")), (Card("9", "D"), Card("5", "C")), weight=1.35),
+    _SampleHand((Card("7", "S"), Card("7", "H")), (Card("K", "D"), Card("4", "C")), weight=1.2),
+    _SampleHand((Card("A", "S"), Card("A", "H")), (Card("8", "D"), Card("4", "C")), weight=0.75),
+    _SampleHand((Card("4", "S"), Card("4", "H"), Card("9", "D"), Card("9", "C")), weight=0.95),
+    _SampleHand((Card("Q", "S"), Card("Q", "H"), Card("Q", "D")), weight=0.45),
+    _SampleHand((Card("9", "S"), Card("8", "H"), Card("7", "D"), Card("6", "C"), Card("5", "S")), weight=0.3),
+    _SampleHand((Card("A", "H"), Card("K", "H"), Card("Q", "H"), Card("7", "H"), Card("2", "H")), weight=0.3),
+    _SampleHand((Card("J", "S"), Card("J", "H"), Card("J", "D"), Card("4", "S"), Card("4", "C")), weight=0.25),
 )
 
 
@@ -4178,6 +4682,13 @@ NARROW_EARLY_JOKERS = {
     "Runner",
     "The Order",
     "The Tribe",
+}
+
+
+NARROW_CHIP_PRIMARY_JOKERS = {
+    "Crafty Joker",
+    "Devious Joker",
+    "Runner",
 }
 
 

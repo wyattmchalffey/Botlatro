@@ -60,6 +60,7 @@ class BalatroBotSchemaTests(unittest.TestCase):
         self.assertEqual(state.jokers[0].name, "Joker")
         self.assertEqual(state.jokers[0].metadata["key"], "j_joker")
         self.assertEqual(state.modifiers["joker_cards"][0]["key"], "j_joker")
+        self.assertEqual(state.modifiers["blinds"]["current"]["name"], "Big Blind")
         self.assertEqual(state.hand_levels["Pair"], 2)
         self.assertEqual(state.modifiers["hands"]["Pair"]["played_this_round"], 1)
         self.assertIn("shop_cards", state.modifiers)

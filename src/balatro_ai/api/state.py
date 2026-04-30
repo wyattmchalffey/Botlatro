@@ -178,6 +178,7 @@ class GameState:
             hand_levels=hand_levels,
             modifiers={
                 **dict(data.get("modifiers", {})),
+                "blinds": data.get("blinds", _mapping_or_empty(data.get("modifiers")).get("blinds", {})),
                 "current_blind": current_blind,
                 "hands": data.get("hands", data.get("hand_levels", {})),
                 "joker_cards": joker_cards,
