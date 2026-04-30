@@ -90,6 +90,41 @@ class HandEvaluatorTests(unittest.TestCase):
         self.assertEqual(evaluation.mult, 6)
         self.assertEqual(evaluation.score, 372)
 
+    def test_stone_card_scores_exactly_50_chips(self) -> None:
+        evaluation = evaluate_played_cards(
+            (Card(rank="A", suit="H", enhancement="STONE"),),
+            debuffed_suits=debuffed_suits_for_blind("The Head"),
+        )
+
+        self.assertEqual(evaluation.card_chips, 50)
+        self.assertEqual(evaluation.chips, 55)
+        self.assertEqual(evaluation.score, 55)
+
+    def test_stone_card_has_no_rank_or_suit_for_scoring_effects(self) -> None:
+        evaluation = evaluate_played_cards(
+            (Card(rank="K", suit="S", enhancement="STONE"),),
+            jokers=(Joker("Scholar"), Joker("Scary Face"), Joker("Photograph"), Joker("Wrathful Joker")),
+        )
+
+        self.assertEqual(evaluation.card_chips, 50)
+        self.assertEqual(evaluation.effect_chips, 0)
+        self.assertEqual(evaluation.effect_mult, 0)
+        self.assertEqual(evaluation.score, 55)
+
+    def test_stone_card_scores_alongside_made_hand_without_changing_hand_type(self) -> None:
+        evaluation = evaluate_played_cards(
+            (
+                Card(rank="A", suit="S"),
+                Card(rank="A", suit="D"),
+                Card(rank="A", suit="H", enhancement="STONE"),
+            )
+        )
+
+        self.assertEqual(evaluation.hand_type, HandType.PAIR)
+        self.assertEqual(evaluation.scoring_indices, (0, 1, 2))
+        self.assertEqual(evaluation.card_chips, 72)
+        self.assertEqual(evaluation.score, 164)
+
     def test_permanent_card_chip_metadata_is_applied(self) -> None:
         evaluation = evaluate_played_cards(
             (

@@ -282,26 +282,30 @@ def best_play_from_hand(
 
 
 def _identify_hand_type(cards: tuple[Card, ...], jokers: tuple[Joker, ...] = ()) -> HandType:
-    rank_counts = Counter(card.rank for card in cards)
+    ranked_cards = tuple(card for card in cards if not _is_stone_card(card))
+    if not ranked_cards:
+        return HandType.HIGH_CARD
+
+    rank_counts = Counter(card.rank for card in ranked_cards)
     counts = sorted(rank_counts.values())
     straight_size = 4 if _has_joker(jokers, "Four Fingers") else 5
     flush_size = 4 if _has_joker(jokers, "Four Fingers") else 5
-    is_flush = len(cards) >= flush_size and _flush_indices(cards, flush_size, jokers) != ()
-    is_straight = len(cards) >= straight_size and _straight_indices(cards, straight_size, jokers) != ()
+    is_flush = len(ranked_cards) >= flush_size and _flush_indices(ranked_cards, flush_size, jokers) != ()
+    is_straight = len(ranked_cards) >= straight_size and _straight_indices(ranked_cards, straight_size, jokers) != ()
     max_count = max(counts)
     pair_count = counts.count(2)
 
-    if is_flush and max_count == len(cards) and len(cards) >= 5:
+    if is_flush and max_count == len(ranked_cards) and len(ranked_cards) >= 5:
         return HandType.FLUSH_FIVE
-    if is_flush and len(cards) == 5 and counts == [2, 3]:
+    if is_flush and len(ranked_cards) == 5 and counts == [2, 3]:
         return HandType.FLUSH_HOUSE
-    if max_count == len(cards) and len(cards) >= 5:
+    if max_count == len(ranked_cards) and len(ranked_cards) >= 5:
         return HandType.FIVE_OF_A_KIND
     if is_flush and is_straight:
         return HandType.STRAIGHT_FLUSH
     if max_count == 4:
         return HandType.FOUR_OF_A_KIND
-    if len(cards) == 5 and counts == [2, 3]:
+    if len(ranked_cards) == 5 and counts == [2, 3]:
         return HandType.FULL_HOUSE
     if is_flush:
         return HandType.FLUSH
@@ -317,6 +321,8 @@ def _identify_hand_type(cards: tuple[Card, ...], jokers: tuple[Joker, ...] = ())
 
 
 def _is_straight(cards: tuple[Card, ...], *, shortcut: bool = False) -> bool:
+    if any(_is_stone_card(card) for card in cards):
+        return False
     values = sorted({STRAIGHT_VALUES[card.rank] for card in cards})
     if len(values) != len(cards):
         return False
@@ -331,40 +337,100 @@ def _scoring_indices(cards: tuple[Card, ...], hand_type: HandType, jokers: tuple
     if _has_joker(jokers, "Splash"):
         return tuple(range(len(cards)))
 
+    stone_indices = tuple(index for index, card in enumerate(cards) if _is_stone_card(card))
+    ranked_indices = tuple(index for index, card in enumerate(cards) if not _is_stone_card(card))
+
     if hand_type in {
         HandType.FULL_HOUSE,
         HandType.FIVE_OF_A_KIND,
         HandType.FLUSH_HOUSE,
         HandType.FLUSH_FIVE,
     }:
-        return tuple(range(len(cards)))
+        return _with_stone_indices(ranked_indices, stone_indices, len(cards))
     if hand_type == HandType.STRAIGHT:
-        return _straight_indices(cards, 4 if _has_joker(jokers, "Four Fingers") else 5, jokers)
+        return _with_stone_indices(
+            _straight_indices(cards, 4 if _has_joker(jokers, "Four Fingers") else 5, jokers),
+            stone_indices,
+            len(cards),
+        )
     if hand_type == HandType.FLUSH:
-        return _flush_indices(cards, 4 if _has_joker(jokers, "Four Fingers") else 5, jokers)
+        return _with_stone_indices(
+            _flush_indices(cards, 4 if _has_joker(jokers, "Four Fingers") else 5, jokers),
+            stone_indices,
+            len(cards),
+        )
     if hand_type == HandType.STRAIGHT_FLUSH:
         size = 4 if _has_joker(jokers, "Four Fingers") else 5
-        return _straight_flush_indices(cards, size, jokers)
+        return _with_stone_indices(_straight_flush_indices(cards, size, jokers), stone_indices, len(cards))
 
-    rank_counts = Counter(card.rank for card in cards)
+    rank_counts = Counter(cards[index].rank for index in ranked_indices)
 
     if hand_type == HandType.FOUR_OF_A_KIND:
-        return tuple(index for index, card in enumerate(cards) if rank_counts[card.rank] == 4)
+        return _with_stone_indices(
+            tuple(index for index in ranked_indices if rank_counts[cards[index].rank] == 4),
+            stone_indices,
+            len(cards),
+        )
     if hand_type == HandType.THREE_OF_A_KIND:
-        return tuple(index for index, card in enumerate(cards) if rank_counts[card.rank] == 3)
+        return _with_stone_indices(
+            tuple(index for index in ranked_indices if rank_counts[cards[index].rank] == 3),
+            stone_indices,
+            len(cards),
+        )
     if hand_type == HandType.TWO_PAIR:
-        return tuple(index for index, card in enumerate(cards) if rank_counts[card.rank] == 2)
+        return _with_stone_indices(
+            tuple(index for index in ranked_indices if rank_counts[cards[index].rank] == 2),
+            stone_indices,
+            len(cards),
+        )
     if hand_type == HandType.PAIR:
-        return tuple(index for index, card in enumerate(cards) if rank_counts[card.rank] == 2)
+        return _with_stone_indices(
+            tuple(index for index in ranked_indices if rank_counts[cards[index].rank] == 2),
+            stone_indices,
+            len(cards),
+        )
 
-    highest_index = max(range(len(cards)), key=lambda index: RANK_VALUES[cards[index].rank])
-    return (highest_index,)
+    if not ranked_indices:
+        return stone_indices
+    highest_index = max(ranked_indices, key=lambda index: RANK_VALUES[cards[index].rank])
+    return _with_stone_indices((highest_index,), stone_indices, len(cards))
+
+
+def _with_stone_indices(
+    indices: tuple[int, ...],
+    stone_indices: tuple[int, ...],
+    total_cards: int,
+) -> tuple[int, ...]:
+    selected = set(indices) | set(stone_indices)
+    return tuple(index for index in range(total_cards) if index in selected)
 
 
 def _card_chip_value(card: Card, *, debuffed_suits: frozenset[str] = frozenset()) -> int:
-    if card.debuffed or _normalize_suit(card.suit) in debuffed_suits:
+    if card.debuffed:
+        return 0
+    if _is_stone_card(card):
+        return 50
+    if _normalize_suit(card.suit) in debuffed_suits:
         return 0
     return RANK_VALUES[card.rank] + _enhancement_chips(card) + _permanent_card_chips(card)
+
+
+def _card_can_score(card: Card, *, debuffed_suits: frozenset[str]) -> bool:
+    if card.debuffed:
+        return False
+    return _is_stone_card(card) or _normalize_suit(card.suit) not in debuffed_suits
+
+
+def _card_has_rank(card: Card, ranks: set[str]) -> bool:
+    return not _is_stone_card(card) and card.rank in ranks
+
+
+def _card_has_suit(card: Card, suit: str) -> bool:
+    return not _is_stone_card(card) and _normalize_suit(card.suit) == suit
+
+
+def _card_rank_matches(card: Card, target_rank: str) -> bool:
+    return not _is_stone_card(card) and _rank_matches(card.rank, target_rank)
 
 
 def _evaluation_sort_key(evaluation: HandEvaluation) -> tuple[int, int, int]:
@@ -440,6 +506,8 @@ def _straight_indices(cards: tuple[Card, ...], size: int, jokers: tuple[Joker, .
 def _flush_indices(cards: tuple[Card, ...], size: int, jokers: tuple[Joker, ...]) -> tuple[int, ...]:
     groups: dict[str, list[int]] = {}
     for index, card in enumerate(cards):
+        if _is_stone_card(card):
+            continue
         groups.setdefault(_flush_suit_key(card.suit, jokers), []).append(index)
     candidates = [tuple(indexes) for indexes in groups.values() if len(indexes) >= size]
     if not candidates:
@@ -451,6 +519,8 @@ def _straight_flush_indices(cards: tuple[Card, ...], size: int, jokers: tuple[Jo
     best: tuple[int, ...] = ()
     for indexes in combinations(range(len(cards)), size):
         candidate = tuple(cards[index] for index in indexes)
+        if any(_is_stone_card(card) for card in candidate):
+            continue
         same_suit = len({_flush_suit_key(card.suit, jokers) for card in candidate}) == 1
         if same_suit and _is_straight(candidate, shortcut=_has_joker(jokers, "Shortcut")):
             if not best or _rank_sum(candidate) > _rank_sum(tuple(cards[index] for index in best)):
@@ -469,7 +539,7 @@ def _flush_suit_key(suit: str, jokers: tuple[Joker, ...]) -> str:
 
 
 def _rank_sum(cards: tuple[Card, ...]) -> int:
-    return sum(STRAIGHT_VALUES[card.rank] for card in cards)
+    return sum(STRAIGHT_VALUES[card.rank] for card in cards if not _is_stone_card(card))
 
 
 def _scored_card_trigger_counts(
@@ -489,7 +559,7 @@ def _scored_card_trigger_counts(
         extra = 0
         if card.seal and _normalize_effect_name(card.seal) == "red":
             extra += 1
-        if _has_joker(jokers, "Hack") and card.rank in {"2", "3", "4", "5"}:
+        if _has_joker(jokers, "Hack") and _card_has_rank(card, {"2", "3", "4", "5"}):
             extra += 1
         if _has_joker(jokers, "Sock and Buskin") and _is_face_card(card, jokers):
             extra += 1
@@ -512,6 +582,8 @@ def _sum_triggers_for_cards(
 
 
 def _is_face_card(card: Card, jokers: tuple[Joker, ...]) -> bool:
+    if _is_stone_card(card):
+        return False
     return card.rank in {"J", "Q", "K"} or _has_joker(jokers, "Pareidolia")
 
 
@@ -546,7 +618,7 @@ def _effect_adjustments(
     scored_entries = tuple(
         (index, cards[index])
         for index in scoring_indices
-        if not cards[index].debuffed and _normalize_suit(cards[index].suit) not in debuffed_suits
+        if _card_can_score(cards[index], debuffed_suits=debuffed_suits)
     )
     scoring_cards = tuple(cards[index] for index in scoring_indices)
     scored_cards = tuple(card for _, card in scored_entries)
@@ -631,32 +703,32 @@ def _effect_adjustments(
         elif name == "Bootstraps":
             add_mult(2 * (max(0, money) // 5))
         elif name == "Fibonacci":
-            add_mult(_sum_triggers_for_cards(scored_entries, trigger_counts, lambda card: card.rank in {"A", "2", "3", "5", "8"}) * 8)
+            add_mult(_sum_triggers_for_cards(scored_entries, trigger_counts, lambda card: _card_has_rank(card, {"A", "2", "3", "5", "8"})) * 8)
         elif name == "Scholar":
-            ace_count = _sum_triggers_for_cards(scored_entries, trigger_counts, lambda card: card.rank == "A")
+            ace_count = _sum_triggers_for_cards(scored_entries, trigger_counts, lambda card: _card_has_rank(card, {"A"}))
             add_chips(20 * ace_count)
             add_mult(4 * ace_count)
         elif name == "Scary Face":
             add_chips(30 * _sum_triggers_for_cards(scored_entries, trigger_counts, lambda card: _is_face_card(card, ability_jokers)))
         elif name == "Arrowhead":
-            add_chips(50 * _sum_triggers_for_cards(scored_entries, trigger_counts, lambda card: _normalize_suit(card.suit) == "S"))
+            add_chips(50 * _sum_triggers_for_cards(scored_entries, trigger_counts, lambda card: _card_has_suit(card, "S")))
         elif name == "Even Steven":
-            add_mult(4 * _sum_triggers_for_cards(scored_entries, trigger_counts, lambda card: card.rank in {"2", "4", "6", "8", "10", "T"}))
+            add_mult(4 * _sum_triggers_for_cards(scored_entries, trigger_counts, lambda card: _card_has_rank(card, {"2", "4", "6", "8", "10", "T"})))
         elif name == "Half Joker" and len(cards) <= 3:
             add_mult(20)
         elif name == "Odd Todd":
-            add_chips(31 * _sum_triggers_for_cards(scored_entries, trigger_counts, lambda card: card.rank in {"A", "3", "5", "7", "9"}))
+            add_chips(31 * _sum_triggers_for_cards(scored_entries, trigger_counts, lambda card: _card_has_rank(card, {"A", "3", "5", "7", "9"})))
         elif name == "Smiley Face":
             add_mult(5 * _sum_triggers_for_cards(scored_entries, trigger_counts, lambda card: _is_face_card(card, ability_jokers)))
         elif name == "Walkie Talkie":
-            walkie_count = _sum_triggers_for_cards(scored_entries, trigger_counts, lambda card: card.rank in {"10", "T", "4"})
+            walkie_count = _sum_triggers_for_cards(scored_entries, trigger_counts, lambda card: _card_has_rank(card, {"10", "T", "4"}))
             add_chips(10 * walkie_count)
             add_mult(4 * walkie_count)
         elif name == "Onyx Agate":
-            add_mult(7 * _sum_triggers_for_cards(scored_entries, trigger_counts, lambda card: _normalize_suit(card.suit) == "C"))
+            add_mult(7 * _sum_triggers_for_cards(scored_entries, trigger_counts, lambda card: _card_has_suit(card, "C")))
         elif name in SUIT_MULT_JOKERS:
             suit, mult = SUIT_MULT_JOKERS[name]
-            add_mult(mult * _sum_triggers_for_cards(scored_entries, trigger_counts, lambda card: _normalize_suit(card.suit) == suit))
+            add_mult(mult * _sum_triggers_for_cards(scored_entries, trigger_counts, lambda card: _card_has_suit(card, suit)))
         elif name == "Jolly Joker" and _contains_pair(cards):
             add_mult(8)
         elif name == "Zany Joker" and _contains_three_of_a_kind(cards):
@@ -699,7 +771,7 @@ def _effect_adjustments(
             add_chips(2 * deck_size)
         elif name == "Wee Joker":
             add_chips(_joker_current_plus(ability_joker, suffix="chips"))
-            add_chips(8 * _sum_triggers_for_cards(scored_entries, trigger_counts, lambda card: card.rank == "2"))
+            add_chips(8 * _sum_triggers_for_cards(scored_entries, trigger_counts, lambda card: _card_has_rank(card, {"2"})))
         elif name == "Runner":
             add_chips(_joker_current_plus(ability_joker, suffix="chips"))
             if _contains_straight(hand_type):
@@ -746,14 +818,14 @@ def _effect_adjustments(
         elif name == "Ancient Joker":
             suit = _joker_target_suit(ability_joker)
             if suit:
-                multiply_mult(1.5 ** _sum_triggers_for_cards(scored_entries, trigger_counts, lambda card: _normalize_suit(card.suit) == suit))
+                multiply_mult(1.5 ** _sum_triggers_for_cards(scored_entries, trigger_counts, lambda card: _card_has_suit(card, suit)))
         elif name == "The Idol":
             target = _joker_target_rank_suit(ability_joker)
             if target is not None:
                 rank, suit = target
-                multiply_mult(2 ** _sum_triggers_for_cards(scored_entries, trigger_counts, lambda card: _rank_matches(card.rank, rank) and _normalize_suit(card.suit) == suit))
+                multiply_mult(2 ** _sum_triggers_for_cards(scored_entries, trigger_counts, lambda card: _card_rank_matches(card, rank) and _card_has_suit(card, suit)))
         elif name == "Triboulet":
-            multiply_mult(2 ** _sum_triggers_for_cards(scored_entries, trigger_counts, lambda card: card.rank in {"K", "Q"}))
+            multiply_mult(2 ** _sum_triggers_for_cards(scored_entries, trigger_counts, lambda card: _card_has_rank(card, {"K", "Q"})))
         elif name == "Photograph" and not photograph_consumed:
             first_face = _first_scored_face_entry(scored_entries, ability_jokers)
             if first_face is not None:
@@ -775,6 +847,8 @@ def _held_card_effects(
     debuffed_suits: frozenset[str],
     lowest_held: Card | None,
 ) -> tuple[tuple[int, int, float], ...]:
+    if _is_stone_card(card):
+        return ()
     if card.debuffed or _normalize_suit(card.suit) in debuffed_suits:
         return ()
 
@@ -806,17 +880,19 @@ def _blackboard_active(held_cards: tuple[Card, ...]) -> bool:
 
 
 def _blackboard_card_is_black(card: Card) -> bool:
-    if _normalize_effect_name(card.enhancement) in {"stone", "stone card"}:
+    if _is_stone_card(card):
         return False
     return _normalize_suit(card.suit) in {"S", "C"}
+
+
+def _is_stone_card(card: Card) -> bool:
+    return _normalize_effect_name(card.enhancement) in {"stone", "stone card"}
 
 
 def _enhancement_chips(card: Card) -> int:
     enhancement = _normalize_effect_name(card.enhancement)
     if enhancement in {"bonus", "bonus card"}:
         return 30
-    if enhancement in {"stone", "stone card"}:
-        return 50
     return 0
 
 
@@ -1190,28 +1266,37 @@ def _normalize_joker_rarity(candidate: object) -> str:
 
 
 def _contains_scored_club_and_other_suit(cards: tuple[Card, ...]) -> bool:
-    suits = {_normalize_suit(card.suit) for card in cards}
+    suits = {_normalize_suit(card.suit) for card in cards if not _is_stone_card(card)}
     return "C" in suits and len(suits - {"C"}) > 0
 
 
 def _contains_all_suits(cards: tuple[Card, ...]) -> bool:
-    return {"S", "H", "C", "D"}.issubset({_normalize_suit(card.suit) for card in cards})
+    return {"S", "H", "C", "D"}.issubset(
+        {_normalize_suit(card.suit) for card in cards if not _is_stone_card(card)}
+    )
 
 
 def _contains_pair(cards: tuple[Card, ...]) -> bool:
-    return max(Counter(card.rank for card in cards).values()) >= 2
+    rank_counts = _non_stone_rank_counts(cards)
+    return bool(rank_counts) and max(rank_counts.values()) >= 2
 
 
 def _contains_two_pair(cards: tuple[Card, ...]) -> bool:
-    return sum(1 for count in Counter(card.rank for card in cards).values() if count >= 2) >= 2
+    return sum(1 for count in _non_stone_rank_counts(cards).values() if count >= 2) >= 2
 
 
 def _contains_three_of_a_kind(cards: tuple[Card, ...]) -> bool:
-    return max(Counter(card.rank for card in cards).values()) >= 3
+    rank_counts = _non_stone_rank_counts(cards)
+    return bool(rank_counts) and max(rank_counts.values()) >= 3
 
 
 def _contains_four_of_a_kind(cards: tuple[Card, ...]) -> bool:
-    return max(Counter(card.rank for card in cards).values()) >= 4
+    rank_counts = _non_stone_rank_counts(cards)
+    return bool(rank_counts) and max(rank_counts.values()) >= 4
+
+
+def _non_stone_rank_counts(cards: tuple[Card, ...]) -> Counter[str]:
+    return Counter(card.rank for card in cards if not _is_stone_card(card))
 
 
 def _contains_straight(hand_type: HandType) -> bool:
