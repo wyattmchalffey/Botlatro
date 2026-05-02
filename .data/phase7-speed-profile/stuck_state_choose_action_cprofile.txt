@@ -1,0 +1,48 @@
+         267910618 function calls (267783781 primitive calls) in 157.112 seconds
+
+   Ordered by: cumulative time
+   List reduced from 484 to 40 due to restriction <40>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000  158.467  158.467 basic_strategy_bot.py:228(choose_action)
+      721    0.246    0.000  143.804    0.199 basic_strategy_bot.py:2965(_play_candidates)
+        1    0.005    0.005  143.730  143.730 basic_strategy_bot.py:2863(_joker_rearrange_action)
+      720    0.006    0.000  143.724    0.200 basic_strategy_bot.py:2899(_best_play_score_for_joker_order)
+   157178    1.141    0.000  143.558    0.001 basic_strategy_bot.py:2975(_play_candidate)
+   179701    4.078    0.000  114.038    0.001 hand_evaluator.py:166(evaluate_played_cards)
+   157180    1.130    0.000  105.813    0.001 basic_strategy_bot.py:3139(_evaluate_play_action)
+   179701   11.214    0.000   76.597    0.000 hand_evaluator.py:771(_effect_adjustments)
+   157178    0.616    0.000   35.702    0.000 basic_strategy_bot.py:3223(_cycle_value_for_play)
+  6469236    7.221    0.000   20.865    0.000 hand_evaluator.py:1350(_joker_is_disabled)
+   150691    3.486    0.000   20.586    0.000 basic_strategy_bot.py:4226(_card_keep_scores)
+4401288/4275091    1.772    0.000   15.947    0.000 {built-in method builtins.max}
+   151159    3.367    0.000   14.486    0.000 basic_strategy_bot.py:4478(_preferred_hand_type)
+      152    0.182    0.001   14.301    0.094 hand_evaluator.py:273(best_play_from_hand)
+        1    0.000    0.000   14.196   14.196 basic_strategy_bot.py:3242(_tactical_blind_action)
+5581189/5580818    7.598    0.000   14.032    0.000 {built-in method builtins.any}
+   216458    1.079    0.000   13.466    0.000 hand_evaluator.py:855(apply_scored_card_jokers)
+       31    0.001    0.000   13.412    0.433 basic_strategy_bot.py:3790(_projected_score_after_discard)
+      122    0.001    0.000   13.401    0.110 basic_strategy_bot.py:3839(_best_score_from_cards)
+        1    0.000    0.000   13.310   13.310 basic_strategy_bot.py:3551(_best_discard_action)
+       29    0.001    0.000   13.298    0.459 basic_strategy_bot.py:3585(discard_score)
+       31    0.000    0.000   12.598    0.406 basic_strategy_bot.py:3863(_optimistic_completion_score)
+      122    0.000    0.000   12.593    0.103 basic_strategy_bot.py:3884(<genexpr>)
+  3846676    2.345    0.000   11.896    0.000 hand_evaluator.py:649(_has_joker)
+  1906828    2.098    0.000   11.581    0.000 {built-in method builtins.sum}
+  7261554    6.429    0.000   10.454    0.000 hand_evaluator.py:1343(_joker_effect_text)
+  2298804    1.685    0.000   10.360    0.000 __init__.py:174(search)
+   216458    0.562    0.000    9.943    0.000 hand_evaluator.py:1478(_joker_target_rank_suit)
+  1205528    2.683    0.000    8.726    0.000 basic_strategy_bot.py:4181(_joker_card_keep_bonus)
+ 35926363    8.168    0.000    8.168    0.000 {method 'get' of 'dict' objects}
+   179701    1.363    0.000    8.066    0.000 hand_evaluator.py:320(_identify_hand_type)
+  1294206    1.987    0.000    7.766    0.000 __init__.py:595(__init__)
+  1257907    0.846    0.000    7.749    0.000 hand_evaluator.py:187(<genexpr>)
+  1257907    0.843    0.000    7.675    0.000 hand_evaluator.py:794(<genexpr>)
+   216458    0.834    0.000    6.855    0.000 hand_evaluator.py:1461(_joker_target_suit)
+   359402    0.468    0.000    6.119    0.000 hand_evaluator.py:1318(_joker_current_plus)
+  1294206    0.967    0.000    5.779    0.000 __init__.py:668(update)
+  1813908    2.038    0.000    5.449    0.000 basic_strategy_bot.py:4529(_hand_level_vote)
+   179701    1.438    0.000    5.415    0.000 hand_evaluator.py:372(_scoring_indices)
+   396159    0.185    0.000    5.081    0.000 hand_evaluator.py:228(<genexpr>)
+
+

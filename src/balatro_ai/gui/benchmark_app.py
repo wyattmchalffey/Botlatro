@@ -82,6 +82,7 @@ class BenchmarkApp:
         self.label = StringVar(value="primary-score-audit-100")
         self.max_steps = IntVar(value=800)
         self.timeout_seconds = StringVar(value="30")
+        self.run_timeout_seconds = StringVar(value="1800")
         self.start_retries = IntVar(value=1)
         self.retry_failed_seeds = IntVar(value=1)
         self.replay_dir = StringVar(value=str(Path(".data") / "gui-replays"))
@@ -197,6 +198,7 @@ class BenchmarkApp:
         ttk.Button(benchmark, text="Generated Seeds", command=self._use_generated_seeds).grid(
             row=6, column=4, columnspan=2, sticky="ew", padx=(8, 0), pady=3
         )
+        _entry(benchmark, "Run timeout", self.run_timeout_seconds, 6, 6)
 
         controls = ttk.Frame(outer)
         controls.grid(row=3, column=0, sticky="ew", pady=(10, 0))
@@ -283,6 +285,7 @@ class BenchmarkApp:
         self.bridge_log_mode.set("quiet")
         self.replay_mode.set("summary")
         self.start_retries.set(1)
+        self.run_timeout_seconds.set("1800")
         self.fps_cap.set(2000)
         self.gamespeed.set(32)
         self.animation_fps.set(1)
@@ -298,6 +301,7 @@ class BenchmarkApp:
         self.bridge_log_mode.set("normal_clean")
         self.replay_mode.set("off")
         self.start_retries.set(1)
+        self.run_timeout_seconds.set("0")
         self.fps_cap.set(60)
         self.gamespeed.set(1)
         self.animation_fps.set(30)
@@ -364,6 +368,9 @@ class BenchmarkApp:
         timeout_seconds = _float_value(self.timeout_seconds, "Timeout")
         if timeout_seconds <= 0:
             raise ValueError("Timeout must be greater than zero.")
+        run_timeout_seconds = _float_value(self.run_timeout_seconds, "Run timeout")
+        if run_timeout_seconds < 0:
+            raise ValueError("Run timeout must be zero or greater.")
 
         seed_values = parse_seed_values(self.seed_list.get())
         replay_dir = Path(self.replay_dir.get()) if self.replay_dir.get().strip() else None
@@ -381,6 +388,7 @@ class BenchmarkApp:
                 endpoints=endpoint_urls(self.host.get(), _int_value(self.base_port, "Base port"), worker_count),
                 timeout_seconds=timeout_seconds,
                 max_steps=max_steps,
+                run_timeout_seconds=run_timeout_seconds if run_timeout_seconds > 0 else None,
                 replay_dir=replay_dir,
                 replay_mode=self.replay_mode.get(),
                 start_retries=start_retries,

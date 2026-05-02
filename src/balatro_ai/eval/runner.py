@@ -37,6 +37,7 @@ class BenchmarkOptions:
     endpoints: tuple[str, ...] = ("http://127.0.0.1:12346",)
     timeout_seconds: float = 10.0
     max_steps: int = 1000
+    run_timeout_seconds: float | None = 1800.0
     replay_dir: Path | None = None
     replay_mode: str = "score_audit"
     start_retries: int = 1
@@ -84,6 +85,7 @@ def run_benchmark(
     _emit(progress, f"Replay mode: {options.replay_mode}")
     _emit(progress, f"Start retries: {options.start_retries}")
     _emit(progress, f"Failed seed retries: {options.retry_failed_seeds}")
+    _emit(progress, f"Run timeout: {_run_timeout_label(options.run_timeout_seconds)}")
     if options.replay_mode not in REPLAY_MODES:
         raise ValueError(f"Unknown replay mode: {options.replay_mode}")
 
@@ -278,6 +280,7 @@ def _run_seed(*, seed: int, endpoint: str, options: BenchmarkOptions) -> RunResu
                 seed=seed,
                 stake=options.stake,
                 max_steps=options.max_steps,
+                run_timeout_seconds=options.run_timeout_seconds,
                 replay_path=replay_path,
                 replay_mode=options.replay_mode,
                 start_retries=options.start_retries,
@@ -348,6 +351,10 @@ def _stop_requested(should_stop: StopCallback | None) -> bool:
 def _emit(progress: ProgressCallback | None, message: str) -> None:
     if progress is not None:
         progress(message)
+
+
+def _run_timeout_label(timeout_seconds: float | None) -> str:
+    return "off" if timeout_seconds is None or timeout_seconds <= 0 else f"{timeout_seconds:.1f}s"
 
 
 def _emit_result(

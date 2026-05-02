@@ -128,6 +128,31 @@ class RunnerTests(unittest.TestCase):
 
         self.assertIn("Seed label: white:manual:explicit", messages)
         self.assertIn("First seed: 42", messages)
+        self.assertIn("Run timeout: 1800.0s", messages)
+
+    def test_run_benchmark_passes_custom_run_timeout_to_seed_runner(self) -> None:
+        original_run_seed = runner._run_seed
+
+        def fake_run_seed(*, seed: int, endpoint: str, options: BenchmarkOptions) -> RunResult:
+            self.assertEqual(options.run_timeout_seconds, 45.0)
+            return RunResult(
+                bot_version=options.bot,
+                seed=seed,
+                stake=options.stake,
+                won=False,
+                ante_reached=1,
+                final_score=100,
+                final_money=5,
+                runtime_seconds=1.0,
+            )
+
+        try:
+            runner._run_seed = fake_run_seed
+            run_benchmark(
+                BenchmarkOptions(bot="random_bot", seed_values=(42,), label="manual", run_timeout_seconds=45.0)
+            )
+        finally:
+            runner._run_seed = original_run_seed
 
     def test_run_benchmark_can_stop_before_any_seed(self) -> None:
         result = run_benchmark(

@@ -70,6 +70,34 @@ class BasicStrategyBotTests(unittest.TestCase):
         self.assertEqual(action.action_type, ActionType.REARRANGE)
         self.assertEqual(action.card_indices, (1, 0))
 
+    def test_joker_rearrange_search_is_bounded_for_full_joker_lineups(self) -> None:
+        jokers = (
+            Joker("Blue Joker", edition="NEGATIVE"),
+            Joker("Wrathful Joker"),
+            Joker("Baseball Card"),
+            Joker("Jolly Joker"),
+            Joker("Green Joker"),
+            Joker("The Idol"),
+        )
+
+        orders = strategy._joker_rearrange_candidate_orders(jokers)
+
+        self.assertLessEqual(len(orders), 4)
+        self.assertIn((0, 1, 3, 4, 2, 5), orders)
+
+    def test_joker_rearrange_search_stays_exhaustive_for_small_lineups(self) -> None:
+        jokers = (
+            Joker("Joker"),
+            Joker("Blackboard"),
+            Joker("Jolly Joker"),
+            Joker("The Duo"),
+            Joker("Blue Joker"),
+        )
+
+        orders = strategy._joker_rearrange_candidate_orders(jokers)
+
+        self.assertEqual(len(orders), 120)
+
     def test_prefers_smallest_hand_that_beats_remaining_score(self) -> None:
         state = GameState(
             required_score=60,

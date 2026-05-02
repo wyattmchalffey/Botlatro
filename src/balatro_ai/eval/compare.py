@@ -382,6 +382,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--workers", type=int, default=1, help="Number of worker endpoints.")
     parser.add_argument("--timeout-seconds", type=float, default=10.0, help="JSON-RPC request timeout.")
     parser.add_argument("--max-steps", type=int, default=1000, help="Step cap per run.")
+    parser.add_argument(
+        "--run-timeout-seconds",
+        type=float,
+        default=1800.0,
+        help="Wall-clock cap for one full seed; use 0 to disable.",
+    )
     parser.add_argument("--replay-dir", type=Path, help="Optional parent directory for per-bot replay JSONL files.")
     parser.add_argument("--start-retries", type=int, default=1, help="Retries for bridge start/reset failures.")
     parser.add_argument("--retry-failed-seeds", type=int, default=1, help="Retries for bridge/client error seeds.")
@@ -456,6 +462,7 @@ def main(argv: list[str] | None = None) -> int:
         "endpoints": endpoints,
         "timeout_seconds": args.timeout_seconds,
         "max_steps": args.max_steps,
+        "run_timeout_seconds": _optional_positive_float(args.run_timeout_seconds),
         "replay_mode": args.replay_mode,
         "start_retries": args.start_retries,
         "retry_failed_seeds": args.retry_failed_seeds,
@@ -484,6 +491,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     _emit_comparison(comparison, save_json=args.save_json, emit_json=args.json)
     return 0
+
+
+def _optional_positive_float(value: float) -> float | None:
+    return value if value > 0 else None
 
 
 if __name__ == "__main__":

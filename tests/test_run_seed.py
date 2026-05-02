@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
 
 import context  # noqa: F401
+import balatro_ai.eval.run_seed as run_seed_module
 from balatro_ai.api.actions import Action, ActionType
 from balatro_ai.api.client import BalatroBridgeError
 from balatro_ai.api.state import GamePhase, GameState
@@ -180,6 +182,35 @@ class AnteNineWonButNotRunOverClient:
         )
 
 
+class EndlessClient:
+    def __init__(self) -> None:
+        self.action = Action(ActionType.NO_OP)
+
+    def start_run(self, seed: int | None = None, stake: str | None = None) -> GameState:
+        return GameState(
+            phase=GamePhase.PLAYING_BLIND,
+            seed=seed,
+            ante=3,
+            current_score=200,
+            money=6,
+            blind="Big Blind",
+            legal_actions=(self.action,),
+        )
+
+    def get_state(self) -> GameState:
+        return GameState(phase=GamePhase.PLAYING_BLIND, legal_actions=(self.action,))
+
+    def send_action(self, action: Action) -> GameState:
+        return GameState(
+            phase=GamePhase.PLAYING_BLIND,
+            ante=3,
+            current_score=300,
+            money=6,
+            blind="Big Blind",
+            legal_actions=(self.action,),
+        )
+
+
 class RunSeedTests(unittest.TestCase):
     def test_run_single_seed_returns_result(self) -> None:
         result = run_single_seed(
@@ -240,6 +271,29 @@ class RunSeedTests(unittest.TestCase):
         self.assertEqual(result.final_money, 105)
         self.assertIsNone(result.death_reason)
 
+    def test_run_single_seed_marks_wall_clock_timeout_as_retryable_error(self) -> None:
+        original_perf_counter = run_seed_module.perf_counter
+        now = 0.0
+
+        def fake_perf_counter() -> float:
+            nonlocal now
+            now += 2.0
+            return now
+
+        try:
+            run_seed_module.perf_counter = fake_perf_counter
+            result = run_single_seed(
+                bot=RandomBot(seed=123),
+                client=EndlessClient(),
+                options=RunSeedOptions(seed=123, max_steps=10, run_timeout_seconds=1.0),
+            )
+        finally:
+            run_seed_module.perf_counter = original_perf_counter
+
+        self.assertFalse(result.won)
+        self.assertEqual(result.ante_reached, 3)
+        self.assertTrue(result.death_reason and result.death_reason.startswith("error:RunTimeout:"))
+
     def test_replay_mode_off_does_not_write_replay_file(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             replay_path = Path(directory) / "run.jsonl"
@@ -279,6 +333,24 @@ class RunSeedTests(unittest.TestCase):
             self.assertIn('"won": true', text)
             self.assertIn('"final_state_detail"', text)
             self.assertNotIn('"chosen_action"', text)
+
+    def test_profile_path_writes_timing_sidecar(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            profile_path = Path(directory) / "profile.json"
+            run_single_seed(
+                bot=RandomBot(seed=123),
+                client=TwoStepClient(),
+                options=RunSeedOptions(seed=123, max_steps=10, replay_mode="off", profile_path=profile_path),
+            )
+
+            profile = json.loads(profile_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(profile["record_type"], "run_profile")
+        self.assertEqual(profile["seed"], 123)
+        self.assertEqual(profile["steps"], 2)
+        self.assertEqual(profile["action_counts"]["no_op"], 2)
+        self.assertIn("env_step_seconds", profile["timings"])
+        self.assertTrue(profile["slowest_steps"])
 
     def test_unknown_replay_mode_is_rejected(self) -> None:
         with self.assertRaises(ValueError):

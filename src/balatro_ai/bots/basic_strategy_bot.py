@@ -129,6 +129,7 @@ class _BlindContext:
 
 DISCARD_DETAIL_LIMIT = 28
 MAX_JOKER_REARRANGE_COUNT = 6
+JOKER_REARRANGE_EXHAUSTIVE_COUNT = 5
 JOKER_REARRANGE_MIN_GAIN = 1
 SHOP_VALUE_TOLERANCE = 0.25
 SHOP_TARGET_SAFETY_BASE = 1.15
@@ -2874,7 +2875,7 @@ def _joker_rearrange_action(state: GameState, context: _BlindContext | None = No
     best_order = current_order
     best_score = current_score
 
-    for order in permutations(current_order):
+    for order in _joker_rearrange_candidate_orders(state.jokers):
         if order == current_order:
             continue
         ordered_jokers = tuple(state.jokers[index] for index in order)
@@ -2899,6 +2900,67 @@ def _joker_rearrange_action(state: GameState, context: _BlindContext | None = No
 def _best_play_score_for_joker_order(state: GameState, jokers: tuple[Joker, ...], context: _BlindContext) -> int:
     ordered_state = replace(state, jokers=jokers)
     return max((candidate.score for candidate in _play_candidates(ordered_state, context)), default=0)
+
+
+def _joker_rearrange_candidate_orders(jokers: tuple[Joker, ...]) -> tuple[tuple[int, ...], ...]:
+    current_order = tuple(range(len(jokers)))
+    if len(jokers) <= JOKER_REARRANGE_EXHAUSTIVE_COUNT:
+        return tuple(permutations(current_order))
+
+    orders: list[tuple[int, ...]] = []
+    seen: set[tuple[int, ...]] = set()
+
+    def add(order: tuple[int, ...]) -> None:
+        if len(order) != len(jokers) or set(order) != set(current_order) or order in seen:
+            return
+        seen.add(order)
+        orders.append(order)
+
+    role_order = tuple(sorted(current_order, key=lambda index: _joker_order_sort_key(jokers[index], index)))
+    add(current_order)
+    add(role_order)
+
+    copy_indices = tuple(
+        index for index, joker in enumerate(jokers) if joker.name in {"Blueprint", "Brainstorm"}
+    )
+    if copy_indices:
+        for target_index in current_order:
+            if jokers[target_index].name in {"Blueprint", "Brainstorm"}:
+                continue
+            add(_order_with_target_first(role_order, target_index))
+            for copy_index in copy_indices:
+                add(_order_with_copy_before_target(role_order, copy_index, target_index))
+
+    return tuple(orders)
+
+
+def _joker_order_sort_key(joker: Joker, original_index: int) -> tuple[int, int]:
+    role = _joker_order_role(joker)
+    if role in {"chips", "mult"}:
+        return (0, original_index)
+    if joker.name in {"Blueprint", "Brainstorm"}:
+        return (1, original_index)
+    if role == "xmult":
+        return (2, original_index)
+    return (1, original_index)
+
+
+def _order_with_target_first(order: tuple[int, ...], target_index: int) -> tuple[int, ...]:
+    return (target_index, *(index for index in order if index != target_index))
+
+
+def _order_with_copy_before_target(
+    order: tuple[int, ...],
+    copy_index: int,
+    target_index: int,
+) -> tuple[int, ...]:
+    without_copy = [index for index in order if index != copy_index]
+    try:
+        target_position = without_copy.index(target_index)
+    except ValueError:
+        return tuple(order)
+    without_copy.insert(target_position, copy_index)
+    return tuple(without_copy)
 
 
 def _joker_order_can_matter(jokers: tuple[Joker, ...]) -> bool:
