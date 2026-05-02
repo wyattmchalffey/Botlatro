@@ -1,0 +1,25 @@
+{
+  "run_won": false,
+  "run_completed": false,
+  "final_ante": 4,
+  "final_round": 10,
+  "providers": {
+    "Groq": 99
+  },
+  "calls_total": 99,
+  "calls_success": 83,
+  "calls_error": 10,
+  "calls_failed": 6,
+  "tokens_in_total": 1376398,
+  "tokens_out_total": 283880,
+  "tokens_in_avg": 13903.0101010101,
+  "tokens_out_avg": 2867.4747474747473,
+  "tokens_in_std": 351.12807986311356,
+  "tokens_out_std": 2981.578195791804,
+  "time_total_ms": 428483,
+  "time_avg_ms": 4328.111111111111,
+  "time_std_ms": 3641.629862981261,
+  "cost_total": 0.15535065,
+  "cost_avg": 0.0015691984848484849,
+  "cost_std": 0.0008911107072349099
+}

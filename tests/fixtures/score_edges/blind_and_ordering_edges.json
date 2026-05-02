@@ -1,0 +1,92 @@
+{
+  "schema": "balatro-ai.score-edge.v1",
+  "cases": [
+    {
+      "name": "photograph_scores_before_prior_polychrome_joker",
+      "kind": "score",
+      "source": "synthetic",
+      "cards": "KS",
+      "jokers": [
+        {
+          "name": "Joker",
+          "edition": "Polychrome"
+        },
+        "Photograph"
+      ],
+      "expected": {
+        "hand_type": "High Card",
+        "mult": 5,
+        "xmult": 3.0,
+        "score": 135
+      }
+    },
+    {
+      "name": "the_flint_rounds_halved_base_values_up",
+      "kind": "score",
+      "source": "synthetic",
+      "blind": "The Flint",
+      "cards": "AS",
+      "expected": {
+        "hand_type": "High Card",
+        "chips": 14,
+        "mult": 1,
+        "score": 14
+      }
+    },
+    {
+      "name": "the_tooth_reduces_money_before_money_jokers",
+      "kind": "score",
+      "source": "synthetic",
+      "blind": "The Tooth",
+      "cards": "AS KD QC JH TC",
+      "jokers": ["Bull", "Bootstraps"],
+      "money": 11,
+      "expected": {
+        "hand_type": "Straight",
+        "chips": 93,
+        "mult": 6,
+        "score": 558
+      }
+    },
+    {
+      "name": "the_arm_reduces_hand_level_before_scoring",
+      "kind": "score",
+      "source": "bridge row .data/phase7-score-audit-fresh-10/basic_strategy_bot_white_2120646905.jsonl:116",
+      "blind": "The Arm",
+      "cards": "7S 7H 7C",
+      "money": 80,
+      "deck_size": 37,
+      "hand_levels": {
+        "Three of a Kind": 3
+      },
+      "held": "JS 9C 7D 6C 2S",
+      "jokers": [
+        {
+          "name": "Green Joker",
+          "metadata": {
+            "value": {
+              "effect": "+1 Mult per hand played -1 Mult per discard (Currently +30 Mult)"
+            }
+          }
+        },
+        {
+          "name": "Square Joker",
+          "metadata": {
+            "value": {
+              "effect": "This Joker gains +4 Chips if played hand has exactly 4 cards (Currently 36 Chips)"
+            }
+          }
+        },
+        "Sly Joker",
+        "Blue Joker",
+        "Half Joker"
+      ],
+      "expected": {
+        "hand_type": "Three of a Kind",
+        "chips": 231,
+        "mult": 56,
+        "score": 12936
+      }
+    }
+  ]
+}

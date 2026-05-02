@@ -69,10 +69,11 @@ class Card:
         value = _mapping_or_empty(data.get("value"))
         modifier = _mapping_or_empty(data.get("modifier"))
         state = _mapping_or_empty(data.get("state"))
+        enhancement = data.get("enhancement", modifier.get("enhancement"))
         return cls(
             rank=str(data.get("rank", value.get("rank"))),
             suit=str(data.get("suit", value.get("suit"))),
-            enhancement=data.get("enhancement", modifier.get("enhancement")),
+            enhancement=enhancement if enhancement is not None else _enhancement_from_label(data),
             seal=data.get("seal", modifier.get("seal")),
             edition=data.get("edition", modifier.get("edition")),
             debuffed=bool(data.get("debuffed", state.get("debuff", False))),
@@ -146,6 +147,7 @@ class GameState:
         phase = _parse_phase(data.get("phase", data.get("state", GamePhase.UNKNOWN.value)))
         stake = _parse_stake(data.get("stake", Stake.UNKNOWN.value))
         round_data = data.get("round", {})
+        round_counter_modifiers = _round_counter_modifiers(data, round_data)
         current_blind = _current_blind(data.get("blinds", {}))
         hand_cards = _area_cards(data.get("hand", data.get("cards", {})))
         joker_cards = _area_cards(data.get("jokers", {}))
@@ -178,6 +180,7 @@ class GameState:
             hand_levels=hand_levels,
             modifiers={
                 **dict(data.get("modifiers", {})),
+                **round_counter_modifiers,
                 "blinds": data.get("blinds", _mapping_or_empty(data.get("modifiers")).get("blinds", {})),
                 "current_blind": current_blind,
                 "hands": data.get("hands", data.get("hand_levels", {})),
@@ -191,7 +194,7 @@ class GameState:
             run_over=bool(data.get("run_over", phase == GamePhase.RUN_OVER)),
             won=bool(data.get("won", False)),
         )
-        if state.ante >= 9 and not state.run_over and not state.won:
+        if state.ante >= 9:
             return replace(state, ante=8, run_over=True, won=True, legal_actions=())
         if state.legal_actions:
             return _with_augmented_sell_actions(_with_sanitized_legal_actions(state))
@@ -214,12 +217,45 @@ def _mapping_or_empty(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _round_counter_modifiers(data: dict[str, Any], round_data: Any) -> dict[str, Any]:
+    counters: dict[str, Any] = {}
+    round_mapping = _mapping_or_empty(round_data)
+    if "discards_used" in round_mapping:
+        counters["round_discards_used"] = round_mapping["discards_used"]
+        counters["discards_used"] = round_mapping["discards_used"]
+    if "hands_played" in round_mapping:
+        counters["round_hands_played"] = round_mapping["hands_played"]
+        counters["hands_played"] = round_mapping["hands_played"]
+    for key in ("round_discards_used", "discards_used", "round_hands_played", "hands_played"):
+        if key in data:
+            counters[key] = data[key]
+    return counters
+
+
 def _raw_metadata(data: dict[str, Any]) -> dict[str, Any]:
     metadata = dict(data.get("metadata", {})) if isinstance(data.get("metadata"), dict) else {}
-    for key in ("id", "key", "set", "label", "value", "modifier", "state", "cost", "rarity", "rarity_name"):
-        if key in data:
-            metadata[key] = data[key]
+    for key, value in data.items():
+        if key != "metadata":
+            metadata.setdefault(key, value)
     return metadata
+
+
+def _enhancement_from_label(data: dict[str, Any]) -> str | None:
+    label = str(data.get("label", "")).strip().lower()
+    card_set = str(data.get("set", "")).strip().lower()
+    if card_set not in {"enhanced", "default", ""}:
+        return None
+    mapping = {
+        "bonus card": "BONUS",
+        "mult card": "MULT",
+        "wild card": "WILD",
+        "glass card": "GLASS",
+        "steel card": "STEEL",
+        "stone card": "STONE",
+        "gold card": "GOLD",
+        "lucky card": "LUCKY",
+    }
+    return mapping.get(label)
 
 
 def _parse_stake(raw: Any) -> Stake:
@@ -350,18 +386,33 @@ def _derive_legal_actions(
             actions.append(Action(ActionType.REROLL))
         actions.append(Action(ActionType.END_SHOP))
     elif state.phase == GamePhase.BOOSTER_OPENED:
-        for index in range(len(state.pack)):
-            actions.append(Action(ActionType.CHOOSE_PACK_CARD, target_id="card", amount=index, metadata={"kind": "card", "index": index}))
-        actions.append(Action(ActionType.CHOOSE_PACK_CARD, target_id="skip", metadata={"kind": "skip", "index": True}))
+        for index in range(len(state.jokers)):
+            actions.append(Action(ActionType.SELL, target_id="joker", amount=index, metadata={"kind": "joker", "index": index}))
+        if state.pack:
+            for index in range(len(state.pack)):
+                actions.append(
+                    Action(ActionType.CHOOSE_PACK_CARD, target_id="card", amount=index, metadata={"kind": "card", "index": index})
+                )
+            actions.append(Action(ActionType.CHOOSE_PACK_CARD, target_id="skip", metadata={"kind": "skip", "index": True}))
+        else:
+            actions.append(Action(ActionType.NO_OP))
     elif state.phase not in {GamePhase.RUN_OVER, GamePhase.UNKNOWN}:
         actions.append(Action(ActionType.NO_OP))
     return tuple(actions)
 
 
 def _with_sanitized_legal_actions(state: GameState) -> GameState:
+    legal_actions = state.legal_actions
+    if state.phase == GamePhase.BOOSTER_OPENED and not state.pack:
+        legal_actions = tuple(action for action in legal_actions if action.action_type != ActionType.CHOOSE_PACK_CARD)
+        if not legal_actions:
+            legal_actions = (Action(ActionType.NO_OP),)
     if state.phase != GamePhase.SHOP:
-        return state
-    legal_actions = tuple(action for action in state.legal_actions if _action_can_be_taken(state, action))
+        if legal_actions == state.legal_actions:
+            return state
+        return replace(state, legal_actions=legal_actions)
+
+    legal_actions = tuple(action for action in legal_actions if _action_can_be_taken(state, action))
     if legal_actions == state.legal_actions:
         return state
     return replace(state, legal_actions=legal_actions)
@@ -396,6 +447,18 @@ def _shop_card_can_be_bought(state: GameState, card: Any) -> bool:
     return _normal_joker_slots_used(state) < _normal_joker_slot_limit(state)
 
 
+def _shop_joker_uses_normal_slot(card: Any) -> bool:
+    if not isinstance(card, dict):
+        return True
+    edition = card.get("edition")
+    modifier = card.get("modifier")
+    if edition is None and isinstance(modifier, dict):
+        edition = modifier.get("edition")
+    if isinstance(edition, dict):
+        edition = edition.get("type") or edition.get("key") or edition.get("name") or edition.get("edition")
+    return "negative" not in str(edition or "").lower()
+
+
 def _is_joker_shop_card(card: Any) -> bool:
     if not isinstance(card, dict):
         return False
@@ -403,14 +466,6 @@ def _is_joker_shop_card(card: Any) -> bool:
     key = str(card.get("key", ""))
     card_set = str(card.get("set", "")).upper()
     return card_set == "JOKER" or "joker" in label.lower() or key.startswith("j_")
-
-
-def _shop_joker_uses_normal_slot(card: Any) -> bool:
-    if not isinstance(card, dict):
-        return True
-    modifier = _mapping_or_empty(card.get("modifier"))
-    edition = str(card.get("edition", modifier.get("edition", "")) or "").lower()
-    return "negative" not in edition
 
 
 def _normal_joker_slots_used(state: GameState) -> int:
@@ -433,7 +488,7 @@ def _normal_joker_slot_limit(state: GameState) -> int:
 
 
 def _with_augmented_sell_actions(state: GameState) -> GameState:
-    if state.phase != GamePhase.SHOP or not state.jokers:
+    if state.phase not in {GamePhase.SHOP, GamePhase.BOOSTER_OPENED} or not state.jokers:
         return state
     if any(action.action_type == ActionType.SELL for action in state.legal_actions):
         return state

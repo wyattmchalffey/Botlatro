@@ -1,0 +1,10 @@
+{
+  "model": {
+    "vendor": "moonshotai",
+    "name": "kimi-k2-thinking"
+  },
+  "seed": "DDDDDDD",
+  "deck": "RED",
+  "stake": "WHITE",
+  "strategy": "default"
+}

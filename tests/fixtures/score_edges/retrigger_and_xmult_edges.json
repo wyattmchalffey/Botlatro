@@ -1,0 +1,123 @@
+{
+  "schema": "balatro-ai.score-edge.v1",
+  "cases": [
+    {
+      "name": "seltzer_retriggers_scored_face_cards_with_smiley_face",
+      "kind": "score",
+      "source": "synthetic retrigger oracle candidate",
+      "cards": "QH QC",
+      "jokers": ["Seltzer", "Smiley Face"],
+      "expected": {
+        "hand_type": "Pair",
+        "chips": 50,
+        "mult": 22,
+        "score": 1100
+      }
+    },
+    {
+      "name": "hack_retriggers_twos_for_wee_joker",
+      "kind": "score",
+      "source": "synthetic",
+      "cards": "2H 2C",
+      "jokers": [
+        {
+          "name": "Wee Joker",
+          "metadata": {
+            "value": {
+              "effect": "This Joker gains +8 Chips when each played 2 is scored (Currently +16 Chips)"
+            }
+          }
+        },
+        "Hack"
+      ],
+      "expected": {
+        "hand_type": "Pair",
+        "chips": 66,
+        "mult": 2,
+        "score": 132
+      }
+    },
+    {
+      "name": "seeing_double_requires_scored_club_and_other_suit",
+      "kind": "score",
+      "source": "synthetic",
+      "cards": "KC KS",
+      "jokers": ["Seeing Double"],
+      "expected": {
+        "hand_type": "Pair",
+        "chips": 30,
+        "mult": 2,
+        "xmult": 2.0,
+        "score": 120
+      }
+    },
+    {
+      "name": "ancient_joker_uses_visible_target_suit_text",
+      "kind": "score",
+      "source": "synthetic visible-text oracle candidate",
+      "cards": "AS AH",
+      "jokers": [
+        {
+          "name": "Ancient Joker",
+          "metadata": {
+            "value": {
+              "effect": "Each played card with Heart suit gives X1.5 Mult when scored"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "hand_type": "Pair",
+        "xmult": 1.5,
+        "score": 96
+      }
+    },
+    {
+      "name": "the_idol_uses_visible_rank_and_suit_text",
+      "kind": "score",
+      "source": "synthetic visible-text oracle candidate",
+      "cards": "KS",
+      "jokers": [
+        {
+          "name": "The Idol",
+          "metadata": {
+            "value": {
+              "effect": "Each played King of Spades gives X2 Mult when scored"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "hand_type": "High Card",
+        "xmult": 2.0,
+        "score": 30
+      }
+    },
+    {
+      "name": "triboulet_retriggers_all_scored_kings_and_queens",
+      "kind": "score",
+      "source": "synthetic rare legendary oracle candidate",
+      "cards": "KS KH QS QH QD",
+      "jokers": ["Triboulet"],
+      "expected": {
+        "hand_type": "Full House",
+        "chips": 90,
+        "mult": 4,
+        "xmult": 32.0,
+        "score": 11520
+      }
+    },
+    {
+      "name": "baseball_card_uses_uncommon_rarity_fallbacks",
+      "kind": "score",
+      "source": "synthetic",
+      "cards": "AS",
+      "jokers": ["Baseball Card", "Blackboard", "Acrobat", "Baron", "Credit Card"],
+      "expected": {
+        "hand_type": "High Card",
+        "xmult": 2.25,
+        "score": 36
+      }
+    }
+  ]
+}

@@ -1,0 +1,85 @@
+Bot A: basic_strategy_bot
+Bot B: search_bot_v1
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Seeds: 3
+First seed: 1609096851
+Bot: basic_strategy_bot
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Seeds: 3
+Seed label: white:phase7-v1-interest-compare-3
+First seed: 1609096851
+Endpoints: http://127.0.0.1:12346
+Replay mode: light
+Start retries: 1
+Failed seed retries: 0
+[1/3] seed=1609096851 won=False ante=3 score=2976 money=44 runtime=126.37s
+[2/3] seed=126500566 won=False ante=4 score=1188 money=26 runtime=40.49s
+[3/3] seed=1801824049 won=True ante=8 score=5640 money=35 runtime=425.23s
+
+Bot: basic_strategy_bot
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Runs: 3
+Win rate: 33.3%
+Average ante: 5.00
+Average final score: 3268.0
+Average final money: 35.0
+Average runtime: 197.37 sec/run
+Bot: search_bot_v1
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Seeds: 3
+Seed label: white:phase7-v1-interest-compare-3
+First seed: 1609096851
+Endpoints: http://127.0.0.1:12346
+Replay mode: light
+Start retries: 1
+Failed seed retries: 0
+[1/3] seed=1609096851 won=False ante=4 score=4532 money=0 runtime=96.77s
+[2/3] seed=126500566 won=False ante=5 score=15520 money=1 runtime=99.45s
+[3/3] seed=1801824049 won=False ante=0 score=0 money=0 runtime=72.67s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'NOT_ALLOWED'}, 'code': -32003, 'message': 'Cannot select joker, joker slo
+
+Bot: search_bot_v1
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Runs: 3
+Win rate: 0.0%
+Average ante: 3.00
+Average final score: 6684.0
+Average final money: 0.3
+Average runtime: 89.63 sec/run
+
+Paired bot comparison
+Bot A: basic_strategy_bot
+Bot B: search_bot_v1
+Stake: white
+Paired seeds: 3
+
+Bot A win rate: 33.3%
+Bot B win rate: 0.0%
+Win rate delta: -33.3%
+Wins flipped (A lost, B won): 0
+Wins lost (A won, B lost): 1
+McNemar p-value: 1
+
+Bot A average ante: 5.00
+Bot B average ante: 3.00
+Average ante delta: -2.00
+Wilcoxon signed-rank p-value: 0.789268
+
+Bot A average score: 3268.0
+Bot B average score: 6684.0
+Average score delta: +3416.0
+Score delta bootstrap 95% CI: [-3241.3, +14332.0]

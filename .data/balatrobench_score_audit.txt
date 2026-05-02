@@ -1,0 +1,102 @@
+BalatroBench score audit
+run_dirs: 241
+records: 2576
+exact: 1632
+supported: 2465
+supported_exact: 1590
+supported_misses: 875
+uncertain: 111
+errors_count: 19
+skips: {"ante_changed": 308, "bad_card_indices": 3, "evaluation_error": 16, "no_previous_or_post_state": 513, "play_without_cards": 8, "pre_phase_blind_select": 533, "pre_phase_booster_opened": 224, "pre_phase_round_eval": 438, "pre_phase_shop": 484}
+
+Worst supported misses:
+- err=605865 pred=375 actual=606240 ante=7 blind=Big Blind hand=Pair cards=KC QD TH TD 6H jokers=['Smeared Joker', 'Burnt Joker', 'Hanging Chad', 'Hologram', 'Gift Card', 'Photograph'] run=v1.0.8\default\google\gemini-3-pro-preview\20260121_012228_632_RED_WHITE_EEEEEEE action=174
+- err=183233 pred=7087 actual=190320 ante=7 blind=Big Blind hand=High Card cards=6H jokers=['Burglar', 'Spare Trousers', 'Green Joker', 'Acrobat', 'The Duo'] run=v1.0.8\default\google\gemini-3-flash-preview\20260115_122446_742_RED_WHITE_AAAAAAA action=202
+- err=-153368 pred=180895 actual=27527 ante=8 blind=Small Blind hand=Two Pair cards=KH QH JS JC KH jokers=['Fortune Teller', 'Sock and Buskin', 'Photograph', 'Campfire', 'To the Moon'] run=v1.0.8\default\google\gemini-3-pro-preview\20260120_130306_930_RED_WHITE_BBBBBBB action=382
+- err=143118 pred=5382 actual=148500 ante=5 blind=Big Blind hand=High Card cards=9H jokers=['Green Joker', 'Burglar', 'Acrobat', 'Photograph', 'Hanging Chad'] run=v1.0.8\default\google\gemini-3-flash-preview\20260115_122446_752_RED_WHITE_AAAAAAA action=121
+- err=143027 pred=28 actual=143055 ante=8 blind=Big Blind hand=High Card cards=9C 6D 5C 4C 2S jokers=['Supernova', 'Popcorn', 'Blueprint', 'Card Sharp', 'Smeared Joker'] run=v1.0.8\default\openai\gpt-5.2\20260119_161305_608_RED_WHITE_EEEEEEE action=189
+- err=96980 pred=2380 actual=99360 ante=5 blind=Small Blind hand=High Card cards=QC JD 9S 3C jokers=['Spare Trousers', 'Scary Face', 'Odd Todd', 'Photograph', 'Seltzer'] run=v1.0.8\default\google\gemini-3-flash-preview\20260115_131042_362_RED_WHITE_AAAAAAA action=93
+- err=93088 pred=10152 actual=103240 ante=5 blind=Big Blind hand=Pair cards=KS KH 4H 2C TC jokers=['Wee Joker', 'Spare Trousers', 'Seltzer', 'Photograph', 'Hanging Chad'] run=v1.0.8\default\google\gemini-3-pro-preview\20260116_001745_585_RED_WHITE_AAAAAAA action=126
+- err=91335 pred=1365 actual=92700 ante=8 blind=Amber Acorn hand=Pair cards=KH TS TD 9C 4C jokers=['Blueprint', 'Supernova', 'Popcorn', 'Card Sharp', 'Smeared Joker'] run=v1.0.8\default\openai\gpt-5.2\20260119_161305_608_RED_WHITE_EEEEEEE action=196
+- err=77948 pred=5520 actual=83468 ante=8 blind=Amber Acorn hand=Pair cards=AH AC TD 9H 8D jokers=['Hanging Chad', 'Supernova', 'Blueprint', 'Fortune Teller', 'Smeared Joker'] run=v1.0.8\default\anthropic\claude-opus-4.5\20260121_151347_349_RED_WHITE_EEEEEEE action=190
+- err=-70560 pred=117585 actual=47025 ante=7 blind=Big Blind hand=Flush cards=6D JD 7D 6H 5H jokers=['Smeared Joker', 'Supernova', 'Card Sharp', 'Hanging Chad', 'Astronomer'] run=v1.0.8\default\anthropic\claude-sonnet-4.5\20260120_185404_027_RED_WHITE_EEEEEEE action=135
+- err=68535 pred=5194 actual=73729 ante=7 blind=Big Blind hand=High Card cards=AD KH JD 7H 2C jokers=['Blue Joker', 'Abstract Joker', 'Ancient Joker', 'Acrobat', 'Campfire'] run=v1.0.8\default\google\gemini-3-pro-preview\20260120_233942_224_RED_WHITE_DDDDDDD action=207
+- err=-58976 pred=58976 actual=0 ante=5 blind=The Mouth hand=Flush cards=TD JD 8D 6D 5D jokers=['Crafty Joker', 'Scary Face', 'Even Steven', 'Ancient Joker', 'Hanging Chad'] run=v1.0.8\default\anthropic\claude-opus-4.5\20260120_113906_572_RED_WHITE_AAAAAAA action=112
+- err=-58650 pred=58650 actual=0 ante=7 blind=The Mark hand=High Card cards=KC 5S 4C 2S jokers=['Smiley Face', 'Photograph', 'Burnt Joker', 'Hologram', 'Card Sharp'] run=v1.0.8\default\google\gemini-3-flash-preview\20260115_180945_351_RED_WHITE_EEEEEEE action=192
+- err=57912 pred=3576 actual=61488 ante=6 blind=Small Blind hand=High Card cards=AS 7C 5C jokers=['Burglar', 'Spare Trousers', 'Green Joker', 'Acrobat', 'Midas Mask'] run=v1.0.8\default\google\gemini-3-flash-preview\20260115_122446_742_RED_WHITE_AAAAAAA action=152
+- err=53697 pred=1428 actual=55125 ante=5 blind=Big Blind hand=High Card cards=3C jokers=['Burglar', 'Scary Face', 'Spare Trousers', 'Green Joker', 'Acrobat'] run=v1.0.8\default\google\gemini-3-flash-preview\20260115_122446_742_RED_WHITE_AAAAAAA action=126
+- err=52800 pred=2280 actual=55080 ante=7 blind=Small Blind hand=Pair cards=JS JC TH 6S 2S jokers=['Smiley Face', 'Photograph', 'Burnt Joker', 'Hologram', 'Card Sharp'] run=v1.0.8\default\google\gemini-3-flash-preview\20260115_180945_351_RED_WHITE_EEEEEEE action=169
+- err=-51765 pred=51765 actual=0 ante=7 blind=Big Blind hand=High Card cards=QD TH 7D 3H 2C jokers=['Smiley Face', 'Photograph', 'Burnt Joker', 'Hologram', 'Card Sharp'] run=v1.0.8\default\google\gemini-3-flash-preview\20260115_180945_351_RED_WHITE_EEEEEEE action=181
+- err=49148 pred=12716 actual=61864 ante=8 blind=Small Blind hand=High Card cards=AH KD QD JS 5D jokers=['Banner', 'Raised Fist', 'Smiley Face', 'Hologram', 'Certificate'] run=v1.0.8\default\google\gemini-3-pro-preview\20260120_151357_917_RED_WHITE_BBBBBBB action=183
+- err=-48214 pred=77647 actual=29433 ante=7 blind=Big Blind hand=High Card cards=QD 4C 3D 2D 2C jokers=['Smiley Face', 'Photograph', 'Burnt Joker', 'Hologram', 'Card Sharp'] run=v1.0.8\default\google\gemini-3-flash-preview\20260115_180945_351_RED_WHITE_EEEEEEE action=179
+- err=46919 pred=2326 actual=49245 ante=6 blind=Big Blind hand=High Card cards=AH KH 7C 5H 3H jokers=['Crafty Joker', 'Odd Todd', 'Droll Joker', 'Abstract Joker', 'Acrobat'] run=v1.0.8\default\anthropic\claude-opus-4.5\20260121_115525_498_RED_WHITE_DDDDDDD action=122
+- err=45894 pred=2250 actual=48144 ante=5 blind=Small Blind hand=High Card cards=TC 5S jokers=['Burglar', 'Scary Face', 'Spare Trousers', 'Green Joker', 'Acrobat'] run=v1.0.8\default\google\gemini-3-flash-preview\20260115_122446_742_RED_WHITE_AAAAAAA action=117
+- err=42150 pred=5700 actual=47850 ante=8 blind=Big Blind hand=Pair cards=AH AC QC 8D 4D jokers=['Supernova', 'Fortune Teller', 'Cavendish', 'Hiker', 'Splash', 'Hanging Chad'] run=v1.0.8\default\anthropic\claude-sonnet-4.5\20260120_141920_307_RED_WHITE_CCCCCCC action=164
+- err=41652 pred=2808 actual=44460 ante=5 blind=Small Blind hand=High Card cards=AD jokers=['Scary Face', 'Green Joker', 'Burglar', 'Acrobat', 'Photograph'] run=v1.0.8\default\google\gemini-3-flash-preview\20260115_122446_752_RED_WHITE_AAAAAAA action=108
+- err=-36936 pred=64296 actual=27360 ante=6 blind=Big Blind hand=Flush cards=6D TD 7H 4D 3H jokers=['Smeared Joker', 'Supernova', 'Card Sharp', 'Wrathful Joker', 'Hanging Chad'] run=v1.0.8\default\anthropic\claude-sonnet-4.5\20260120_185404_027_RED_WHITE_EEEEEEE action=107
+- err=32697 pred=7830 actual=40527 ante=8 blind=Crimson Heart hand=High Card cards=QS JH TH 6S 4H jokers=['Banner', 'Raised Fist', 'Smiley Face', 'Hologram', 'Certificate'] run=v1.0.8\default\google\gemini-3-pro-preview\20260120_151357_917_RED_WHITE_BBBBBBB action=202
+
+Misses by joker among supported:
+- Splash: 282
+- Supernova: 212
+- Crafty Joker: 143
+- Smeared Joker: 135
+- Even Steven: 124
+- Wrathful Joker: 124
+- Hiker: 119
+- Acrobat: 117
+- Raised Fist: 106
+- Abstract Joker: 104
+- Burglar: 97
+- Scary Face: 94
+- Ancient Joker: 84
+- Smiley Face: 80
+- Green Joker: 71
+- Hologram: 66
+- Spare Trousers: 66
+- Hanging Chad: 64
+- Jolly Joker: 62
+- Odd Todd: 61
+- Photograph: 56
+- Droll Joker: 54
+- Mad Joker: 49
+- Blue Joker: 49
+- Zany Joker: 45
+- Card Sharp: 44
+- Cavendish: 42
+- Certificate: 38
+- Walkie Talkie: 37
+- Delayed Gratification: 35
+
+Misses by blind among supported:
+- Big Blind: 358
+- Small Blind: 260
+- The Head: 38
+- The Flint: 31
+- The Window: 27
+- The Arm: 23
+- The Wheel: 23
+- The Manacle: 23
+- The Plant: 19
+- The Water: 15
+- The House: 15
+- The Mouth: 12
+- Crimson Heart: 8
+- The Club: 7
+- The Goad: 5
+- Amber Acorn: 4
+- The Fish: 4
+- The Mark: 2
+- The Pillar: 1
+
+First errors:
+('.data\\balatrobench_raw_subset\\v1.0.8\\default\\google\\gemini-3-pro-preview\\20260116_001745_585_RED_WHITE_AAAAAAA', 'action 39 cards=[4]', "IndexError('tuple index out of range')")
+('.data\\balatrobench_raw_subset\\v1.0.8\\default\\minimax\\minimax-m2.1\\20260115_102604_581_RED_WHITE_CCCCCCC', 'action 11 evaluate', "ValueError('Balatro hands cannot contain more than 5 played cards')")
+('.data\\balatrobench_raw_subset\\v1.0.8\\default\\moonshotai\\kimi-k2-thinking\\20260115_105809_253_RED_WHITE_CCCCCCC', 'action 42 cards=[0, 1, 2, 7, 8]', "IndexError('tuple index out of range')")
+('.data\\balatrobench_raw_subset\\v1.0.8\\default\\moonshotai\\kimi-k2-thinking\\20260115_111414_735_RED_WHITE_DDDDDDD', 'action 2 evaluate', "ValueError('Cannot evaluate an empty played hand')")
+('.data\\balatrobench_raw_subset\\v1.0.8\\default\\moonshotai\\kimi-k2-thinking\\20260115_112415_620_RED_WHITE_EEEEEEE', 'action 49 cards=[0, 1, 3, 5, 7]', "IndexError('tuple index out of range')")
+('.data\\balatrobench_raw_subset\\v1.0.8\\default\\x-ai\\grok-4\\20260115_205927_105_RED_WHITE_AAAAAAA', 'action 34 evaluate', "ValueError('Cannot evaluate an empty played hand')")
+('.data\\balatrobench_raw_subset\\v1.0.8\\default\\x-ai\\grok-4\\20260115_205927_105_RED_WHITE_AAAAAAA', 'action 118 evaluate', "ValueError('Cannot evaluate an empty played hand')")
+('.data\\balatrobench_raw_subset\\v1.0.8\\default\\x-ai\\grok-4\\20260119_205335_212_RED_WHITE_AAAAAAA', 'action 72 evaluate', "ValueError('Cannot evaluate an empty played hand')")
+('.data\\balatrobench_raw_subset\\v1.0.8\\default\\x-ai\\grok-4\\20260119_222852_309_RED_WHITE_BBBBBBB', 'action 12 evaluate', "ValueError('Cannot evaluate an empty played hand')")
+('.data\\balatrobench_raw_subset\\v1.0.8\\default\\x-ai\\grok-4\\20260119_223824_262_RED_WHITE_BBBBBBB', 'action 4 evaluate', "ValueError('Cannot evaluate an empty played hand')")

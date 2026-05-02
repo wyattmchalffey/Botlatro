@@ -1,0 +1,21 @@
+{
+  "runs": 241,
+  "records": 2148,
+  "exact": 1992,
+  "supported": 2037,
+  "supported_exact": 1909,
+  "supported_misses": 128,
+  "uncertain": 111,
+  "skips": {
+    "pre_phase_round_eval": 1942,
+    "pre_phase_booster_opened": 2159,
+    "pre_phase_shop": 5776,
+    "pre_phase_blind_select": 1929,
+    "non_score_transition": 2148,
+    "post_hand_empty": 1228,
+    "selected_count_7": 55,
+    "round_or_ante_changed": 495,
+    "selected_count_6": 2
+  },
+  "errors_count": 0
+}

@@ -1,0 +1,3076 @@
+{
+  "boosters": [
+    {
+      "config": {
+        "choose": 1,
+        "extra": 3
+      },
+      "cost": 4,
+      "key": "p_arcana_normal_1",
+      "kind": "Arcana",
+      "name": "Arcana Pack",
+      "order": 1,
+      "set": "Booster",
+      "weight": 1
+    },
+    {
+      "config": {
+        "choose": 1,
+        "extra": 3
+      },
+      "cost": 4,
+      "key": "p_arcana_normal_2",
+      "kind": "Arcana",
+      "name": "Arcana Pack",
+      "order": 2,
+      "set": "Booster",
+      "weight": 1
+    },
+    {
+      "config": {
+        "choose": 1,
+        "extra": 3
+      },
+      "cost": 4,
+      "key": "p_arcana_normal_3",
+      "kind": "Arcana",
+      "name": "Arcana Pack",
+      "order": 3,
+      "set": "Booster",
+      "weight": 1
+    },
+    {
+      "config": {
+        "choose": 1,
+        "extra": 3
+      },
+      "cost": 4,
+      "key": "p_arcana_normal_4",
+      "kind": "Arcana",
+      "name": "Arcana Pack",
+      "order": 4,
+      "set": "Booster",
+      "weight": 1
+    },
+    {
+      "config": {
+        "choose": 1,
+        "extra": 5
+      },
+      "cost": 6,
+      "key": "p_arcana_jumbo_1",
+      "kind": "Arcana",
+      "name": "Jumbo Arcana Pack",
+      "order": 5,
+      "set": "Booster",
+      "weight": 1
+    },
+    {
+      "config": {
+        "choose": 1,
+        "extra": 5
+      },
+      "cost": 6,
+      "key": "p_arcana_jumbo_2",
+      "kind": "Arcana",
+      "name": "Jumbo Arcana Pack",
+      "order": 6,
+      "set": "Booster",
+      "weight": 1
+    },
+    {
+      "config": {
+        "choose": 2,
+        "extra": 5
+      },
+      "cost": 8,
+      "key": "p_arcana_mega_1",
+      "kind": "Arcana",
+      "name": "Mega Arcana Pack",
+      "order": 7,
+      "set": "Booster",
+      "weight": 0.25
+    },
+    {
+      "config": {
+        "choose": 2,
+        "extra": 5
+      },
+      "cost": 8,
+      "key": "p_arcana_mega_2",
+      "kind": "Arcana",
+      "name": "Mega Arcana Pack",
+      "order": 8,
+      "set": "Booster",
+      "weight": 0.25
+    },
+    {
+      "config": {
+        "choose": 1,
+        "extra": 3
+      },
+      "cost": 4,
+      "key": "p_celestial_normal_1",
+      "kind": "Celestial",
+      "name": "Celestial Pack",
+      "order": 9,
+      "set": "Booster",
+      "weight": 1
+    },
+    {
+      "config": {
+        "choose": 1,
+        "extra": 3
+      },
+      "cost": 4,
+      "key": "p_celestial_normal_2",
+      "kind": "Celestial",
+      "name": "Celestial Pack",
+      "order": 10,
+      "set": "Booster",
+      "weight": 1
+    },
+    {
+      "config": {
+        "choose": 1,
+        "extra": 3
+      },
+      "cost": 4,
+      "key": "p_celestial_normal_3",
+      "kind": "Celestial",
+      "name": "Celestial Pack",
+      "order": 11,
+      "set": "Booster",
+      "weight": 1
+    },
+    {
+      "config": {
+        "choose": 1,
+        "extra": 3
+      },
+      "cost": 4,
+      "key": "p_celestial_normal_4",
+      "kind": "Celestial",
+      "name": "Celestial Pack",
+      "order": 12,
+      "set": "Booster",
+      "weight": 1
+    },
+    {
+      "config": {
+        "choose": 1,
+        "extra": 5
+      },
+      "cost": 6,
+      "key": "p_celestial_jumbo_1",
+      "kind": "Celestial",
+      "name": "Jumbo Celestial Pack",
+      "order": 13,
+      "set": "Booster",
+      "weight": 1
+    },
+    {
+      "config": {
+        "choose": 1,
+        "extra": 5
+      },
+      "cost": 6,
+      "key": "p_celestial_jumbo_2",
+      "kind": "Celestial",
+      "name": "Jumbo Celestial Pack",
+      "order": 14,
+      "set": "Booster",
+      "weight": 1
+    },
+    {
+      "config": {
+        "choose": 2,
+        "extra": 5
+      },
+      "cost": 8,
+      "key": "p_celestial_mega_1",
+      "kind": "Celestial",
+      "name": "Mega Celestial Pack",
+      "order": 15,
+      "set": "Booster",
+      "weight": 0.25
+    },
+    {
+      "config": {
+        "choose": 2,
+        "extra": 5
+      },
+      "cost": 8,
+      "key": "p_celestial_mega_2",
+      "kind": "Celestial",
+      "name": "Mega Celestial Pack",
+      "order": 16,
+      "set": "Booster",
+      "weight": 0.25
+    },
+    {
+      "config": {
+        "choose": 1,
+        "extra": 3
+      },
+      "cost": 4,
+      "key": "p_standard_normal_1",
+      "kind": "Standard",
+      "name": "Standard Pack",
+      "order": 17,
+      "set": "Booster",
+      "weight": 1
+    },
+    {
+      "config": {
+        "choose": 1,
+        "extra": 3
+      },
+      "cost": 4,
+      "key": "p_standard_normal_2",
+      "kind": "Standard",
+      "name": "Standard Pack",
+      "order": 18,
+      "set": "Booster",
+      "weight": 1
+    },
+    {
+      "config": {
+        "choose": 1,
+        "extra": 3
+      },
+      "cost": 4,
+      "key": "p_standard_normal_3",
+      "kind": "Standard",
+      "name": "Standard Pack",
+      "order": 19,
+      "set": "Booster",
+      "weight": 1
+    },
+    {
+      "config": {
+        "choose": 1,
+        "extra": 3
+      },
+      "cost": 4,
+      "key": "p_standard_normal_4",
+      "kind": "Standard",
+      "name": "Standard Pack",
+      "order": 20,
+      "set": "Booster",
+      "weight": 1
+    },
+    {
+      "config": {
+        "choose": 1,
+        "extra": 5
+      },
+      "cost": 6,
+      "key": "p_standard_jumbo_1",
+      "kind": "Standard",
+      "name": "Jumbo Standard Pack",
+      "order": 21,
+      "set": "Booster",
+      "weight": 1
+    },
+    {
+      "config": {
+        "choose": 1,
+        "extra": 5
+      },
+      "cost": 6,
+      "key": "p_standard_jumbo_2",
+      "kind": "Standard",
+      "name": "Jumbo Standard Pack",
+      "order": 22,
+      "set": "Booster",
+      "weight": 1
+    },
+    {
+      "config": {
+        "choose": 2,
+        "extra": 5
+      },
+      "cost": 8,
+      "key": "p_standard_mega_1",
+      "kind": "Standard",
+      "name": "Mega Standard Pack",
+      "order": 23,
+      "set": "Booster",
+      "weight": 0.25
+    },
+    {
+      "config": {
+        "choose": 2,
+        "extra": 5
+      },
+      "cost": 8,
+      "key": "p_standard_mega_2",
+      "kind": "Standard",
+      "name": "Mega Standard Pack",
+      "order": 24,
+      "set": "Booster",
+      "weight": 0.25
+    },
+    {
+      "config": {
+        "choose": 1,
+        "extra": 2
+      },
+      "cost": 4,
+      "key": "p_buffoon_normal_1",
+      "kind": "Buffoon",
+      "name": "Buffoon Pack",
+      "order": 25,
+      "set": "Booster",
+      "weight": 0.6
+    },
+    {
+      "config": {
+        "choose": 1,
+        "extra": 2
+      },
+      "cost": 4,
+      "key": "p_buffoon_normal_2",
+      "kind": "Buffoon",
+      "name": "Buffoon Pack",
+      "order": 26,
+      "set": "Booster",
+      "weight": 0.6
+    },
+    {
+      "config": {
+        "choose": 1,
+        "extra": 4
+      },
+      "cost": 6,
+      "key": "p_buffoon_jumbo_1",
+      "kind": "Buffoon",
+      "name": "Jumbo Buffoon Pack",
+      "order": 27,
+      "set": "Booster",
+      "weight": 0.6
+    },
+    {
+      "config": {
+        "choose": 2,
+        "extra": 4
+      },
+      "cost": 8,
+      "key": "p_buffoon_mega_1",
+      "kind": "Buffoon",
+      "name": "Mega Buffoon Pack",
+      "order": 28,
+      "set": "Booster",
+      "weight": 0.15
+    },
+    {
+      "config": {
+        "choose": 1,
+        "extra": 2
+      },
+      "cost": 4,
+      "key": "p_spectral_normal_1",
+      "kind": "Spectral",
+      "name": "Spectral Pack",
+      "order": 29,
+      "set": "Booster",
+      "weight": 0.3
+    },
+    {
+      "config": {
+        "choose": 1,
+        "extra": 2
+      },
+      "cost": 4,
+      "key": "p_spectral_normal_2",
+      "kind": "Spectral",
+      "name": "Spectral Pack",
+      "order": 30,
+      "set": "Booster",
+      "weight": 0.3
+    },
+    {
+      "config": {
+        "choose": 1,
+        "extra": 4
+      },
+      "cost": 6,
+      "key": "p_spectral_jumbo_1",
+      "kind": "Spectral",
+      "name": "Jumbo Spectral Pack",
+      "order": 31,
+      "set": "Booster",
+      "weight": 0.3
+    },
+    {
+      "config": {
+        "choose": 2,
+        "extra": 4
+      },
+      "cost": 8,
+      "key": "p_spectral_mega_1",
+      "kind": "Spectral",
+      "name": "Mega Spectral Pack",
+      "order": 32,
+      "set": "Booster",
+      "weight": 0.07
+    }
+  ],
+  "edition_rates": {
+    "foil": 0.04,
+    "holographic": 0.02,
+    "negative": 0.003,
+    "polychrome": 0.006
+  },
+  "joker_rarity_rates": {
+    "common": 0.7,
+    "legendary": 0.0,
+    "rare": 0.05,
+    "uncommon": 0.25
+  },
+  "jokers": [
+    {
+      "cost": 2,
+      "key": "j_joker",
+      "name": "Joker",
+      "order": 1,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 5,
+      "key": "j_greedy_joker",
+      "name": "Greedy Joker",
+      "order": 2,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 5,
+      "key": "j_lusty_joker",
+      "name": "Lusty Joker",
+      "order": 3,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 5,
+      "key": "j_wrathful_joker",
+      "name": "Wrathful Joker",
+      "order": 4,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 5,
+      "key": "j_gluttenous_joker",
+      "name": "Gluttonous Joker",
+      "order": 5,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 3,
+      "key": "j_jolly",
+      "name": "Jolly Joker",
+      "order": 6,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 4,
+      "key": "j_zany",
+      "name": "Zany Joker",
+      "order": 7,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 4,
+      "key": "j_mad",
+      "name": "Mad Joker",
+      "order": 8,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 4,
+      "key": "j_crazy",
+      "name": "Crazy Joker",
+      "order": 9,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 4,
+      "key": "j_droll",
+      "name": "Droll Joker",
+      "order": 10,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 3,
+      "key": "j_sly",
+      "name": "Sly Joker",
+      "order": 11,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 4,
+      "key": "j_wily",
+      "name": "Wily Joker",
+      "order": 12,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 4,
+      "key": "j_clever",
+      "name": "Clever Joker",
+      "order": 13,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 4,
+      "key": "j_devious",
+      "name": "Devious Joker",
+      "order": 14,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 4,
+      "key": "j_crafty",
+      "name": "Crafty Joker",
+      "order": 15,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 5,
+      "key": "j_half",
+      "name": "Half Joker",
+      "order": 16,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 8,
+      "key": "j_stencil",
+      "name": "Joker Stencil",
+      "order": 17,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 7,
+      "key": "j_four_fingers",
+      "name": "Four Fingers",
+      "order": 18,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 1
+      },
+      "cost": 5,
+      "key": "j_mime",
+      "name": "Mime",
+      "order": 19,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 20
+      },
+      "cost": 1,
+      "key": "j_credit_card",
+      "name": "Credit Card",
+      "order": 20,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 6,
+      "key": "j_ceremonial",
+      "name": "Ceremonial Dagger",
+      "order": 21,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 30
+      },
+      "cost": 5,
+      "key": "j_banner",
+      "name": "Banner",
+      "order": 22,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 5,
+      "key": "j_mystic_summit",
+      "name": "Mystic Summit",
+      "order": 23,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 1
+      },
+      "cost": 6,
+      "key": "j_marble",
+      "name": "Marble Joker",
+      "order": 24,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 5,
+      "key": "j_loyalty_card",
+      "name": "Loyalty Card",
+      "order": 25,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 4
+      },
+      "cost": 5,
+      "key": "j_8_ball",
+      "name": "8 Ball",
+      "order": 26,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "max": 23,
+        "min": 0
+      },
+      "cost": 4,
+      "key": "j_misprint",
+      "name": "Misprint",
+      "order": 27,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 1
+      },
+      "cost": 5,
+      "key": "j_dusk",
+      "name": "Dusk",
+      "order": 28,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 5,
+      "key": "j_raised_fist",
+      "name": "Raised Fist",
+      "order": 29,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 1
+      },
+      "cost": 4,
+      "key": "j_chaos",
+      "name": "Chaos the Clown",
+      "order": 30,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 8
+      },
+      "cost": 8,
+      "key": "j_fibonacci",
+      "name": "Fibonacci",
+      "order": 31,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 0.2
+      },
+      "cost": 7,
+      "enhancement_gate": "m_steel",
+      "key": "j_steel_joker",
+      "name": "Steel Joker",
+      "order": 32,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 30
+      },
+      "cost": 4,
+      "key": "j_scary_face",
+      "name": "Scary Face",
+      "order": 33,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 3
+      },
+      "cost": 4,
+      "key": "j_abstract",
+      "name": "Abstract Joker",
+      "order": 34,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 2
+      },
+      "cost": 4,
+      "key": "j_delayed_grat",
+      "name": "Delayed Gratification",
+      "order": 35,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 1
+      },
+      "cost": 6,
+      "key": "j_hack",
+      "name": "Hack",
+      "order": 36,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 5,
+      "key": "j_pareidolia",
+      "name": "Pareidolia",
+      "order": 37,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 5,
+      "key": "j_gros_michel",
+      "name": "Gros Michel",
+      "no_pool_flag": "gros_michel_extinct",
+      "order": 38,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 4
+      },
+      "cost": 4,
+      "key": "j_even_steven",
+      "name": "Even Steven",
+      "order": 39,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 31
+      },
+      "cost": 4,
+      "key": "j_odd_todd",
+      "name": "Odd Todd",
+      "order": 40,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 4,
+      "key": "j_scholar",
+      "name": "Scholar",
+      "order": 41,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 2
+      },
+      "cost": 4,
+      "key": "j_business",
+      "name": "Business Card",
+      "order": 42,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 1
+      },
+      "cost": 5,
+      "key": "j_supernova",
+      "name": "Supernova",
+      "order": 43,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 1
+      },
+      "cost": 6,
+      "key": "j_ride_the_bus",
+      "name": "Ride the Bus",
+      "order": 44,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 4
+      },
+      "cost": 5,
+      "key": "j_space",
+      "name": "Space Joker",
+      "order": 45,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 3
+      },
+      "cost": 4,
+      "key": "j_egg",
+      "name": "Egg",
+      "order": 46,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 3
+      },
+      "cost": 6,
+      "key": "j_burglar",
+      "name": "Burglar",
+      "order": 47,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 3
+      },
+      "cost": 6,
+      "key": "j_blackboard",
+      "name": "Blackboard",
+      "order": 48,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 5,
+      "key": "j_runner",
+      "name": "Runner",
+      "order": 49,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 5,
+      "key": "j_ice_cream",
+      "name": "Ice Cream",
+      "order": 50,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 8,
+      "key": "j_dna",
+      "name": "DNA",
+      "order": 51,
+      "rarity": 3,
+      "rarity_name": "rare",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 3,
+      "key": "j_splash",
+      "name": "Splash",
+      "order": 52,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 2
+      },
+      "cost": 5,
+      "key": "j_blue_joker",
+      "name": "Blue Joker",
+      "order": 53,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 6,
+      "key": "j_sixth_sense",
+      "name": "Sixth Sense",
+      "order": 54,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 0.1
+      },
+      "cost": 6,
+      "key": "j_constellation",
+      "name": "Constellation",
+      "order": 55,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 5
+      },
+      "cost": 5,
+      "key": "j_hiker",
+      "name": "Hiker",
+      "order": 56,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 4,
+      "key": "j_faceless",
+      "name": "Faceless Joker",
+      "order": 57,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 4,
+      "key": "j_green_joker",
+      "name": "Green Joker",
+      "order": 58,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 4,
+      "key": "j_superposition",
+      "name": "Superposition",
+      "order": 59,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 4,
+      "key": "j_todo_list",
+      "name": "To Do List",
+      "order": 60,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 4,
+      "key": "j_cavendish",
+      "name": "Cavendish",
+      "order": 61,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true,
+      "yes_pool_flag": "gros_michel_extinct"
+    },
+    {
+      "cost": 6,
+      "key": "j_card_sharp",
+      "name": "Card Sharp",
+      "order": 62,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 3
+      },
+      "cost": 5,
+      "key": "j_red_card",
+      "name": "Red Card",
+      "order": 63,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 0.5
+      },
+      "cost": 7,
+      "key": "j_madness",
+      "name": "Madness",
+      "order": 64,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 4,
+      "key": "j_square",
+      "name": "Square Joker",
+      "order": 65,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 6,
+      "key": "j_seance",
+      "name": "Seance",
+      "order": 66,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 2
+      },
+      "cost": 6,
+      "key": "j_riff_raff",
+      "name": "Riff-raff",
+      "order": 67,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 0.1
+      },
+      "cost": 7,
+      "key": "j_vampire",
+      "name": "Vampire",
+      "order": 68,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 7,
+      "key": "j_shortcut",
+      "name": "Shortcut",
+      "order": 69,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 0.25
+      },
+      "cost": 7,
+      "key": "j_hologram",
+      "name": "Hologram",
+      "order": 70,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 4
+      },
+      "cost": 8,
+      "key": "j_vagabond",
+      "name": "Vagabond",
+      "order": 71,
+      "rarity": 3,
+      "rarity_name": "rare",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 1.5
+      },
+      "cost": 8,
+      "key": "j_baron",
+      "name": "Baron",
+      "order": 72,
+      "rarity": 3,
+      "rarity_name": "rare",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 1
+      },
+      "cost": 7,
+      "key": "j_cloud_9",
+      "name": "Cloud 9",
+      "order": 73,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 6,
+      "key": "j_rocket",
+      "name": "Rocket",
+      "order": 74,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 0.2
+      },
+      "cost": 8,
+      "key": "j_obelisk",
+      "name": "Obelisk",
+      "order": 75,
+      "rarity": 3,
+      "rarity_name": "rare",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 7,
+      "key": "j_midas_mask",
+      "name": "Midas Mask",
+      "order": 76,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 5,
+      "key": "j_luchador",
+      "name": "Luchador",
+      "order": 77,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 2
+      },
+      "cost": 5,
+      "key": "j_photograph",
+      "name": "Photograph",
+      "order": 78,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 1
+      },
+      "cost": 6,
+      "key": "j_gift",
+      "name": "Gift Card",
+      "order": 79,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 6,
+      "key": "j_turtle_bean",
+      "name": "Turtle Bean",
+      "order": 80,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 4
+      },
+      "cost": 6,
+      "key": "j_erosion",
+      "name": "Erosion",
+      "order": 81,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 6,
+      "key": "j_reserved_parking",
+      "name": "Reserved Parking",
+      "order": 82,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 5
+      },
+      "cost": 4,
+      "key": "j_mail",
+      "name": "Mail-In Rebate",
+      "order": 83,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 1
+      },
+      "cost": 5,
+      "key": "j_to_the_moon",
+      "name": "To the Moon",
+      "order": 84,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 2
+      },
+      "cost": 4,
+      "key": "j_hallucination",
+      "name": "Hallucination",
+      "order": 85,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 1
+      },
+      "cost": 6,
+      "key": "j_fortune_teller",
+      "name": "Fortune Teller",
+      "order": 86,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 4,
+      "key": "j_juggler",
+      "name": "Juggler",
+      "order": 87,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 4,
+      "key": "j_drunkard",
+      "name": "Drunkard",
+      "order": 88,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 25
+      },
+      "cost": 6,
+      "enhancement_gate": "m_stone",
+      "key": "j_stone",
+      "name": "Stone Joker",
+      "order": 89,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 4
+      },
+      "cost": 6,
+      "key": "j_golden",
+      "name": "Golden Joker",
+      "order": 90,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 0.25
+      },
+      "cost": 6,
+      "enhancement_gate": "m_lucky",
+      "key": "j_lucky_cat",
+      "name": "Lucky Cat",
+      "order": 91,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 1.5
+      },
+      "cost": 8,
+      "key": "j_baseball",
+      "name": "Baseball Card",
+      "order": 92,
+      "rarity": 3,
+      "rarity_name": "rare",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 2
+      },
+      "cost": 6,
+      "key": "j_bull",
+      "name": "Bull",
+      "order": 93,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 6,
+      "key": "j_diet_cola",
+      "name": "Diet Cola",
+      "order": 94,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 3
+      },
+      "cost": 6,
+      "key": "j_trading",
+      "name": "Trading Card",
+      "order": 95,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 2
+      },
+      "cost": 5,
+      "key": "j_flash",
+      "name": "Flash Card",
+      "order": 96,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 4
+      },
+      "cost": 5,
+      "key": "j_popcorn",
+      "name": "Popcorn",
+      "order": 97,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 2
+      },
+      "cost": 6,
+      "key": "j_trousers",
+      "name": "Spare Trousers",
+      "order": 98,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 1.5
+      },
+      "cost": 8,
+      "key": "j_ancient",
+      "name": "Ancient Joker",
+      "order": 99,
+      "rarity": 3,
+      "rarity_name": "rare",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 0.01
+      },
+      "cost": 6,
+      "key": "j_ramen",
+      "name": "Ramen",
+      "order": 100,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 4,
+      "key": "j_walkie_talkie",
+      "name": "Walkie Talkie",
+      "order": 101,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 10
+      },
+      "cost": 6,
+      "key": "j_selzer",
+      "name": "Seltzer",
+      "order": 102,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "cost": 6,
+      "key": "j_castle",
+      "name": "Castle",
+      "order": 103,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 5
+      },
+      "cost": 4,
+      "key": "j_smiley",
+      "name": "Smiley Face",
+      "order": 104,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 0.25
+      },
+      "cost": 9,
+      "key": "j_campfire",
+      "name": "Campfire",
+      "order": 105,
+      "rarity": 3,
+      "rarity_name": "rare",
+      "set": "Joker",
+      "unlocked_default": true
+    },
+    {
+      "config": {
+        "extra": 4
+      },
+      "cost": 5,
+      "enhancement_gate": "m_gold",
+      "key": "j_ticket",
+      "name": "Golden Ticket",
+      "order": 106,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "cost": 5,
+      "key": "j_mr_bones",
+      "name": "Mr. Bones",
+      "order": 107,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "config": {
+        "extra": 3
+      },
+      "cost": 6,
+      "key": "j_acrobat",
+      "name": "Acrobat",
+      "order": 108,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "config": {
+        "extra": 1
+      },
+      "cost": 6,
+      "key": "j_sock_and_buskin",
+      "name": "Sock and Buskin",
+      "order": 109,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "cost": 4,
+      "key": "j_swashbuckler",
+      "name": "Swashbuckler",
+      "order": 110,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "cost": 6,
+      "key": "j_troubadour",
+      "name": "Troubadour",
+      "order": 111,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "cost": 6,
+      "key": "j_certificate",
+      "name": "Certificate",
+      "order": 112,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "cost": 7,
+      "key": "j_smeared",
+      "name": "Smeared Joker",
+      "order": 113,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "config": {
+        "extra": 0.25
+      },
+      "cost": 6,
+      "key": "j_throwback",
+      "name": "Throwback",
+      "order": 114,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "config": {
+        "extra": 2
+      },
+      "cost": 4,
+      "key": "j_hanging_chad",
+      "name": "Hanging Chad",
+      "order": 115,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "config": {
+        "extra": 1
+      },
+      "cost": 7,
+      "key": "j_rough_gem",
+      "name": "Rough Gem",
+      "order": 116,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "cost": 7,
+      "key": "j_bloodstone",
+      "name": "Bloodstone",
+      "order": 117,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "config": {
+        "extra": 50
+      },
+      "cost": 7,
+      "key": "j_arrowhead",
+      "name": "Arrowhead",
+      "order": 118,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "config": {
+        "extra": 7
+      },
+      "cost": 7,
+      "key": "j_onyx_agate",
+      "name": "Onyx Agate",
+      "order": 119,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "config": {
+        "extra": 0.75
+      },
+      "cost": 6,
+      "enhancement_gate": "m_glass",
+      "key": "j_glass",
+      "name": "Glass Joker",
+      "order": 120,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "cost": 5,
+      "key": "j_ring_master",
+      "name": "Showman",
+      "order": 121,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "config": {
+        "extra": 3
+      },
+      "cost": 6,
+      "key": "j_flower_pot",
+      "name": "Flower Pot",
+      "order": 122,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "cost": 10,
+      "key": "j_blueprint",
+      "name": "Blueprint",
+      "order": 123,
+      "rarity": 3,
+      "rarity_name": "rare",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "cost": 8,
+      "key": "j_wee",
+      "name": "Wee Joker",
+      "order": 124,
+      "rarity": 3,
+      "rarity_name": "rare",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "cost": 7,
+      "key": "j_merry_andy",
+      "name": "Merry Andy",
+      "order": 125,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "cost": 4,
+      "key": "j_oops",
+      "name": "Oops! All 6s",
+      "order": 126,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "config": {
+        "extra": 2
+      },
+      "cost": 6,
+      "key": "j_idol",
+      "name": "The Idol",
+      "order": 127,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "config": {
+        "extra": 2
+      },
+      "cost": 6,
+      "key": "j_seeing_double",
+      "name": "Seeing Double",
+      "order": 128,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "config": {
+        "extra": 8
+      },
+      "cost": 7,
+      "key": "j_matador",
+      "name": "Matador",
+      "order": 129,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "config": {
+        "extra": 0.5
+      },
+      "cost": 8,
+      "key": "j_hit_the_road",
+      "name": "Hit the Road",
+      "order": 130,
+      "rarity": 3,
+      "rarity_name": "rare",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "cost": 8,
+      "key": "j_duo",
+      "name": "The Duo",
+      "order": 131,
+      "rarity": 3,
+      "rarity_name": "rare",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "cost": 8,
+      "key": "j_trio",
+      "name": "The Trio",
+      "order": 132,
+      "rarity": 3,
+      "rarity_name": "rare",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "cost": 8,
+      "key": "j_family",
+      "name": "The Family",
+      "order": 133,
+      "rarity": 3,
+      "rarity_name": "rare",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "cost": 8,
+      "key": "j_order",
+      "name": "The Order",
+      "order": 134,
+      "rarity": 3,
+      "rarity_name": "rare",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "cost": 8,
+      "key": "j_tribe",
+      "name": "The Tribe",
+      "order": 135,
+      "rarity": 3,
+      "rarity_name": "rare",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "cost": 7,
+      "key": "j_stuntman",
+      "name": "Stuntman",
+      "order": 136,
+      "rarity": 3,
+      "rarity_name": "rare",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "config": {
+        "extra": 2
+      },
+      "cost": 8,
+      "key": "j_invisible",
+      "name": "Invisible Joker",
+      "order": 137,
+      "rarity": 3,
+      "rarity_name": "rare",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "cost": 10,
+      "key": "j_brainstorm",
+      "name": "Brainstorm",
+      "order": 138,
+      "rarity": 3,
+      "rarity_name": "rare",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "config": {
+        "extra": 1
+      },
+      "cost": 6,
+      "key": "j_satellite",
+      "name": "Satellite",
+      "order": 139,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "config": {
+        "extra": 13
+      },
+      "cost": 5,
+      "key": "j_shoot_the_moon",
+      "name": "Shoot the Moon",
+      "order": 140,
+      "rarity": 1,
+      "rarity_name": "common",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "config": {
+        "extra": 3
+      },
+      "cost": 7,
+      "key": "j_drivers_license",
+      "name": "Driver's License",
+      "order": 141,
+      "rarity": 3,
+      "rarity_name": "rare",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "cost": 6,
+      "key": "j_cartomancer",
+      "name": "Cartomancer",
+      "order": 142,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "cost": 8,
+      "key": "j_astronomer",
+      "name": "Astronomer",
+      "order": 143,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "config": {
+        "extra": 4
+      },
+      "cost": 8,
+      "key": "j_burnt",
+      "name": "Burnt Joker",
+      "order": 144,
+      "rarity": 3,
+      "rarity_name": "rare",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "cost": 7,
+      "key": "j_bootstraps",
+      "name": "Bootstraps",
+      "order": 145,
+      "rarity": 2,
+      "rarity_name": "uncommon",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "config": {
+        "extra": 1
+      },
+      "cost": 20,
+      "key": "j_caino",
+      "name": "Caino",
+      "order": 146,
+      "rarity": 4,
+      "rarity_name": "legendary",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "config": {
+        "extra": 2
+      },
+      "cost": 20,
+      "key": "j_triboulet",
+      "name": "Triboulet",
+      "order": 147,
+      "rarity": 4,
+      "rarity_name": "legendary",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "cost": 20,
+      "key": "j_yorick",
+      "name": "Yorick",
+      "order": 148,
+      "rarity": 4,
+      "rarity_name": "legendary",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "cost": 20,
+      "key": "j_chicot",
+      "name": "Chicot",
+      "order": 149,
+      "rarity": 4,
+      "rarity_name": "legendary",
+      "set": "Joker",
+      "unlocked_default": false
+    },
+    {
+      "cost": 20,
+      "key": "j_perkeo",
+      "name": "Perkeo",
+      "order": 150,
+      "rarity": 4,
+      "rarity_name": "legendary",
+      "set": "Joker",
+      "unlocked_default": false
+    }
+  ],
+  "metadata": {
+    "generated_from": [
+      "game.lua:self.P_CENTERS",
+      "functions/UI_definitions.lua:create_card_for_shop",
+      "functions/common_events.lua:get_current_pool,poll_edition"
+    ],
+    "notes": [
+      "Shop card slots roll type by default rates, then sample from the matching center pool.",
+      "Joker rarity follows get_current_pool thresholds: common 70%, uncommon 25%, rare 5%; legendary only appears through forced/soul paths.",
+      "Edition rates are the base poll_edition thresholds before vouchers or challenge modifiers."
+    ],
+    "source": ".balatro-headless/Balatro.exe"
+  },
+  "planets": [
+    {
+      "config": {
+        "hand_type": "Pair"
+      },
+      "cost": 3,
+      "key": "c_mercury",
+      "name": "Mercury",
+      "order": 1,
+      "set": "Planet"
+    },
+    {
+      "config": {
+        "hand_type": "Three of a Kind"
+      },
+      "cost": 3,
+      "key": "c_venus",
+      "name": "Venus",
+      "order": 2,
+      "set": "Planet"
+    },
+    {
+      "config": {
+        "hand_type": "Full House"
+      },
+      "cost": 3,
+      "key": "c_earth",
+      "name": "Earth",
+      "order": 3,
+      "set": "Planet"
+    },
+    {
+      "config": {
+        "hand_type": "Four of a Kind"
+      },
+      "cost": 3,
+      "key": "c_mars",
+      "name": "Mars",
+      "order": 4,
+      "set": "Planet"
+    },
+    {
+      "config": {
+        "hand_type": "Flush"
+      },
+      "cost": 3,
+      "key": "c_jupiter",
+      "name": "Jupiter",
+      "order": 5,
+      "set": "Planet"
+    },
+    {
+      "config": {
+        "hand_type": "Straight"
+      },
+      "cost": 3,
+      "key": "c_saturn",
+      "name": "Saturn",
+      "order": 6,
+      "set": "Planet"
+    },
+    {
+      "config": {
+        "hand_type": "Two Pair"
+      },
+      "cost": 3,
+      "key": "c_uranus",
+      "name": "Uranus",
+      "order": 7,
+      "set": "Planet"
+    },
+    {
+      "config": {
+        "hand_type": "Straight Flush"
+      },
+      "cost": 3,
+      "key": "c_neptune",
+      "name": "Neptune",
+      "order": 8,
+      "set": "Planet"
+    },
+    {
+      "config": {
+        "hand_type": "High Card"
+      },
+      "cost": 3,
+      "key": "c_pluto",
+      "name": "Pluto",
+      "order": 9,
+      "set": "Planet"
+    },
+    {
+      "config": {
+        "hand_type": "Five of a Kind"
+      },
+      "cost": 3,
+      "key": "c_planet_x",
+      "name": "Planet X",
+      "order": 10,
+      "set": "Planet"
+    },
+    {
+      "config": {
+        "hand_type": "Flush House"
+      },
+      "cost": 3,
+      "key": "c_ceres",
+      "name": "Ceres",
+      "order": 11,
+      "set": "Planet"
+    },
+    {
+      "config": {
+        "hand_type": "Flush Five"
+      },
+      "cost": 3,
+      "key": "c_eris",
+      "name": "Eris",
+      "order": 12,
+      "set": "Planet"
+    }
+  ],
+  "reroll": {
+    "base_cost": 5,
+    "increase_per_reroll": 1
+  },
+  "shop_slots": {
+    "base_joker_max": 2,
+    "booster_slots": 2,
+    "voucher_slots": 1
+  },
+  "slot_rates": {
+    "Base": 0,
+    "Enhanced": 0,
+    "Joker": 20,
+    "Planet": 4,
+    "Spectral": 0,
+    "Tarot": 4
+  },
+  "spectrals": [
+    {
+      "config": {
+        "extra": 3
+      },
+      "cost": 4,
+      "key": "c_familiar",
+      "name": "Familiar",
+      "order": 1,
+      "set": "Spectral"
+    },
+    {
+      "config": {
+        "extra": 2
+      },
+      "cost": 4,
+      "key": "c_grim",
+      "name": "Grim",
+      "order": 2,
+      "set": "Spectral"
+    },
+    {
+      "config": {
+        "extra": 4
+      },
+      "cost": 4,
+      "key": "c_incantation",
+      "name": "Incantation",
+      "order": 3,
+      "set": "Spectral"
+    },
+    {
+      "config": {
+        "extra": "Gold"
+      },
+      "cost": 4,
+      "key": "c_talisman",
+      "name": "Talisman",
+      "order": 4,
+      "set": "Spectral"
+    },
+    {
+      "cost": 4,
+      "key": "c_aura",
+      "name": "Aura",
+      "order": 5,
+      "set": "Spectral"
+    },
+    {
+      "cost": 4,
+      "key": "c_wraith",
+      "name": "Wraith",
+      "order": 6,
+      "set": "Spectral"
+    },
+    {
+      "cost": 4,
+      "key": "c_sigil",
+      "name": "Sigil",
+      "order": 7,
+      "set": "Spectral"
+    },
+    {
+      "cost": 4,
+      "key": "c_ouija",
+      "name": "Ouija",
+      "order": 8,
+      "set": "Spectral"
+    },
+    {
+      "cost": 4,
+      "key": "c_ectoplasm",
+      "name": "Ectoplasm",
+      "order": 9,
+      "set": "Spectral"
+    },
+    {
+      "cost": 4,
+      "key": "c_immolate",
+      "name": "Immolate",
+      "order": 10,
+      "set": "Spectral"
+    },
+    {
+      "config": {
+        "extra": 2
+      },
+      "cost": 4,
+      "key": "c_ankh",
+      "name": "Ankh",
+      "order": 11,
+      "set": "Spectral"
+    },
+    {
+      "config": {
+        "extra": "Red"
+      },
+      "cost": 4,
+      "key": "c_deja_vu",
+      "name": "Deja Vu",
+      "order": 12,
+      "set": "Spectral"
+    },
+    {
+      "config": {
+        "extra": 2
+      },
+      "cost": 4,
+      "key": "c_hex",
+      "name": "Hex",
+      "order": 13,
+      "set": "Spectral"
+    },
+    {
+      "config": {
+        "extra": "Blue"
+      },
+      "cost": 4,
+      "key": "c_trance",
+      "name": "Trance",
+      "order": 14,
+      "set": "Spectral"
+    },
+    {
+      "config": {
+        "extra": "Purple"
+      },
+      "cost": 4,
+      "key": "c_medium",
+      "name": "Medium",
+      "order": 15,
+      "set": "Spectral"
+    },
+    {
+      "config": {
+        "extra": 2
+      },
+      "cost": 4,
+      "key": "c_cryptid",
+      "name": "Cryptid",
+      "order": 16,
+      "set": "Spectral"
+    },
+    {
+      "cost": 4,
+      "key": "c_soul",
+      "name": "The Soul",
+      "order": 17,
+      "set": "Spectral"
+    },
+    {
+      "cost": 4,
+      "key": "c_black_hole",
+      "name": "Black Hole",
+      "order": 18,
+      "set": "Spectral"
+    }
+  ],
+  "tarots": [
+    {
+      "cost": 3,
+      "key": "c_fool",
+      "name": "The Fool",
+      "order": 1,
+      "set": "Tarot"
+    },
+    {
+      "cost": 3,
+      "key": "c_magician",
+      "name": "The Magician",
+      "order": 2,
+      "set": "Tarot"
+    },
+    {
+      "cost": 3,
+      "key": "c_high_priestess",
+      "name": "The High Priestess",
+      "order": 3,
+      "set": "Tarot"
+    },
+    {
+      "cost": 3,
+      "key": "c_empress",
+      "name": "The Empress",
+      "order": 4,
+      "set": "Tarot"
+    },
+    {
+      "cost": 3,
+      "key": "c_emperor",
+      "name": "The Emperor",
+      "order": 5,
+      "set": "Tarot"
+    },
+    {
+      "cost": 3,
+      "key": "c_heirophant",
+      "name": "The Hierophant",
+      "order": 6,
+      "set": "Tarot"
+    },
+    {
+      "cost": 3,
+      "key": "c_lovers",
+      "name": "The Lovers",
+      "order": 7,
+      "set": "Tarot"
+    },
+    {
+      "cost": 3,
+      "key": "c_chariot",
+      "name": "The Chariot",
+      "order": 8,
+      "set": "Tarot"
+    },
+    {
+      "cost": 3,
+      "key": "c_justice",
+      "name": "Justice",
+      "order": 9,
+      "set": "Tarot"
+    },
+    {
+      "config": {
+        "extra": 20
+      },
+      "cost": 3,
+      "key": "c_hermit",
+      "name": "The Hermit",
+      "order": 10,
+      "set": "Tarot"
+    },
+    {
+      "config": {
+        "extra": 4
+      },
+      "cost": 3,
+      "key": "c_wheel_of_fortune",
+      "name": "The Wheel of Fortune",
+      "order": 11,
+      "set": "Tarot"
+    },
+    {
+      "cost": 3,
+      "key": "c_strength",
+      "name": "Strength",
+      "order": 12,
+      "set": "Tarot"
+    },
+    {
+      "cost": 3,
+      "key": "c_hanged_man",
+      "name": "The Hanged Man",
+      "order": 13,
+      "set": "Tarot"
+    },
+    {
+      "cost": 3,
+      "key": "c_death",
+      "name": "Death",
+      "order": 14,
+      "set": "Tarot"
+    },
+    {
+      "config": {
+        "extra": 50
+      },
+      "cost": 3,
+      "key": "c_temperance",
+      "name": "Temperance",
+      "order": 15,
+      "set": "Tarot"
+    },
+    {
+      "cost": 3,
+      "key": "c_devil",
+      "name": "The Devil",
+      "order": 16,
+      "set": "Tarot"
+    },
+    {
+      "cost": 3,
+      "key": "c_tower",
+      "name": "The Tower",
+      "order": 17,
+      "set": "Tarot"
+    },
+    {
+      "cost": 3,
+      "key": "c_star",
+      "name": "The Star",
+      "order": 18,
+      "set": "Tarot"
+    },
+    {
+      "cost": 3,
+      "key": "c_moon",
+      "name": "The Moon",
+      "order": 19,
+      "set": "Tarot"
+    },
+    {
+      "cost": 3,
+      "key": "c_sun",
+      "name": "The Sun",
+      "order": 20,
+      "set": "Tarot"
+    },
+    {
+      "cost": 3,
+      "key": "c_judgement",
+      "name": "Judgement",
+      "order": 21,
+      "set": "Tarot"
+    },
+    {
+      "cost": 3,
+      "key": "c_world",
+      "name": "The World",
+      "order": 22,
+      "set": "Tarot"
+    }
+  ],
+  "vouchers": [
+    {
+      "available_default": true,
+      "cost": 10,
+      "key": "v_overstock_norm",
+      "name": "Overstock",
+      "order": 1,
+      "set": "Voucher",
+      "unlocked_default": true
+    },
+    {
+      "available_default": true,
+      "cost": 10,
+      "key": "v_overstock_plus",
+      "name": "Overstock Plus",
+      "order": 2,
+      "requires": [
+        "v_overstock_norm"
+      ],
+      "set": "Voucher",
+      "unlocked_default": false
+    },
+    {
+      "available_default": true,
+      "config": {
+        "extra": 25
+      },
+      "cost": 10,
+      "key": "v_clearance_sale",
+      "name": "Clearance Sale",
+      "order": 3,
+      "set": "Voucher",
+      "unlocked_default": true
+    },
+    {
+      "available_default": true,
+      "config": {
+        "extra": 50
+      },
+      "cost": 10,
+      "key": "v_liquidation",
+      "name": "Liquidation",
+      "order": 4,
+      "requires": [
+        "v_clearance_sale"
+      ],
+      "set": "Voucher",
+      "unlocked_default": false
+    },
+    {
+      "available_default": true,
+      "config": {
+        "extra": 2
+      },
+      "cost": 10,
+      "key": "v_hone",
+      "name": "Hone",
+      "order": 5,
+      "set": "Voucher",
+      "unlocked_default": true
+    },
+    {
+      "available_default": true,
+      "config": {
+        "extra": 4
+      },
+      "cost": 10,
+      "key": "v_glow_up",
+      "name": "Glow Up",
+      "order": 6,
+      "requires": [
+        "v_hone"
+      ],
+      "set": "Voucher",
+      "unlocked_default": false
+    },
+    {
+      "available_default": true,
+      "config": {
+        "extra": 2
+      },
+      "cost": 10,
+      "key": "v_reroll_surplus",
+      "name": "Reroll Surplus",
+      "order": 7,
+      "set": "Voucher",
+      "unlocked_default": true
+    },
+    {
+      "available_default": true,
+      "config": {
+        "extra": 2
+      },
+      "cost": 10,
+      "key": "v_reroll_glut",
+      "name": "Reroll Glut",
+      "order": 8,
+      "requires": [
+        "v_reroll_surplus"
+      ],
+      "set": "Voucher",
+      "unlocked_default": false
+    },
+    {
+      "available_default": true,
+      "config": {
+        "extra": 3
+      },
+      "cost": 10,
+      "key": "v_crystal_ball",
+      "name": "Crystal Ball",
+      "order": 9,
+      "set": "Voucher",
+      "unlocked_default": true
+    },
+    {
+      "available_default": true,
+      "config": {
+        "extra": 4
+      },
+      "cost": 10,
+      "key": "v_omen_globe",
+      "name": "Omen Globe",
+      "order": 10,
+      "requires": [
+        "v_crystal_ball"
+      ],
+      "set": "Voucher",
+      "unlocked_default": false
+    },
+    {
+      "available_default": true,
+      "config": {
+        "extra": 3
+      },
+      "cost": 10,
+      "key": "v_telescope",
+      "name": "Telescope",
+      "order": 11,
+      "set": "Voucher",
+      "unlocked_default": true
+    },
+    {
+      "available_default": true,
+      "config": {
+        "extra": 1.5
+      },
+      "cost": 10,
+      "key": "v_observatory",
+      "name": "Observatory",
+      "order": 12,
+      "requires": [
+        "v_telescope"
+      ],
+      "set": "Voucher",
+      "unlocked_default": false
+    },
+    {
+      "available_default": true,
+      "config": {
+        "extra": 1
+      },
+      "cost": 10,
+      "key": "v_grabber",
+      "name": "Grabber",
+      "order": 13,
+      "set": "Voucher",
+      "unlocked_default": true
+    },
+    {
+      "available_default": true,
+      "config": {
+        "extra": 1
+      },
+      "cost": 10,
+      "key": "v_nacho_tong",
+      "name": "Nacho Tong",
+      "order": 14,
+      "requires": [
+        "v_grabber"
+      ],
+      "set": "Voucher",
+      "unlocked_default": false
+    },
+    {
+      "available_default": true,
+      "config": {
+        "extra": 1
+      },
+      "cost": 10,
+      "key": "v_wasteful",
+      "name": "Wasteful",
+      "order": 15,
+      "set": "Voucher",
+      "unlocked_default": true
+    },
+    {
+      "available_default": true,
+      "config": {
+        "extra": 1
+      },
+      "cost": 10,
+      "key": "v_recyclomancy",
+      "name": "Recyclomancy",
+      "order": 16,
+      "requires": [
+        "v_wasteful"
+      ],
+      "set": "Voucher",
+      "unlocked_default": false
+    },
+    {
+      "available_default": true,
+      "config": {
+        "extra": 9.6
+      },
+      "cost": 10,
+      "key": "v_tarot_merchant",
+      "name": "Tarot Merchant",
+      "order": 17,
+      "set": "Voucher",
+      "unlocked_default": true
+    },
+    {
+      "available_default": true,
+      "config": {
+        "extra": 32
+      },
+      "cost": 10,
+      "key": "v_tarot_tycoon",
+      "name": "Tarot Tycoon",
+      "order": 18,
+      "requires": [
+        "v_tarot_merchant"
+      ],
+      "set": "Voucher",
+      "unlocked_default": false
+    },
+    {
+      "available_default": true,
+      "config": {
+        "extra": 9.6
+      },
+      "cost": 10,
+      "key": "v_planet_merchant",
+      "name": "Planet Merchant",
+      "order": 19,
+      "set": "Voucher",
+      "unlocked_default": true
+    },
+    {
+      "available_default": true,
+      "config": {
+        "extra": 32
+      },
+      "cost": 10,
+      "key": "v_planet_tycoon",
+      "name": "Planet Tycoon",
+      "order": 20,
+      "requires": [
+        "v_planet_merchant"
+      ],
+      "set": "Voucher",
+      "unlocked_default": false
+    },
+    {
+      "available_default": true,
+      "config": {
+        "extra": 50
+      },
+      "cost": 10,
+      "key": "v_seed_money",
+      "name": "Seed Money",
+      "order": 21,
+      "set": "Voucher",
+      "unlocked_default": true
+    },
+    {
+      "available_default": true,
+      "config": {
+        "extra": 100
+      },
+      "cost": 10,
+      "key": "v_money_tree",
+      "name": "Money Tree",
+      "order": 22,
+      "requires": [
+        "v_seed_money"
+      ],
+      "set": "Voucher",
+      "unlocked_default": false
+    },
+    {
+      "available_default": true,
+      "config": {
+        "extra": 5
+      },
+      "cost": 10,
+      "key": "v_blank",
+      "name": "Blank",
+      "order": 23,
+      "set": "Voucher",
+      "unlocked_default": true
+    },
+    {
+      "available_default": true,
+      "config": {
+        "extra": 15
+      },
+      "cost": 10,
+      "key": "v_antimatter",
+      "name": "Antimatter",
+      "order": 24,
+      "requires": [
+        "v_blank"
+      ],
+      "set": "Voucher",
+      "unlocked_default": false
+    },
+    {
+      "available_default": true,
+      "config": {
+        "extra": 4
+      },
+      "cost": 10,
+      "key": "v_magic_trick",
+      "name": "Magic Trick",
+      "order": 25,
+      "set": "Voucher",
+      "unlocked_default": true
+    },
+    {
+      "available_default": true,
+      "config": {
+        "extra": 4
+      },
+      "cost": 10,
+      "key": "v_illusion",
+      "name": "Illusion",
+      "order": 26,
+      "requires": [
+        "v_magic_trick"
+      ],
+      "set": "Voucher",
+      "unlocked_default": false
+    },
+    {
+      "available_default": true,
+      "config": {
+        "extra": 1
+      },
+      "cost": 10,
+      "key": "v_hieroglyph",
+      "name": "Hieroglyph",
+      "order": 27,
+      "set": "Voucher",
+      "unlocked_default": true
+    },
+    {
+      "available_default": true,
+      "config": {
+        "extra": 1
+      },
+      "cost": 10,
+      "key": "v_petroglyph",
+      "name": "Petroglyph",
+      "order": 28,
+      "requires": [
+        "v_hieroglyph"
+      ],
+      "set": "Voucher",
+      "unlocked_default": false
+    },
+    {
+      "available_default": true,
+      "config": {
+        "extra": 10
+      },
+      "cost": 10,
+      "key": "v_directors_cut",
+      "name": "Director's Cut",
+      "order": 29,
+      "set": "Voucher",
+      "unlocked_default": true
+    },
+    {
+      "available_default": true,
+      "config": {
+        "extra": 10
+      },
+      "cost": 10,
+      "key": "v_retcon",
+      "name": "Retcon",
+      "order": 30,
+      "requires": [
+        "v_directors_cut"
+      ],
+      "set": "Voucher",
+      "unlocked_default": false
+    },
+    {
+      "available_default": true,
+      "config": {
+        "extra": 1
+      },
+      "cost": 10,
+      "key": "v_paint_brush",
+      "name": "Paint Brush",
+      "order": 31,
+      "set": "Voucher",
+      "unlocked_default": true
+    },
+    {
+      "available_default": true,
+      "config": {
+        "extra": 1
+      },
+      "cost": 10,
+      "key": "v_palette",
+      "name": "Palette",
+      "order": 32,
+      "requires": [
+        "v_paint_brush"
+      ],
+      "set": "Voucher",
+      "unlocked_default": false
+    }
+  ]
+}

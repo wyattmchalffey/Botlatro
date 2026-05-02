@@ -1,0 +1,10 @@
+{
+  "model": {
+    "vendor": "anthropic",
+    "name": "claude-opus-4.5"
+  },
+  "seed": "AAAAAAA",
+  "deck": "RED",
+  "stake": "WHITE",
+  "strategy": "default"
+}

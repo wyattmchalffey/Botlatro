@@ -1,0 +1,10 @@
+{
+  "model": {
+    "vendor": "deepseek",
+    "name": "deepseek-v3.2"
+  },
+  "seed": "BBBBBBB",
+  "deck": "RED",
+  "stake": "WHITE",
+  "strategy": "default"
+}

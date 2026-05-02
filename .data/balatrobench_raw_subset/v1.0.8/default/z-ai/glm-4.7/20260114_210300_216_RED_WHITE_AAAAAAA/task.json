@@ -1,0 +1,10 @@
+{
+  "model": {
+    "vendor": "z-ai",
+    "name": "glm-4.7"
+  },
+  "seed": "AAAAAAA",
+  "deck": "RED",
+  "stake": "WHITE",
+  "strategy": "default"
+}

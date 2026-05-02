@@ -1,0 +1,32 @@
+Bot: search_bot_v1
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Seeds: 1
+First seed: 1801824049
+Bot: search_bot_v1
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Seeds: 1
+Seed label: white:phase7-v1-interest-compare-3-rerun:explicit
+First seed: 1801824049
+Endpoints: http://127.0.0.1:12346
+Replay mode: light
+Start retries: 1
+Failed seed retries: 0
+[1/1] seed=1801824049 won=False ante=4 score=8105 money=1 runtime=105.04s
+
+Bot: search_bot_v1
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Runs: 1
+Win rate: 0.0%
+Average ante: 4.00
+Average final score: 8105.0
+Average final money: 1.0
+Average runtime: 105.04 sec/run

@@ -1,0 +1,45 @@
+HTTP/1.1 302 Found
+Content-Length: 0
+Content-Type: application/json
+Date: Fri, 01 May 2026 01:14:42 GMT
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Origin: *
+Location: https://storage.googleapis.com:443/kaggle-data-sets/9345635/14630229/bundle/archive.zip?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=gcp-kaggle-com%40kaggle-161607.iam.gserviceaccount.com%2F20260501%2Fauto%2Fstorage%2Fgoog4_request&X-Goog-Date=20260501T011442Z&X-Goog-Expires=259200&X-Goog-SignedHeaders=host&X-Goog-Signature=4f266959fe4ac0aef256e43559bd254fe8d309d1d4853820fa2a6322d48dfa8d432fc6e87f0ae9bb0876e2e1bc89ed4abac07b2e2603a4d766c57adb8fdeb3260a2f22109971437de2021efb8bcc04583c1977d2ef3b9c655a07512fed8f8c620f810dbd9fd87f4f130d35cf38de55977cb3af419308b3addf9eb9cc34df01fd97e02582fad2c410092b6cb6291eebf7d0665e79bf22e9ddd8015843b9d71bf8d5bad16f3151b1ac922baa3991758ceaa41fe690030f893be328d6e5e54beff6d43e9deaae48df9809460e02795a777c42ef1f692c528e38d0115729689395edc18c2fef58b23113bce4b319e11ce764e5c08af3ba42bc3923fd3c39e6846658
+Set-Cookie: ka_sessionid=5575a9c54b57d289d25f72edb27865e2; max-age=2626560; path=/
+Set-Cookie: GCLB=CLz8xPiroZT7ZhAD; path=/; HttpOnly
+X-Kaggle-MillisecondsElapsed: 84
+X-Kaggle-RequestId: 6be2c255d389413f535247f50152138d
+X-Kaggle-ApiVersion: 2.0.2
+X-Kaggle-HubVersion: 1.0.0
+X-Frame-Options: SAMEORIGIN
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Content-Security-Policy: object-src 'none'; script-src 'nonce-gsZ2aOphxVYtOpdCyFKrpw==' 'report-sample' 'unsafe-inline' 'unsafe-eval' 'strict-dynamic' https: http:; base-uri 'none'; report-uri https://csp.withgoogle.com/csp/kaggle/20201130; frame-src 'self' https://www.kaggleusercontent.com https://www.youtube.com/embed/ https://youtu.be https://polygraph-cool.github.io https://www.google.com/recaptcha/ https://www.docdroid.com https://www.docdroid.net https://kaggle-static.storage.googleapis.com https://kkb-production.jupyter-proxy.kaggle.net https://kkb-production.firebaseapp.com https://kaggle-metastore.firebaseapp.com https://apis.google.com https://content-sheets.googleapis.com/ https://accounts.google.com/ https://storage.googleapis.com https://docs.google.com https://drive.google.com https://calendar.google.com/ https://google.qualtrics.com/ https://player.kick.com/ https://player.twitch.tv/ https://kaggle.com http://localhost:* https://localhost:* localhost:* ;
+X-Content-Type-Options: nosniff
+Referrer-Policy: strict-origin-when-cross-origin
+Via: 1.1 google
+Alt-Svc: h3=":443"; ma=2592000
+
+HTTP/1.1 206 Partial Content
+Content-Type: application/zip
+X-GUploader-UploadID: AAVLpEiCTG36DKQ0x-EyuOWhmOc8LE6aT__H3P2QU7FpwrcnTB4d0I1m6GJAKyI8dRgcqDk10Mn0kzI
+Expires: Fri, 01 May 2026 01:14:42 GMT
+Date: Fri, 01 May 2026 01:14:42 GMT
+Cache-Control: private, max-age=0
+Last-Modified: Mon, 26 Jan 2026 19:35:35 GMT
+ETag: "c67ad2073aa8a99a8294297c5e4fc01c"
+x-goog-generation: 1769456135056271
+x-goog-metageneration: 1
+x-goog-stored-content-encoding: identity
+x-goog-stored-content-length: 3941054065
+x-goog-hash: crc32c=vkvhvg==
+x-goog-hash: md5=xnrSBzqoqZqClCl8Xk/AHA==
+x-goog-storage-class: MULTI_REGIONAL
+Accept-Ranges: bytes
+Content-Range: bytes 0-1023/3941054065
+Content-Length: 1024
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: Content-Type
+Access-Control-Expose-Headers: User-Agent
+Server: UploadServer
+Alt-Svc: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+

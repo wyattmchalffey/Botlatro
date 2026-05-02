@@ -1,0 +1,25 @@
+{
+  "run_won": false,
+  "run_completed": true,
+  "final_ante": 1,
+  "final_round": 3,
+  "providers": {
+    "SiliconFlow": 20
+  },
+  "calls_total": 20,
+  "calls_success": 18,
+  "calls_error": 2,
+  "calls_failed": 0,
+  "tokens_in_total": 272409,
+  "tokens_out_total": 22630,
+  "tokens_in_avg": 13620.45,
+  "tokens_out_avg": 1131.5,
+  "tokens_in_std": 630.706744349877,
+  "tokens_out_std": 541.3084051385903,
+  "time_total_ms": 349004,
+  "time_avg_ms": 17450.2,
+  "time_std_ms": 8103.750435186752,
+  "cost_total": 0.16419778,
+  "cost_avg": 0.008209889,
+  "cost_std": 0.0013713007469049617
+}

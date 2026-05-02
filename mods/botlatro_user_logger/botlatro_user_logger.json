@@ -1,0 +1,14 @@
+{
+  "id": "botlatro_user_logger",
+  "name": "Botlatro User Logger",
+  "author": ["Botlatro"],
+  "description": "Opt-in gameplay logger for collecting human Balatro replay data for Botlatro research.",
+  "prefix": "BUL",
+  "main_file": "botlatro_user_logger.lua",
+  "priority": 100,
+  "badge_colour": "2D7FF9",
+  "badge_text_colour": "FFFFFF",
+  "display_name": "BUL",
+  "version": "0.1.0",
+  "dependencies": []
+}

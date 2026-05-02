@@ -1,0 +1,36 @@
+Bot: basic_strategy_bot
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Seeds: 10
+Seed label: white:phase7-score-audit-fresh-10
+First seed: 2120646905
+Endpoints: http://127.0.0.1:12347, http://127.0.0.1:12349
+Replay mode: score_audit
+Start retries: 1
+Failed seed retries: 1
+[1/10] seed=2120646905 won=False ante=7 score=53150 money=76 runtime=94.67s
+[2/10] seed=930482140 won=False ante=5 score=17840 money=31 runtime=252.80s
+[3/10] seed=1206772211 won=False ante=5 score=16240 money=61 runtime=97.06s
+[4/10] seed=1323337221 won=False ante=4 score=11517 money=26 runtime=286.39s
+[5/10] seed=1202966046 won=False ante=5 score=17263 money=39 runtime=231.62s
+[6/10] seed=179493489 won=False ante=1 score=240 money=4 runtime=12.73s
+[7/10] seed=877525501 won=False ante=5 score=18456 money=49 runtime=314.84s
+[8/10] seed=856482982 won=False ante=5 score=5268 money=26 runtime=329.59s
+[9/10] seed=310855324 won=False ante=0 score=0 money=0 runtime=645.64s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'INVALID_STATE'}, 'code': -32002, 'message': 'No pack is currently open'}
+[10/10] seed=1863563379 won=True ante=8 score=90400 money=176 runtime=400.71s
+Retry 1: rerunning 1 failed seed(s) on healthy endpoint(s).
+[retry 1] seed=310855324 won=False ante=0 score=0 money=0 runtime=359.92s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'INVALID_STATE'}, 'code': -32002, 'message': 'No pack is currently open'}
+
+Bot: basic_strategy_bot
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Runs: 10
+Win rate: 10.0%
+Average ante: 4.50
+Average final score: 23037.4
+Average final money: 48.8
+Average runtime: 238.03 sec/run

@@ -25,3 +25,5 @@ ml = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+balatro_ai = ["data/*.json"]

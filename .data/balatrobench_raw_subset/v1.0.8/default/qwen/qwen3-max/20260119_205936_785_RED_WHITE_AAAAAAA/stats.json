@@ -1,0 +1,25 @@
+{
+  "run_won": false,
+  "run_completed": true,
+  "final_ante": 1,
+  "final_round": 3,
+  "providers": {
+    "Alibaba": 21
+  },
+  "calls_total": 21,
+  "calls_success": 21,
+  "calls_error": 0,
+  "calls_failed": 0,
+  "tokens_in_total": 298938,
+  "tokens_out_total": 12012,
+  "tokens_in_avg": 14235.142857142857,
+  "tokens_out_avg": 572.0,
+  "tokens_in_std": 677.8559792252545,
+  "tokens_out_std": 214.99697672292976,
+  "time_total_ms": 312858,
+  "time_avg_ms": 14898.0,
+  "time_std_ms": 4315.695575454784,
+  "cost_total": 0.4307976,
+  "cost_avg": 0.02051417142857143,
+  "cost_std": 0.001855707069863899
+}

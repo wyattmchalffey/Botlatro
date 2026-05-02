@@ -84,6 +84,23 @@ class BalatroBotSchemaTests(unittest.TestCase):
         self.assertEqual(state.ante, 8)
         self.assertEqual(state.legal_actions, ())
 
+    def test_ante_nine_won_but_not_run_over_is_standard_run_win_boundary(self) -> None:
+        state = GameState.from_mapping(
+            {
+                "state": "SHOP",
+                "ante_num": 9,
+                "money": 105,
+                "won": True,
+                "run_over": False,
+                "shop": {"cards": [{"label": "Misprint", "set": "JOKER", "cost": {"buy": 4}}]},
+            }
+        )
+
+        self.assertTrue(state.run_over)
+        self.assertTrue(state.won)
+        self.assertEqual(state.ante, 8)
+        self.assertEqual(state.legal_actions, ())
+
     def test_card_parser_preserves_debuff_state_and_raw_metadata(self) -> None:
         card = GameState.from_mapping(
             {
@@ -107,6 +124,34 @@ class BalatroBotSchemaTests(unittest.TestCase):
         self.assertEqual(card.enhancement, "STEEL")
         self.assertEqual(card.metadata["key"], "S_A")
         self.assertEqual(card.metadata["value"]["effect"], "Ace")
+
+    def test_card_parser_derives_enhancement_from_balatrobench_label(self) -> None:
+        state = GameState.from_mapping(
+            {
+                "state": "SELECTING_HAND",
+                "hand": {
+                    "cards": [
+                        {
+                            "key": "C_K",
+                            "label": "Glass Card",
+                            "value": {"suit": "C", "rank": "K", "effect": "+10 chips X2 Mult"},
+                            "modifier": [],
+                            "set": "ENHANCED",
+                        },
+                        {
+                            "key": "H_3",
+                            "label": "Bonus Card",
+                            "value": {"suit": "H", "rank": "3", "effect": "+3 chips +30 extra chips"},
+                            "modifier": [],
+                            "set": "ENHANCED",
+                        },
+                    ]
+                },
+            }
+        )
+
+        self.assertEqual(state.hand[0].enhancement, "GLASS")
+        self.assertEqual(state.hand[1].enhancement, "BONUS")
 
     def test_client_uses_documented_methods(self) -> None:
         client = RecordingClient()
@@ -202,6 +247,31 @@ class BalatroBotSchemaTests(unittest.TestCase):
         sell_actions = [action for action in state.legal_actions if action.action_type == ActionType.SELL]
 
         self.assertEqual(tuple(action.amount for action in sell_actions), (0, 1))
+
+    def test_empty_booster_state_does_not_derive_pack_skip_action(self) -> None:
+        state = GameState.from_mapping(
+            {
+                "state": "SMODS_BOOSTER_OPENED",
+                "money": 117,
+                "pack": {"cards": []},
+            }
+        )
+
+        self.assertEqual(state.phase, GamePhase.BOOSTER_OPENED)
+        self.assertEqual(state.pack, ())
+        self.assertEqual(tuple(action.action_type for action in state.legal_actions), (ActionType.NO_OP,))
+
+    def test_empty_booster_state_sanitizes_bridge_pack_actions(self) -> None:
+        state = GameState.from_mapping(
+            {
+                "state": "SMODS_BOOSTER_OPENED",
+                "money": 117,
+                "pack": {"cards": []},
+                "legal_actions": [{"type": "choose_pack_card", "target_id": "skip", "metadata": {"kind": "skip", "index": True}}],
+            }
+        )
+
+        self.assertEqual(tuple(action.action_type for action in state.legal_actions), (ActionType.NO_OP,))
 
 
 if __name__ == "__main__":

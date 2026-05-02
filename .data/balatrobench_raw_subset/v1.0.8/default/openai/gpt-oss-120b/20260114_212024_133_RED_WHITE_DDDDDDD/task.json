@@ -1,0 +1,10 @@
+{
+  "model": {
+    "vendor": "openai",
+    "name": "gpt-oss-120b"
+  },
+  "seed": "DDDDDDD",
+  "deck": "RED",
+  "stake": "WHITE",
+  "strategy": "default"
+}

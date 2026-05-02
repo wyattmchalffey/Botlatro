@@ -86,15 +86,19 @@ def _state_detail(state: GameState) -> dict[str, object]:
         "ante": state.ante,
         "blind": state.blind,
         "required_score": state.required_score,
+        "current_blind": state.modifiers.get("current_blind"),
         "current_score": state.current_score,
         "hands_remaining": state.hands_remaining,
         "discards_remaining": state.discards_remaining,
         "money": state.money,
         "deck_size": state.deck_size,
         "hand": [_card_detail(card) for card in state.hand],
+        "known_deck": [_card_detail(card) for card in state.known_deck],
         "hand_levels": dict(state.hand_levels),
+        "hands": dict(state.modifiers.get("hands", {})) if isinstance(state.modifiers.get("hands"), dict) else {},
         "jokers": [_joker_detail(joker) for joker in state.jokers],
         "consumables": list(state.consumables),
+        "owned_vouchers": list(state.vouchers),
         "vouchers": list(state.vouchers),
         "shop": [_raw_card_detail(item) for item in state.modifiers.get("shop_cards", ())],
         "voucher_shop": [_raw_card_detail(item) for item in state.modifiers.get("voucher_cards", ())],
@@ -146,6 +150,7 @@ def _joker_detail(joker) -> dict[str, object]:
         "set": joker.metadata.get("set"),
         "rarity": joker.metadata.get("rarity"),
         "cost": joker.metadata.get("cost"),
+        "metadata": dict(joker.metadata),
     }
 
 

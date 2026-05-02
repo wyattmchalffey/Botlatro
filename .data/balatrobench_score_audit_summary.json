@@ -1,0 +1,21 @@
+{
+  "run_dirs": 241,
+  "records": 2576,
+  "exact": 1632,
+  "supported": 2465,
+  "supported_exact": 1590,
+  "supported_misses": 875,
+  "uncertain": 111,
+  "skips": {
+    "no_previous_or_post_state": 513,
+    "pre_phase_blind_select": 533,
+    "pre_phase_round_eval": 438,
+    "ante_changed": 308,
+    "pre_phase_shop": 484,
+    "pre_phase_booster_opened": 224,
+    "bad_card_indices": 3,
+    "evaluation_error": 16,
+    "play_without_cards": 8
+  },
+  "errors_count": 19
+}

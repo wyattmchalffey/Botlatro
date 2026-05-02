@@ -1,0 +1,25 @@
+{
+  "run_won": false,
+  "run_completed": true,
+  "final_ante": 1,
+  "final_round": 1,
+  "providers": {
+    "DeepInfra": 4
+  },
+  "calls_total": 4,
+  "calls_success": 4,
+  "calls_error": 0,
+  "calls_failed": 0,
+  "tokens_in_total": 52183,
+  "tokens_out_total": 5212,
+  "tokens_in_avg": 13045.75,
+  "tokens_out_avg": 1303.0,
+  "tokens_in_std": 164.5992608326862,
+  "tokens_out_std": 274.9993939387261,
+  "time_total_ms": 55678,
+  "time_avg_ms": 13919.5,
+  "time_std_ms": 2635.714261194993,
+  "cost_total": 0.020865639999999998,
+  "cost_avg": 0.0052164099999999995,
+  "cost_std": 0.000343502600669437
+}

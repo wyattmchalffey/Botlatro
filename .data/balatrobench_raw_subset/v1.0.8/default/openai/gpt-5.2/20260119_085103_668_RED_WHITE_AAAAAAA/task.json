@@ -1,0 +1,10 @@
+{
+  "model": {
+    "vendor": "openai",
+    "name": "gpt-5.2"
+  },
+  "seed": "AAAAAAA",
+  "deck": "RED",
+  "stake": "WHITE",
+  "strategy": "default"
+}

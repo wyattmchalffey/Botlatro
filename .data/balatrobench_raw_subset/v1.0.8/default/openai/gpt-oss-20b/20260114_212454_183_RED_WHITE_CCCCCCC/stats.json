@@ -1,0 +1,26 @@
+{
+  "run_won": false,
+  "run_completed": true,
+  "final_ante": 2,
+  "final_round": 4,
+  "providers": {
+    "Groq": 38,
+    "Clarifai": 3
+  },
+  "calls_total": 41,
+  "calls_success": 37,
+  "calls_error": 4,
+  "calls_failed": 0,
+  "tokens_in_total": 566771,
+  "tokens_out_total": 174702,
+  "tokens_in_avg": 13823.682926829268,
+  "tokens_out_avg": 4261.024390243902,
+  "tokens_in_std": 455.5315268466273,
+  "tokens_out_std": 4467.093772733033,
+  "time_total_ms": 279540,
+  "time_avg_ms": 6818.048780487805,
+  "time_std_ms": 6188.986362689853,
+  "cost_total": 0.078531315,
+  "cost_avg": 0.0019153979268292684,
+  "cost_std": 0.0013635806684067025
+}

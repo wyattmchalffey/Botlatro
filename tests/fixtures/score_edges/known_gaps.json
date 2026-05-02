@@ -1,0 +1,35 @@
+{
+  "schema": "balatro-ai.score-edge.v1",
+  "cases": [
+    {
+      "name": "obelisk_reset_and_current_xmult_needs_oracle",
+      "kind": "known_gap",
+      "source": "old replay corpus mismatch bucket",
+      "known_gap_reason": "Obelisk current XMult and reset timing must be captured from visible joker metadata or a real pre/post oracle row before exact validation."
+    },
+    {
+      "name": "certificate_generated_card_identity_needs_oracle",
+      "kind": "known_gap",
+      "source": "old replay corpus mismatch bucket",
+      "known_gap_reason": "Certificate creates a random sealed card at blind start; exact replay validation needs the generated card identity and deck/hand snapshot."
+    },
+    {
+      "name": "the_hook_actual_discarded_held_cards_need_oracle",
+      "kind": "known_gap",
+      "source": "old replay corpus mismatch bucket",
+      "known_gap_reason": "The Hook randomly discards held cards before scoring; exact validation needs the actual discarded held-card list from the bridge."
+    },
+    {
+      "name": "the_pillar_prior_played_card_debuffs_need_oracle",
+      "kind": "known_gap",
+      "source": "old replay corpus mismatch bucket",
+      "known_gap_reason": "The Pillar debuffs previously played cards this ante; exact validation needs stable card identity and prior-play/debuff metadata."
+    },
+    {
+      "name": "cerulean_bell_forced_selection_needs_actual_scored_cards",
+      "kind": "known_gap",
+      "source": ".data/phase7-score-audit-fresh-10 mismatch bucket",
+      "known_gap_reason": "Cerulean Bell can force-select a card before the bot action is applied; exact validation needs the actual bridge-scored card list, not only requested card indices."
+    }
+  ]
+}

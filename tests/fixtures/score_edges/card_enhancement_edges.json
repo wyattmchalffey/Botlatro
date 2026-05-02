@@ -1,0 +1,88 @@
+{
+  "schema": "balatro-ai.score-edge.v1",
+  "cases": [
+    {
+      "name": "foil_mult_card_before_polychrome_joker",
+      "kind": "score",
+      "source": "synthetic card-edition ordering oracle candidate",
+      "cards": [
+        {
+          "rank": "A",
+          "suit": "S",
+          "enhancement": "m_mult",
+          "edition": "foil"
+        }
+      ],
+      "jokers": [
+        {
+          "name": "Joker",
+          "edition": "Polychrome"
+        }
+      ],
+      "expected": {
+        "hand_type": "High Card",
+        "chips": 66,
+        "mult": 9,
+        "xmult": 1.5,
+        "score": 891
+      }
+    },
+    {
+      "name": "boss_suit_debuff_zeroes_card_chips_but_keeps_flush_type",
+      "kind": "score",
+      "source": "synthetic",
+      "blind": "The Club",
+      "cards": "AC KC QC JC 9C",
+      "expected": {
+        "hand_type": "Flush",
+        "chips": 35,
+        "mult": 4,
+        "score": 140,
+        "scoring_indices": [0, 1, 2, 3, 4]
+      }
+    },
+    {
+      "name": "debuffed_card_does_not_move_hanging_chad_target",
+      "kind": "score",
+      "source": "synthetic from hand-eval bug class",
+      "blind": "The Goad",
+      "cards": "7S 7H 2H 2C 2D",
+      "jokers": ["Hanging Chad", "Odd Todd"],
+      "expected": {
+        "hand_type": "Full House",
+        "chips": 84,
+        "mult": 4,
+        "score": 336
+      }
+    },
+    {
+      "name": "permanent_card_chip_metadata_is_scored",
+      "kind": "score",
+      "source": "synthetic",
+      "cards": [
+        {
+          "rank": "A",
+          "suit": "S",
+          "metadata": {
+            "modifier": {
+              "perma_bonus": 10
+            }
+          }
+        },
+        {
+          "rank": "A",
+          "suit": "D",
+          "metadata": {
+            "bonus_chips": 5
+          }
+        }
+      ],
+      "expected": {
+        "hand_type": "Pair",
+        "chips": 47,
+        "mult": 2,
+        "score": 94
+      }
+    }
+  ]
+}

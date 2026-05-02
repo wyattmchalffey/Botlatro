@@ -1,0 +1,10 @@
+{
+  "model": {
+    "vendor": "x-ai",
+    "name": "grok-4"
+  },
+  "seed": "AAAAAAA",
+  "deck": "RED",
+  "stake": "WHITE",
+  "strategy": "default"
+}

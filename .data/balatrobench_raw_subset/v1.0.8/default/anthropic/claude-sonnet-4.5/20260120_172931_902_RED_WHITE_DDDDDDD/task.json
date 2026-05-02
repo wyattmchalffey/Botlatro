@@ -1,0 +1,10 @@
+{
+  "model": {
+    "vendor": "anthropic",
+    "name": "claude-sonnet-4.5"
+  },
+  "seed": "DDDDDDD",
+  "deck": "RED",
+  "stake": "WHITE",
+  "strategy": "default"
+}

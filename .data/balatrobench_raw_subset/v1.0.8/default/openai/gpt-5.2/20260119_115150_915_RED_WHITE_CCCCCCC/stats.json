@@ -1,0 +1,25 @@
+{
+  "run_won": false,
+  "run_completed": true,
+  "final_ante": 7,
+  "final_round": 21,
+  "providers": {
+    "OpenAI": 223
+  },
+  "calls_total": 223,
+  "calls_success": 223,
+  "calls_error": 0,
+  "calls_failed": 0,
+  "tokens_in_total": 3150082,
+  "tokens_out_total": 257898,
+  "tokens_in_avg": 14125.928251121077,
+  "tokens_out_avg": 1156.493273542601,
+  "tokens_in_std": 352.45346540977584,
+  "tokens_out_std": 703.7043033662453,
+  "time_total_ms": 6437057,
+  "time_avg_ms": 28865.7264573991,
+  "time_std_ms": 16295.345812395579,
+  "cost_total": 5.3131771,
+  "cost_avg": 0.023825906278026904,
+  "cost_std": 0.01000922342691669
+}

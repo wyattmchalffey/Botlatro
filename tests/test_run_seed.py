@@ -91,6 +91,38 @@ class StaleStateClient:
         )
 
 
+class EmptyLegalActionsClient:
+    def __init__(self) -> None:
+        self.no_op = Action(ActionType.NO_OP)
+        self.refreshed = False
+
+    def start_run(self, seed: int | None = None, stake: str | None = None) -> GameState:
+        return GameState(
+            phase=GamePhase.PLAYING_BLIND,
+            seed=seed,
+            ante=1,
+            legal_actions=(),
+        )
+
+    def get_state(self) -> GameState:
+        self.refreshed = True
+        return GameState(
+            phase=GamePhase.PLAYING_BLIND,
+            ante=1,
+            money=3,
+            legal_actions=(self.no_op,),
+        )
+
+    def send_action(self, action: Action) -> GameState:
+        return GameState(
+            phase=GamePhase.RUN_OVER,
+            ante=1,
+            current_score=120,
+            money=3,
+            run_over=True,
+        )
+
+
 class AnteNineClient:
     def __init__(self) -> None:
         self.action = Action(ActionType.NO_OP)
@@ -119,6 +151,35 @@ class AnteNineClient:
         )
 
 
+class AnteNineWonButNotRunOverClient:
+    def __init__(self) -> None:
+        self.action = Action(ActionType.NO_OP)
+
+    def start_run(self, seed: int | None = None, stake: str | None = None) -> GameState:
+        return GameState(
+            phase=GamePhase.PLAYING_BLIND,
+            seed=seed,
+            ante=8,
+            current_score=100000,
+            money=19,
+            legal_actions=(self.action,),
+        )
+
+    def get_state(self) -> GameState:
+        return GameState(phase=GamePhase.PLAYING_BLIND, legal_actions=(self.action,))
+
+    def send_action(self, action: Action) -> GameState:
+        return GameState(
+            phase=GamePhase.SHOP,
+            ante=9,
+            current_score=0,
+            money=105,
+            run_over=False,
+            won=True,
+            legal_actions=(self.action,),
+        )
+
+
 class RunSeedTests(unittest.TestCase):
     def test_run_single_seed_returns_result(self) -> None:
         result = run_single_seed(
@@ -143,6 +204,19 @@ class RunSeedTests(unittest.TestCase):
         self.assertEqual(result.seed, 123)
         self.assertEqual(result.ante_reached, 1)
 
+    def test_run_single_seed_refetches_empty_nonterminal_legal_actions(self) -> None:
+        client = EmptyLegalActionsClient()
+
+        result = run_single_seed(
+            bot=RandomBot(seed=123),
+            client=client,
+            options=RunSeedOptions(seed=123, max_steps=10),
+        )
+
+        self.assertTrue(client.refreshed)
+        self.assertFalse(result.won)
+        self.assertEqual(result.ante_reached, 1)
+
     def test_run_single_seed_treats_ante_nine_as_standard_win_boundary(self) -> None:
         result = run_single_seed(
             bot=RandomBot(seed=123),
@@ -152,6 +226,18 @@ class RunSeedTests(unittest.TestCase):
 
         self.assertTrue(result.won)
         self.assertEqual(result.ante_reached, 8)
+        self.assertIsNone(result.death_reason)
+
+    def test_run_single_seed_stops_when_ante_nine_is_won_but_not_run_over(self) -> None:
+        result = run_single_seed(
+            bot=RandomBot(seed=123),
+            client=AnteNineWonButNotRunOverClient(),
+            options=RunSeedOptions(seed=123, max_steps=10),
+        )
+
+        self.assertTrue(result.won)
+        self.assertEqual(result.ante_reached, 8)
+        self.assertEqual(result.final_money, 105)
         self.assertIsNone(result.death_reason)
 
     def test_replay_mode_off_does_not_write_replay_file(self) -> None:

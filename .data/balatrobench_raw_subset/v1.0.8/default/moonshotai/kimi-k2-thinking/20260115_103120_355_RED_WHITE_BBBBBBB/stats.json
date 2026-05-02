@@ -1,0 +1,26 @@
+{
+  "run_won": false,
+  "run_completed": true,
+  "final_ante": 3,
+  "final_round": 7,
+  "providers": {
+    "BaseTen": 8,
+    "Google": 58
+  },
+  "calls_total": 66,
+  "calls_success": 65,
+  "calls_error": 1,
+  "calls_failed": 0,
+  "tokens_in_total": 970495,
+  "tokens_out_total": 152418,
+  "tokens_in_avg": 14704.469696969696,
+  "tokens_out_avg": 2309.3636363636365,
+  "tokens_in_std": 653.9062087462007,
+  "tokens_out_std": 1752.5215647646207,
+  "time_total_ms": 965344,
+  "time_avg_ms": 14626.424242424242,
+  "time_std_ms": 12232.064512911084,
+  "cost_total": 0.963342,
+  "cost_avg": 0.01459609090909091,
+  "cost_std": 0.004478491645210894
+}

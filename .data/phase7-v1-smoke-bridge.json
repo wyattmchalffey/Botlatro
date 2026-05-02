@@ -1,0 +1,8 @@
+{
+    "port":  12346,
+    "love":  "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.balatro-headless\\Balatro.exe",
+    "log_dir":  "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.logs\\phase7-v1-smoke-worker-12346-20260502-100409",
+    "pid":  81132,
+    "uvx":  "C:\\Users\\Wyatt\\AppData\\Roaming\\Python\\Python312\\Scripts\\uvx.exe",
+    "lovely":  "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.balatro-headless\\version.dll"
+}

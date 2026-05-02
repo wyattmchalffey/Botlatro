@@ -1,0 +1,107 @@
+{
+  "schema": "balatro-ai.score-edge.v1",
+  "cases": [
+    {
+      "name": "five_of_a_kind_duplicate_aces",
+      "kind": "score",
+      "source": "synthetic rare-hand oracle candidate",
+      "cards": "AS AH AC AD AS",
+      "expected": {
+        "hand_type": "Five of a Kind",
+        "chips": 175,
+        "mult": 12,
+        "score": 2100,
+        "scoring_indices": [0, 1, 2, 3, 4]
+      }
+    },
+    {
+      "name": "flush_house_same_suit_full_house",
+      "kind": "score",
+      "source": "synthetic rare-hand oracle candidate",
+      "cards": "KS KS KS QS QS",
+      "expected": {
+        "hand_type": "Flush House",
+        "chips": 190,
+        "mult": 14,
+        "score": 2660,
+        "scoring_indices": [0, 1, 2, 3, 4]
+      }
+    },
+    {
+      "name": "flush_five_same_suit_aces",
+      "kind": "score",
+      "source": "synthetic rare-hand oracle candidate",
+      "cards": "AS AS AS AS AS",
+      "expected": {
+        "hand_type": "Flush Five",
+        "chips": 215,
+        "mult": 16,
+        "score": 3440,
+        "scoring_indices": [0, 1, 2, 3, 4]
+      }
+    },
+    {
+      "name": "four_fingers_four_card_straight_flush",
+      "kind": "score",
+      "source": "synthetic",
+      "cards": "2S 3S 4S 5S 9D",
+      "jokers": ["Four Fingers"],
+      "expected": {
+        "hand_type": "Straight Flush",
+        "chips": 114,
+        "mult": 8,
+        "score": 912,
+        "scoring_indices": [0, 1, 2, 3]
+      }
+    },
+    {
+      "name": "shortcut_gap_straight",
+      "kind": "score",
+      "source": "synthetic",
+      "cards": "2S 4H 6D 8C 9S",
+      "jokers": ["Shortcut"],
+      "expected": {
+        "hand_type": "Straight",
+        "chips": 59,
+        "mult": 4,
+        "score": 236,
+        "scoring_indices": [0, 1, 2, 3, 4]
+      }
+    },
+    {
+      "name": "splash_pair_scores_all_kickers",
+      "kind": "score",
+      "source": "synthetic",
+      "cards": "AS AD 2C 3D 4H",
+      "jokers": ["Splash"],
+      "expected": {
+        "hand_type": "Pair",
+        "chips": 41,
+        "mult": 2,
+        "score": 82,
+        "scoring_indices": [0, 1, 2, 3, 4]
+      }
+    },
+    {
+      "name": "stone_card_scores_with_pair_without_changing_hand_type",
+      "kind": "score",
+      "source": "synthetic",
+      "cards": [
+        "AS",
+        "AD",
+        {
+          "rank": "A",
+          "suit": "H",
+          "enhancement": "STONE"
+        }
+      ],
+      "expected": {
+        "hand_type": "Pair",
+        "chips": 82,
+        "mult": 2,
+        "score": 164,
+        "scoring_indices": [0, 1, 2]
+      }
+    }
+  ]
+}

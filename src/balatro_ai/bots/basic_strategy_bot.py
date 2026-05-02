@@ -118,6 +118,7 @@ class _BuildProfile:
 class _ShopContext:
     rerolls_in_shop: int = 0
     packs_opened_in_shop: int = 0
+    filled_last_joker_slot: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,6 +217,7 @@ class BasicStrategyBot:
     _shop_key: tuple[int | None, int, str, int] | None = field(default=None, init=False, repr=False)
     _rerolls_in_shop: int = field(default=0, init=False, repr=False)
     _packs_opened_in_shop: int = field(default=0, init=False, repr=False)
+    _filled_last_joker_slot_in_shop: bool = field(default=False, init=False, repr=False)
     _blind_key: tuple[int | None, int, str, int] | None = field(default=None, init=False, repr=False)
     _played_hand_types_in_blind: tuple[HandType, ...] = field(default=(), init=False, repr=False)
     _discards_in_blind: int = field(default=0, init=False, repr=False)
@@ -244,8 +246,13 @@ class BasicStrategyBot:
         if end_shop is not None:
             return end_shop
 
-        pack_choice = _pack_choice_action(state)
+        stale_empty_pack = _stale_empty_pack_action(state)
+        if stale_empty_pack is not None:
+            return stale_empty_pack
+
+        pack_choice = _pack_choice_action(state, self._shop_context())
         if pack_choice is not None:
+            self._record_shop_action(state, pack_choice)
             return pack_choice
 
         blind_context = self._blind_context(state)
@@ -265,6 +272,7 @@ class BasicStrategyBot:
         return _ShopContext(
             rerolls_in_shop=self._rerolls_in_shop,
             packs_opened_in_shop=self._packs_opened_in_shop,
+            filled_last_joker_slot=self._filled_last_joker_slot_in_shop,
         )
 
     def _blind_context(self, state: GameState) -> _BlindContext:
@@ -284,12 +292,29 @@ class BasicStrategyBot:
             self._shop_key = key
             self._rerolls_in_shop = 0
             self._packs_opened_in_shop = 0
+            self._filled_last_joker_slot_in_shop = False
 
     def _record_shop_action(self, state: GameState, action: Action) -> None:
         if action.action_type == ActionType.REROLL:
             self._rerolls_in_shop += 1
         elif action.action_type == ActionType.OPEN_PACK:
             self._packs_opened_in_shop += 1
+        elif action.action_type == ActionType.SELL:
+            self._filled_last_joker_slot_in_shop = False
+        elif action.action_type == ActionType.BUY:
+            item = _shop_item_for_action(state, action)
+            if (
+                _normal_slot_joker_card(item)
+                and _normal_joker_open_slots(state) <= 1
+            ):
+                self._filled_last_joker_slot_in_shop = True
+        elif action.action_type == ActionType.CHOOSE_PACK_CARD:
+            item = _shop_item_for_action(state, action)
+            if (
+                _normal_slot_joker_card(item)
+                and _normal_joker_open_slots(state) <= 1
+            ):
+                self._filled_last_joker_slot_in_shop = True
 
     def _sync_blind_memory(self, state: GameState) -> None:
         if not (state.hand or state.current_score or state.hands_remaining):
@@ -364,8 +389,11 @@ def _blind_memory_key(state: GameState) -> tuple[int | None, int, str, int]:
     return (state.seed, state.ante, state.blind, state.required_score)
 
 
-def _pack_choice_action(state: GameState) -> Action | None:
+def _pack_choice_action(state: GameState, context: _ShopContext | None = None) -> Action | None:
+    context = context or _ShopContext()
     pack_cards = state.modifiers.get("pack_cards", ())
+    if not pack_cards:
+        return None
     best_action: Action | None = None
     best_value = 0.0
     skip_action = _pack_skip_action(state, has_pack_cards=bool(pack_cards))
@@ -378,6 +406,8 @@ def _pack_choice_action(state: GameState) -> Action | None:
         if index >= len(pack_cards):
             continue
         pack_card = pack_cards[index]
+        if context.filled_last_joker_slot and _normal_slot_joker_card(pack_card):
+            continue
         if not _pack_card_is_pickable(state, pack_card):
             continue
         target_indices = _pack_card_target_indices(state, pack_card)
@@ -406,6 +436,14 @@ def _pack_skip_action(state: GameState, *, has_pack_cards: bool) -> Action | Non
     if has_pack_cards:
         return Action(ActionType.CHOOSE_PACK_CARD, target_id="skip", metadata={"kind": "skip", "index": True})
     return None
+
+
+def _stale_empty_pack_action(state: GameState) -> Action | None:
+    if state.phase != GamePhase.BOOSTER_OPENED:
+        return None
+    if state.pack or state.modifiers.get("pack_cards"):
+        return None
+    return _first_action_of_type(state, ActionType.NO_OP) or Action(ActionType.NO_OP)
 
 
 def _pack_skip_value(state: GameState) -> float:
@@ -732,6 +770,8 @@ def _shop_action_value(
         if index >= len(shop_cards):
             return 0.0
         card = shop_cards[index]
+        if context.filled_last_joker_slot and _normal_slot_joker_card(card):
+            return 0.0
         if _buy_would_overfill_joker_slots(state, card):
             return 0.0
         value = _shop_card_value(state, card)
@@ -1362,6 +1402,7 @@ def _joker_card_value(state: GameState, card: object) -> float:
     value += max(0, 4 - state.ante) * _early_power_bonus(name)
     value += _joker_heuristic_value(state, joker)
     value += _joker_role_bonus(state, joker)
+    value -= _unsupported_two_pair_joker_penalty(state, name)
     value -= _unsupported_rare_joker_extra_penalty(state, name)
     value += _edition_bonus(joker.edition)
 
@@ -1379,6 +1420,7 @@ def _candidate_joker_value_for_replacement(state: GameState, joker: Joker) -> fl
     value = sample_gain * 0.08
     value += _joker_heuristic_value(state, joker)
     value += _joker_role_bonus(state, joker)
+    value -= _unsupported_two_pair_joker_penalty(state, joker.name)
     value -= _unsupported_rare_joker_extra_penalty(state, joker.name)
     value += _edition_bonus(joker.edition)
     if any(existing.name == joker.name for existing in state.jokers):
@@ -1396,6 +1438,8 @@ def _owned_joker_value(state: GameState, joker: Joker, *, remove_index: int) -> 
     value += (joker.sell_value or 0) * 1.5
     if joker.name in LOW_PRIORITY_JOKERS:
         value -= 20
+    if joker.name in TWO_PAIR_SUPPORT_JOKERS and not _has_dedicated_two_pair_plan(state):
+        value -= 45
     return value
 
 
@@ -1468,6 +1512,10 @@ def _buy_would_overfill_joker_slots(state: GameState, card: object) -> bool:
 
 def _joker_would_overfill_slots(state: GameState, joker: Joker) -> bool:
     return _uses_normal_joker_slot(joker) and _normal_joker_open_slots(state) <= 0
+
+
+def _normal_slot_joker_card(card: object) -> bool:
+    return _is_joker_card(card) and _uses_normal_joker_slot(_joker_from_shop_card(card))
 
 
 def _joker_with_current_xmult(joker: Joker, xmult: float) -> Joker:
@@ -1579,6 +1627,7 @@ def _sample_build_score(state: GameState, jokers: tuple[Joker, ...]) -> float:
                 held_cards=sample.held_cards,
                 deck_size=max(30, scoring_state.deck_size),
                 money=scoring_state.money,
+                played_hand_counts=_played_hand_counts(scoring_state),
             ).score
         )
         weighted_total += score * sample.weight
@@ -1705,6 +1754,8 @@ def _joker_heuristic_value(state: GameState, joker: Joker) -> float:
     value += JOKER_BASE_VALUES.get(name, 0)
     value += JOKER_SCALING_VALUES.get(name, 0) * (1 + max(0, 4 - state.ante) * 0.15)
     value += JOKER_ECONOMY_VALUES.get(name, 0)
+    if name == "Hallucination":
+        value += _hallucination_utility_bonus(state)
     value += _build_synergy_value(state, name)
     value -= _build_conflict_penalty(state, name)
     value -= _rare_hand_inconsistency_penalty_for_joker(state, name)
@@ -1714,6 +1765,23 @@ def _joker_heuristic_value(state: GameState, joker: Joker) -> float:
     if name in LOW_PRIORITY_JOKERS and len(state.jokers) >= 2:
         value -= 16
     return value
+
+
+def _hallucination_utility_bonus(state: GameState) -> float:
+    if not _has_consumable_room(state):
+        return -24.0
+    if not _has_real_scoring_joker(state):
+        return 0.0
+    bonus = 18.0
+    if state.ante <= 3:
+        bonus += 26.0
+    affordable_packs = sum(
+        1
+        for pack in state.modifiers.get("booster_packs", ())
+        if _card_cost(pack) <= max(0, state.money)
+    )
+    bonus += min(18.0, affordable_packs * 9.0)
+    return bonus
 
 
 def _joker_stencil_would_fill_slots(state: GameState, joker: Joker) -> bool:
@@ -2190,6 +2258,14 @@ def _unsupported_rare_joker_extra_penalty(state: GameState, joker_name: str) -> 
     if need <= 0:
         return 0.0
     return min(32.0, 14.0 + need * 4.0)
+
+
+def _unsupported_two_pair_joker_penalty(state: GameState, joker_name: str) -> float:
+    if joker_name not in TWO_PAIR_SUPPORT_JOKERS:
+        return 0.0
+    if _has_dedicated_two_pair_plan(state):
+        return 0.0
+    return 54.0 if state.ante <= 3 else 72.0
 
 
 def _rare_hand_plan(state: GameState) -> HandType | None:
@@ -3080,6 +3156,7 @@ def _evaluate_play_action(
         deck_size=state.deck_size,
         money=state.money,
         played_hand_types_this_round=context.played_hand_types,
+        played_hand_counts=_played_hand_counts(state),
     )
 
 
@@ -3124,6 +3201,23 @@ def _played_hand_types_this_round(state: GameState) -> tuple[HandType, ...]:
         played.extend((order, hand_type) for _ in range(played_count))
 
     return tuple(hand_type for _, hand_type in sorted(played, key=lambda item: item[0]))
+
+
+def _played_hand_counts(state: GameState) -> dict[str, int]:
+    hands = state.modifiers.get("hands", state.modifiers.get("hand_stats", {}))
+    if not isinstance(hands, dict):
+        return {}
+
+    counts: dict[str, int] = {}
+    for name, value in hands.items():
+        if isinstance(value, dict):
+            counts[str(name)] = _hand_play_count(value)
+        else:
+            try:
+                counts[str(name)] = int(value)
+            except (TypeError, ValueError):
+                counts[str(name)] = 0
+    return counts
 
 
 def _cycle_value_for_play(
@@ -3761,6 +3855,7 @@ def _best_score_from_cards(
         deck_size=state.deck_size,
         money=state.money,
         played_hand_types_this_round=context.played_hand_types,
+        played_hand_counts=_played_hand_counts(state),
     )
     return _boss_adjusted_score(state, evaluation.hand_type, evaluation.score, context)
 
@@ -4760,6 +4855,7 @@ JOKER_ECONOMY_VALUES = {
     "Gift Card": 18,
     "Trading Card": 20,
     "Satellite": 16,
+    "Hallucination": 24,
 }
 
 
@@ -4868,7 +4964,6 @@ LOW_PRIORITY_JOKERS = {
     "Superposition",
     "To Do List",
     "Matador",
-    "Hallucination",
 }
 
 

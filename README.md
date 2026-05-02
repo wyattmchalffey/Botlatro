@@ -129,6 +129,18 @@ $env:PYTHONPATH = "src"
 python -m balatro_ai.eval.explain_score_misses --replay-dir .data\replays --worst 20
 ```
 
+Validate the deterministic score-edge fixtures and recomputed replay oracle rows
+together with:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m balatro_ai.eval.score_dataset --fixtures tests\fixtures\score_edges --replay-dir .data\replays
+```
+
+Collect opt-in human gameplay logs with the repo-local Steamodded mod in
+`mods\botlatro_user_logger`; see `docs\USER_GAMEPLAY_LOGGER.md` for install and
+import instructions.
+
 Score a small deterministic evaluator scenario with:
 
 ```powershell

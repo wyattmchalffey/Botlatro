@@ -1,0 +1,26 @@
+{
+  "run_won": false,
+  "run_completed": false,
+  "final_ante": 3,
+  "final_round": 6,
+  "providers": {
+    "Cerebras": 53,
+    "Clarifai": 1
+  },
+  "calls_total": 54,
+  "calls_success": 47,
+  "calls_error": 3,
+  "calls_failed": 4,
+  "tokens_in_total": 738900,
+  "tokens_out_total": 84632,
+  "tokens_in_avg": 13683.333333333334,
+  "tokens_out_avg": 1567.2592592592594,
+  "tokens_in_std": 331.06648708065353,
+  "tokens_out_std": 710.5201704726599,
+  "time_total_ms": 109127,
+  "time_avg_ms": 2020.8703703703704,
+  "time_std_ms": 989.9897092336564,
+  "cost_total": 0.3183827,
+  "cost_avg": 0.0058959759259259266,
+  "cost_std": 0.0008237778386936075
+}

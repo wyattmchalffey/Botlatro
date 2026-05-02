@@ -1,0 +1,10 @@
+{
+  "model": {
+    "vendor": "minimax",
+    "name": "minimax-m2.1"
+  },
+  "seed": "CCCCCCC",
+  "deck": "RED",
+  "stake": "WHITE",
+  "strategy": "default"
+}

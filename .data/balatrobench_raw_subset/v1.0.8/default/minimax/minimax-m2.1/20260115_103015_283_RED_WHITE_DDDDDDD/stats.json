@@ -1,0 +1,25 @@
+{
+  "run_won": false,
+  "run_completed": true,
+  "final_ante": 2,
+  "final_round": 4,
+  "providers": {
+    "Fireworks": 25
+  },
+  "calls_total": 25,
+  "calls_success": 25,
+  "calls_error": 0,
+  "calls_failed": 0,
+  "tokens_in_total": 345166,
+  "tokens_out_total": 40858,
+  "tokens_in_avg": 13806.64,
+  "tokens_out_avg": 1634.32,
+  "tokens_in_std": 546.1660217674964,
+  "tokens_out_std": 654.9448271928458,
+  "time_total_ms": 338374,
+  "time_avg_ms": 13534.96,
+  "time_std_ms": 5790.029925656689,
+  "cost_total": 0.1525794,
+  "cost_avg": 0.006103176,
+  "cost_std": 0.0008762565160385399
+}

@@ -1,0 +1,25 @@
+{
+  "run_won": false,
+  "run_completed": true,
+  "final_ante": 2,
+  "final_round": 6,
+  "providers": {
+    "Cerebras": 56
+  },
+  "calls_total": 56,
+  "calls_success": 55,
+  "calls_error": 0,
+  "calls_failed": 1,
+  "tokens_in_total": 762505,
+  "tokens_out_total": 95095,
+  "tokens_in_avg": 13616.160714285714,
+  "tokens_out_avg": 1698.125,
+  "tokens_in_std": 319.609464917632,
+  "tokens_out_std": 965.2659560499847,
+  "time_total_ms": 115648,
+  "time_avg_ms": 2065.1428571428573,
+  "time_std_ms": 1072.4702569060141,
+  "cost_total": 0.338198,
+  "cost_avg": 0.00603925,
+  "cost_std": 0.0007569654404864922
+}

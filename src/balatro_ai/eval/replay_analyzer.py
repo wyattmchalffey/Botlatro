@@ -143,6 +143,10 @@ class ReplayAnalysis:
         return Counter(run.outcome for run in self.runs if run.outcome)
 
     @property
+    def postmortem_pattern_counts(self) -> Counter[str]:
+        return Counter(_postmortem_pattern_key(run) for run in self.runs if not run.observed_win)
+
+    @property
     def average_hands_per_blind(self) -> float:
         return mean(self.hands_per_blind) if self.hands_per_blind else 0.0
 
@@ -162,7 +166,7 @@ class ReplayAnalysis:
     def deep_losses(self) -> tuple[RunReplaySummary, ...]:
         return tuple(run for run in self.runs if not run.observed_win and 6 <= run.max_ante < 8)
 
-    def to_text(self) -> str:
+    def to_text(self, *, include_postmortem_summary: bool = False) -> str:
         lines = [
             "Replay analysis",
             f"Files scanned: {self.files_scanned}",
@@ -228,6 +232,12 @@ class ReplayAnalysis:
                     f"Cause labels: {_format_counter(_most_common_counter(self.postmortem_label_counts, 14))}",
                 )
             )
+        if include_postmortem_summary and self.postmortem_pattern_counts:
+            lines.extend(("", "Postmortem summary:"))
+            total_losses = sum(self.postmortem_pattern_counts.values())
+            for pattern, count in self.postmortem_pattern_counts.most_common(10):
+                share = count / total_losses if total_losses else 0.0
+                lines.append(f"- {pattern}: {count}/{total_losses} ({share:.1%})")
 
         if self.early_failures:
             early_jokers = Counter(joker for run in self.early_failures for joker in run.final_jokers)
@@ -339,6 +349,7 @@ class ReplayAnalysis:
                 "missing_role_counts": _counter_to_json_dict(self.missing_role_counts),
             },
             "postmortem_labels": _counter_to_json_dict(self.postmortem_label_counts),
+            "postmortem_patterns": _counter_to_json_dict(self.postmortem_pattern_counts),
             "early_failures": {
                 "count": len(self.early_failures),
                 "sample": [_run_json_summary(run) for run in sorted(self.early_failures, key=lambda item: (item.max_ante, item.seed))[:5]],
@@ -565,6 +576,11 @@ def _analyze_file(path: Path) -> tuple[RunReplaySummary | None, int]:
     if row_count == 0:
         return None, malformed_rows
 
+    final_jokers = tuple(last_state.get("jokers", ()))
+    if not observed_win and not final_missing_roles:
+        final_missing_roles = _missing_roles_from_jokers(final_jokers)
+        missing_role_counts.update(final_missing_roles)
+
     postmortem_labels = _postmortem_labels(
         observed_win=observed_win,
         max_ante=max_ante,
@@ -572,7 +588,7 @@ def _analyze_file(path: Path) -> tuple[RunReplaySummary | None, int]:
         final_score=_int_value(last_state.get("score")),
         final_required_score=_int_value(last_state.get("required")),
         final_money=_int_value(last_state.get("money")),
-        final_jokers=tuple(last_state.get("jokers", ())),
+        final_jokers=final_jokers,
         final_missing_roles=final_missing_roles,
         played_hand_types=played_hand_types,
         final_blind_played_hand_types=final_blind_played_hand_types,
@@ -600,7 +616,7 @@ def _analyze_file(path: Path) -> tuple[RunReplaySummary | None, int]:
             final_required_score=_int_value(last_state.get("required")),
             final_money=_int_value(last_state.get("money")),
             final_hands=_int_value(last_state.get("hands")),
-            final_jokers=tuple(last_state.get("jokers", ())),
+            final_jokers=final_jokers,
             shop_action_count=shop_action_count,
             shop_audit_count=shop_audit_count,
             shop_skip_count=shop_skip_count,
@@ -760,6 +776,53 @@ def _postmortem_labels(
     if final_blind in {"The Eye", "The Mouth"} and final_blind_zero_score_hands > 0:
         labels.append("boss_restriction_zero_score")
     return tuple(labels)
+
+
+def _postmortem_pattern_key(run: RunReplaySummary) -> str:
+    return " | ".join(
+        (
+            f"ante={run.max_ante}",
+            f"blind={_blind_type(run.final_blind)}",
+            f"missing={_primary_missing_role(run.final_missing_roles)}",
+            f"money={_money_bucket(run.final_money)}",
+        )
+    )
+
+
+def _blind_type(blind_name: str) -> str:
+    if blind_name in BOSS_BLINDS:
+        return f"boss:{blind_name}"
+    normalized = blind_name.lower()
+    if "small" in normalized:
+        return "small"
+    if "big" in normalized:
+        return "big"
+    return blind_name or "unknown"
+
+
+def _primary_missing_role(missing_roles: tuple[str, ...]) -> str:
+    missing = set(missing_roles)
+    for role in ("xmult", "scaling", "mult", "chips", "economy"):
+        if role in missing:
+            return role
+    return "none"
+
+
+def _missing_roles_from_jokers(joker_names: tuple[str, ...]) -> tuple[str, ...]:
+    roles = _joker_role_set(joker_names)
+    return tuple(role for role in ("xmult", "scaling", "mult", "chips") if role not in roles)
+
+
+def _money_bucket(money: int) -> str:
+    if money < 10:
+        return "0-9"
+    if money < 25:
+        return "10-24"
+    if money < 50:
+        return "25-49"
+    if money < 75:
+        return "50-74"
+    return "75+"
 
 
 def _joker_role_set(joker_names: tuple[str, ...]) -> set[str]:
@@ -967,6 +1030,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("paths", nargs="*", type=Path, help="Replay JSONL file(s) or directories.")
     parser.add_argument("--replay-dir", type=Path, help="Replay directory to scan recursively.")
     parser.add_argument("--json", action="store_true", help="Emit a machine-readable JSON summary.")
+    parser.add_argument(
+        "--postmortem-summary",
+        action="store_true",
+        help="Include top loss bins by ante, blind type, missing role, and money bucket.",
+    )
     return parser
 
 
@@ -981,7 +1049,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         print(json.dumps(analysis.to_json_dict(), indent=2, sort_keys=True))
     else:
-        print(analysis.to_text())
+        print(analysis.to_text(include_postmortem_summary=args.postmortem_summary))
     return 0
 
 

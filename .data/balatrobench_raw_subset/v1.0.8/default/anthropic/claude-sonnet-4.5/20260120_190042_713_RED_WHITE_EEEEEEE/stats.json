@@ -1,0 +1,25 @@
+{
+  "run_won": false,
+  "run_completed": true,
+  "final_ante": 6,
+  "final_round": 18,
+  "providers": {
+    "Amazon Bedrock": 115
+  },
+  "calls_total": 115,
+  "calls_success": 114,
+  "calls_error": 0,
+  "calls_failed": 1,
+  "tokens_in_total": 1946316,
+  "tokens_out_total": 418698,
+  "tokens_in_avg": 16924.486956521738,
+  "tokens_out_avg": 3640.8521739130433,
+  "tokens_in_std": 608.1026051063646,
+  "tokens_out_std": 1793.5387457040686,
+  "time_total_ms": 6599441,
+  "time_avg_ms": 57386.443478260866,
+  "time_std_ms": 28195.52229014179,
+  "cost_total": 12.119418,
+  "cost_avg": 0.10538624347826087,
+  "cost_std": 0.027813852648153236
+}

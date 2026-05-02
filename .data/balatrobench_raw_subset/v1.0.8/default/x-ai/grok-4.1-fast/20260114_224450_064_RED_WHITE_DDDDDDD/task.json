@@ -1,0 +1,10 @@
+{
+  "model": {
+    "vendor": "x-ai",
+    "name": "grok-4.1-fast"
+  },
+  "seed": "DDDDDDD",
+  "deck": "RED",
+  "stake": "WHITE",
+  "strategy": "default"
+}

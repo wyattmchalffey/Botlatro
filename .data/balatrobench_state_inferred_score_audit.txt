@@ -1,0 +1,90 @@
+BalatroBench state-inferred score audit
+runs: 241
+records: 2148
+exact: 1992
+supported: 2037
+supported_exact: 1909
+supported_misses: 128
+uncertain: 111
+errors_count: 0
+skips: {"non_score_transition": 2148, "post_hand_empty": 1228, "pre_phase_blind_select": 1929, "pre_phase_booster_opened": 2159, "pre_phase_round_eval": 1942, "pre_phase_shop": 5776, "round_or_ante_changed": 495, "selected_count_6": 2, "selected_count_7": 55}
+
+Worst supported misses:
+- err=-21330 pred=61857 actual=40527 ante=8 blind=Crimson Heart hand=Straight cards=AD KH QS JH TH jokers=['Banner', 'Raised Fist', 'Smiley Face', 'Hologram', 'Certificate'] run=v1.0.8\default\google\gemini-3-pro-preview\20260120_151357_917_RED_WHITE_BBBBBBB transition=202
+- err=-9720 pred=37989 actual=28269 ante=7 blind=Big Blind hand=Flush cards=QC TC 7S 6S 6C jokers=['Smeared Joker', 'Jolly Joker', 'Supernova', 'Fortune Teller', 'Hanging Chad'] run=v1.0.8\default\anthropic\claude-opus-4.5\20260121_151347_349_RED_WHITE_EEEEEEE transition=146
+- err=-9720 pred=46332 actual=36612 ante=8 blind=Big Blind hand=Flush cards=TC 8C 5C 4C 2S jokers=['Smeared Joker', 'Supernova', 'Fortune Teller', 'Hanging Chad', 'Blueprint'] run=v1.0.8\default\anthropic\claude-opus-4.5\20260121_151347_349_RED_WHITE_EEEEEEE transition=184
+- err=9600 pred=38400 actual=48000 ante=8 blind=Big Blind hand=Flush cards=QH TH 9H 8H 3H jokers=['Blue Joker', 'Abstract Joker', 'Supernova', 'Swashbuckler', 'Certificate'] run=v1.0.8\default\google\gemini-3-flash-preview\20260115_163805_723_RED_WHITE_DDDDDDD transition=237
+- err=6940 pred=38170 actual=45110 ante=7 blind=Big Blind hand=Flush cards=QS 9S 8S 4S 2S jokers=['Blue Joker', 'Wrathful Joker', 'Bootstraps', 'Fortune Teller', 'Popcorn', 'Acrobat'] run=v1.0.8\default\google\gemini-3-pro-preview\20260120_204554_026_RED_WHITE_CCCCCCC transition=229
+- err=-6510 pred=21917 actual=15407 ante=7 blind=Big Blind hand=Pair cards=9H 8S 8C 7C 6C jokers=['Burglar', 'Spare Trousers', 'Green Joker', 'Acrobat', 'The Duo'] run=v1.0.8\default\google\gemini-3-flash-preview\20260115_122446_742_RED_WHITE_AAAAAAA transition=198
+- err=5915 pred=7774 actual=13689 ante=6 blind=Small Blind hand=Flush cards=AC TS 7C 5C 4S jokers=['Smeared Joker', 'Supernova', 'Card Sharp', 'Wrathful Joker', 'Hanging Chad'] run=v1.0.8\default\anthropic\claude-sonnet-4.5\20260120_185404_027_RED_WHITE_EEEEEEE transition=99
+- err=-5265 pred=14566 actual=9301 ante=5 blind=Big Blind hand=Pair cards=AS AH 3S jokers=['Green Joker', 'Half Joker', 'Hanging Chad', 'Ancient Joker', 'Burglar'] run=v1.0.8\default\openai\gpt-5.2\20260118_201450_738_RED_WHITE_AAAAAAA transition=110
+- err=-5164 pred=34597 actual=29433 ante=7 blind=Big Blind hand=High Card cards=6S 5S 4C 3D 2C jokers=['Smiley Face', 'Photograph', 'Burnt Joker', 'Hologram', 'Card Sharp'] run=v1.0.8\default\google\gemini-3-flash-preview\20260115_180945_351_RED_WHITE_EEEEEEE transition=179
+- err=-4800 pred=40560 actual=35760 ante=6 blind=The Manacle hand=Four of a Kind cards=JH 8S 8D 8D 8D jokers=['Trading Card', 'Even Steven', 'Hiker', 'Bootstraps', 'Fortune Teller'] run=v1.0.8\default\google\gemini-3-flash-preview\20260115_150714_883_RED_WHITE_CCCCCCC transition=199
+- err=-4560 pred=34960 actual=30400 ante=7 blind=Big Blind hand=Pair cards=JS JC 8H 3S jokers=['Banner', 'Raised Fist', 'Smiley Face', 'Hologram', 'Certificate'] run=v1.0.8\default\google\gemini-3-pro-preview\20260120_151357_917_RED_WHITE_BBBBBBB transition=158
+- err=-4305 pred=22960 actual=18655 ante=8 blind=Crimson Heart hand=Two Pair cards=JC JD TS TS 6H jokers=['Banner', 'Raised Fist', 'Smiley Face', 'Hologram', 'Certificate'] run=v1.0.8\default\google\gemini-3-pro-preview\20260120_151357_917_RED_WHITE_BBBBBBB transition=210
+- err=-4260 pred=7455 actual=3195 ante=6 blind=Small Blind hand=Pair cards=QH QD TC 9H 2D jokers=['Burglar', 'Spare Trousers', 'Green Joker', 'Acrobat', 'Midas Mask'] run=v1.0.8\default\google\gemini-3-flash-preview\20260115_122446_742_RED_WHITE_AAAAAAA transition=147
+- err=-4052 pred=37420 actual=33368 ante=7 blind=The Window hand=Flush cards=AS QS JS 9S 7S jokers=['Splash', 'Wrathful Joker', 'Abstract Joker', 'Ancient Joker', 'Chaos the Clown'] run=v1.0.8\default\openai\gpt-5.2\20260119_130546_850_RED_WHITE_DDDDDDD transition=147
+- err=-4042 pred=30453 actual=26411 ante=6 blind=The Head hand=Two Pair cards=JD TC TD 8S 8C jokers=['Splash', 'Even Steven', 'Jolly Joker', 'Supernova', 'Hologram'] run=v1.0.8\default\x-ai\grok-4.1-fast\20260114_233442_087_RED_WHITE_EEEEEEE transition=113
+- err=3825 pred=31790 actual=35615 ante=8 blind=Small Blind hand=Three of a Kind cards=AS AS JC JD AD jokers=['Chaos the Clown', 'Splash', 'Wrathful Joker', 'Abstract Joker', 'Joker', 'Ancient Joker'] run=v1.0.8\default\openai\gpt-5.2\20260119_130546_850_RED_WHITE_DDDDDDD transition=165
+- err=-3240 pred=41364 actual=38124 ante=7 blind=Big Blind hand=Flush cards=KC QC JC 9C 3C jokers=['Blue Joker', 'Abstract Joker', 'Supernova', 'Swashbuckler', 'Certificate'] run=v1.0.8\default\google\gemini-3-flash-preview\20260115_163805_723_RED_WHITE_DDDDDDD transition=196
+- err=-3240 pred=9450 actual=6210 ante=5 blind=Big Blind hand=Three of a Kind cards=QH QH QS 3S 4D jokers=['Mad Joker', 'Spare Trousers', 'Seltzer', 'Hanging Chad', 'Burglar'] run=v1.0.8\default\x-ai\grok-4\20260115_205927_105_RED_WHITE_AAAAAAA transition=105
+- err=3152 pred=9653 actual=12805 ante=6 blind=Big Blind hand=Two Pair cards=5S 4S 4C 2H 2D jokers=['Splash', 'Wrathful Joker', 'Raised Fist', 'Supernova', 'Popcorn'] run=v1.0.8\default\openai\gpt-5.2\20260119_094955_548_RED_WHITE_CCCCCCC transition=136
+- err=-2640 pred=15356 actual=12716 ante=5 blind=Big Blind hand=Full House cards=AS AH KS KH KC jokers=['Scary Face', 'Mad Joker', 'Spare Trousers', 'Even Steven', 'Hanging Chad'] run=v1.0.8\default\deepseek\deepseek-v3.2\20260115_101726_032_RED_WHITE_AAAAAAA transition=97
+- err=2610 pred=45240 actual=47850 ante=8 blind=Big Blind hand=Two Pair cards=AH AC QC 3C 3D jokers=['Supernova', 'Fortune Teller', 'Cavendish', 'Hiker', 'Splash', 'Hanging Chad'] run=v1.0.8\default\anthropic\claude-sonnet-4.5\20260120_141920_307_RED_WHITE_CCCCCCC transition=164
+- err=2540 pred=4191 actual=6731 ante=4 blind=Big Blind hand=Flush cards=KH TH 7D 3H 2H jokers=['Smeared Joker', 'Jolly Joker', 'Supernova', 'Fortune Teller', 'Crazy Joker'] run=v1.0.8\default\anthropic\claude-opus-4.5\20260121_151347_349_RED_WHITE_EEEEEEE transition=65
+- err=2408 pred=16424 actual=18832 ante=8 blind=Big Blind hand=Three of a Kind cards=JC 9S 9D 9S 5H jokers=['Chaos the Clown', 'Splash', 'Wrathful Joker', 'Abstract Joker', 'Joker', 'Ancient Joker'] run=v1.0.8\default\openai\gpt-5.2\20260119_130546_850_RED_WHITE_DDDDDDD transition=178
+- err=-2088 pred=32076 actual=29988 ante=8 blind=Crimson Heart hand=Two Pair cards=TS TD 8S 8H 2S jokers=['Splash', 'Raised Fist', 'Wrathful Joker', 'Supernova', 'Cavendish'] run=v1.0.8\default\anthropic\claude-opus-4.5\20260121_103208_736_RED_WHITE_CCCCCCC transition=147
+- err=2030 pred=1319 actual=3349 ante=6 blind=Small Blind hand=High Card cards=8H 6H jokers=['Smeared Joker', 'Burnt Joker', 'Hanging Chad', 'Even Steven', 'Hologram', 'Gift Card'] run=v1.0.8\default\google\gemini-3-pro-preview\20260121_012228_632_RED_WHITE_EEEEEEE transition=125
+- err=2000 pred=7800 actual=9800 ante=6 blind=Big Blind hand=Two Pair cards=KH KC JS JH 3C jokers=['Smeared Joker', 'Smiley Face', 'Onyx Agate', 'Sock and Buskin', 'Wrathful Joker'] run=v1.0.8\default\openai\gpt-5.2\20260118_212243_263_RED_WHITE_BBBBBBB transition=201
+- err=1920 pred=8480 actual=10400 ante=6 blind=The Head hand=Flush cards=QC 7C 6S 5S 2S jokers=['Smeared Joker', 'Supernova', 'Card Sharp', 'Wrathful Joker', 'Hanging Chad'] run=v1.0.8\default\anthropic\claude-sonnet-4.5\20260120_185404_027_RED_WHITE_EEEEEEE transition=111
+- err=-1680 pred=4088 actual=2408 ante=5 blind=Big Blind hand=High Card cards=8S 4H 2S jokers=['Burglar', 'Scary Face', 'Spare Trousers', 'Green Joker', 'Acrobat'] run=v1.0.8\default\google\gemini-3-flash-preview\20260115_122446_742_RED_WHITE_AAAAAAA transition=123
+- err=-1680 pred=5740 actual=4060 ante=5 blind=Small Blind hand=High Card cards=KD 9D 7C 4H jokers=['Spare Trousers', 'Scary Face', 'Odd Todd', 'Photograph', 'Seltzer'] run=v1.0.8\default\google\gemini-3-flash-preview\20260115_131042_362_RED_WHITE_AAAAAAA transition=92
+- err=-1680 pred=4256 actual=2576 ante=4 blind=Small Blind hand=High Card cards=AC TC 7D 4S 2C jokers=['Shoot the Moon', 'Mad Joker', 'Spare Trousers', 'Burglar'] run=v1.0.8\default\x-ai\grok-4\20260115_205927_105_RED_WHITE_AAAAAAA transition=70
+
+Misses by joker among supported:
+- Smeared Joker: 40
+- Splash: 39
+- Supernova: 37
+- Even Steven: 22
+- Greedy Joker: 17
+- Jolly Joker: 17
+- Burglar: 16
+- Hanging Chad: 16
+- Wrathful Joker: 15
+- Crafty Joker: 13
+- Ancient Joker: 13
+- Hologram: 13
+- Abstract Joker: 12
+- Scary Face: 11
+- Acrobat: 11
+- Smiley Face: 11
+- Hiker: 10
+- Fortune Teller: 10
+- Mad Joker: 10
+- Spare Trousers: 9
+- Green Joker: 9
+- Swashbuckler: 8
+- Ice Cream: 8
+- Droll Joker: 7
+- Card Sharp: 7
+- Blue Joker: 7
+- Certificate: 7
+- Raised Fist: 6
+- Burnt Joker: 6
+- Half Joker: 6
+
+Misses by blind among supported:
+- Big Blind: 43
+- The Flint: 29
+- Small Blind: 24
+- The Head: 10
+- Crimson Heart: 6
+- The Wheel: 5
+- The Manacle: 3
+- The Window: 2
+- The Water: 1
+- The Pillar: 1
+- The Goad: 1
+- The House: 1
+- The Needle: 1
+- The Arm: 1

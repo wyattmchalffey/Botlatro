@@ -1,0 +1,10 @@
+{
+  "model": {
+    "vendor": "google",
+    "name": "gemini-3-flash-preview"
+  },
+  "seed": "CCCCCCC",
+  "deck": "RED",
+  "stake": "WHITE",
+  "strategy": "default"
+}

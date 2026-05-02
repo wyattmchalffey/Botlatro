@@ -1,0 +1,202 @@
+{
+  "schema": "balatro-ai.score-edge.v1",
+  "cases": [
+    {
+      "name": "ice_cream_uses_visible_metadata_chips",
+      "kind": "score",
+      "source": "synthetic visible-counter oracle candidate",
+      "cards": "AS",
+      "jokers": [
+        {
+          "name": "Ice Cream",
+          "metadata": {
+            "ability": {
+              "extra": {
+                "chips": 85
+              }
+            }
+          }
+        }
+      ],
+      "expected": {
+        "hand_type": "High Card",
+        "chips": 101,
+        "score": 101
+      }
+    },
+    {
+      "name": "popcorn_uses_visible_metadata_mult",
+      "kind": "score",
+      "source": "synthetic visible-counter oracle candidate",
+      "cards": "AS",
+      "jokers": [
+        {
+          "name": "Popcorn",
+          "metadata": {
+            "config": {
+              "extra": {
+                "mult": 12
+              }
+            }
+          }
+        }
+      ],
+      "expected": {
+        "hand_type": "High Card",
+        "mult": 13,
+        "score": 208
+      }
+    },
+    {
+      "name": "green_joker_uses_visible_current_mult_text",
+      "kind": "score",
+      "source": "synthetic visible-counter oracle candidate",
+      "cards": "AS",
+      "jokers": [
+        {
+          "name": "Green Joker",
+          "metadata": {
+            "value": {
+              "effect": "+1 Mult per hand played -1 Mult per discard (Currently +3 Mult)"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "hand_type": "High Card",
+        "mult": 5,
+        "score": 80
+      }
+    },
+    {
+      "name": "drivers_license_active_from_visible_count",
+      "kind": "score",
+      "source": "synthetic visible-counter oracle candidate",
+      "cards": "AS",
+      "jokers": [
+        {
+          "name": "Driver's License",
+          "metadata": {
+            "value": {
+              "effect": "X3 Mult if you have at least 16 Enhanced cards in your full deck (Currently 16)"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "hand_type": "High Card",
+        "xmult": 3.0,
+        "score": 48
+      }
+    },
+    {
+      "name": "drivers_license_inactive_from_visible_count",
+      "kind": "score",
+      "source": "synthetic visible-counter oracle candidate",
+      "cards": "AS",
+      "jokers": [
+        {
+          "name": "Driver's License",
+          "metadata": {
+            "value": {
+              "effect": "X3 Mult if you have at least 16 Enhanced cards in your full deck (Currently 15)"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "hand_type": "High Card",
+        "xmult": 1.0,
+        "score": 16
+      }
+    },
+    {
+      "name": "obelisk_uses_visible_metadata_xmult",
+      "kind": "score",
+      "source": "synthetic visible-counter oracle candidate",
+      "cards": "AS",
+      "jokers": [
+        {
+          "name": "Obelisk",
+          "metadata": {
+            "ability": {
+              "extra": {
+                "xmult": 2.0
+              }
+            }
+          }
+        }
+      ],
+      "expected": {
+        "hand_type": "High Card",
+        "xmult": 2.0,
+        "score": 32
+      }
+    },
+    {
+      "name": "lucky_cat_uses_visible_metadata_xmult",
+      "kind": "score",
+      "source": "synthetic visible-counter oracle candidate",
+      "cards": "AS",
+      "jokers": [
+        {
+          "name": "Lucky Cat",
+          "metadata": {
+            "ability": {
+              "extra": {
+                "xmult": 2.5
+              }
+            }
+          }
+        }
+      ],
+      "expected": {
+        "hand_type": "High Card",
+        "xmult": 2.5,
+        "score": 40
+      }
+    },
+    {
+      "name": "joker_stencil_uses_visible_xmult_text",
+      "kind": "score",
+      "source": "synthetic visible-counter oracle candidate",
+      "cards": "AS",
+      "jokers": [
+        {
+          "name": "Joker Stencil",
+          "metadata": {
+            "value": {
+              "effect": "X1 Mult for each empty Joker slot. Joker Stencil included (Currently X3)"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "hand_type": "High Card",
+        "xmult": 3.0,
+        "score": 48
+      }
+    },
+    {
+      "name": "hit_the_road_uses_visible_xmult_text",
+      "kind": "score",
+      "source": "synthetic visible-counter oracle candidate",
+      "cards": "AS",
+      "jokers": [
+        {
+          "name": "Hit the Road",
+          "metadata": {
+            "value": {
+              "effect": "Gains X0.5 Mult for every Jack discarded this round (Currently X2.5 Mult)"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "hand_type": "High Card",
+        "xmult": 2.5,
+        "score": 40
+      }
+    }
+  ]
+}

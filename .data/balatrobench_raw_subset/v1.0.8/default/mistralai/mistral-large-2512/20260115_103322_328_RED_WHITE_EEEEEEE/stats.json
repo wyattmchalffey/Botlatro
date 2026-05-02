@@ -1,0 +1,25 @@
+{
+  "run_won": false,
+  "run_completed": true,
+  "final_ante": 1,
+  "final_round": 1,
+  "providers": {
+    "Mistral": 4
+  },
+  "calls_total": 4,
+  "calls_success": 4,
+  "calls_error": 0,
+  "calls_failed": 0,
+  "tokens_in_total": 54974,
+  "tokens_out_total": 1560,
+  "tokens_in_avg": 13743.5,
+  "tokens_out_avg": 390.0,
+  "tokens_in_std": 396.86227669894083,
+  "tokens_out_std": 196.2685235419407,
+  "time_total_ms": 33890,
+  "time_avg_ms": 8472.5,
+  "time_std_ms": 3119.284266195265,
+  "cost_total": 0.029827,
+  "cost_avg": 0.00745675,
+  "cost_std": 0.00048543889076449833
+}

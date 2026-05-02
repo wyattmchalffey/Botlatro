@@ -226,7 +226,56 @@ class ReplayAnalyzerTests(unittest.TestCase):
         self.assertIn("boss_restriction_zero_score", labels)
         self.assertEqual(analysis.postmortem_label_counts["boss_death"], 1)
         self.assertIn("Postmortem labels:", analysis.to_text())
+        self.assertIn("Postmortem summary:", analysis.to_text(include_postmortem_summary=True))
+        self.assertIn("missing=xmult", analysis.to_text(include_postmortem_summary=True))
         self.assertEqual(analysis.to_json_dict()["postmortem_labels"]["boss_death"], 1)
+        self.assertEqual(
+            analysis.to_json_dict()["postmortem_patterns"],
+            {"ante=5 | blind=boss:The Mouth | missing=xmult | money=75+": 1},
+        )
+
+    def test_summary_only_postmortem_infers_missing_roles_from_final_jokers(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            replay_path = Path(directory) / "summary.jsonl"
+            replay_path.write_text(
+                json.dumps(
+                    {
+                        "record_type": "run_summary",
+                        "seed": 10,
+                        "won": False,
+                        "outcome": "loss",
+                        "ante": 5,
+                        "final_state_detail": {
+                            "phase": "run_over",
+                            "ante": 5,
+                            "blind": "Big Blind",
+                            "current_score": 15000,
+                            "required_score": 16500,
+                            "money": 88,
+                            "hands_remaining": 0,
+                            "discards_remaining": 0,
+                            "jokers": [
+                                {"name": "Banner"},
+                                {"name": "Blue Joker"},
+                                {"name": "Jolly Joker"},
+                                {"name": "Golden Joker"},
+                                {"name": "Gros Michel"},
+                            ],
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            analysis = analyze_replays((replay_path,))
+
+        self.assertIn("money_held_while_missing_power", analysis.runs[0].postmortem_labels)
+        self.assertEqual(analysis.missing_role_counts["xmult"], 1)
+        self.assertEqual(
+            analysis.to_json_dict()["postmortem_patterns"],
+            {"ante=5 | blind=big | missing=xmult | money=75+": 1},
+        )
 
     def test_analyze_replays_counts_malformed_rows(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

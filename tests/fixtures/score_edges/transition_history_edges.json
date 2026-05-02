@@ -1,0 +1,72 @@
+{
+  "schema": "balatro-ai.score-edge.v1",
+  "cases": [
+    {
+      "name": "the_eye_repeated_hand_type_scores_zero",
+      "kind": "play_transition",
+      "source": "synthetic",
+      "pre_state": {
+        "phase": "selecting_hand",
+        "ante": 2,
+        "blind": "The Eye",
+        "required_score": 1000,
+        "current_score": 100,
+        "hands_remaining": 3,
+        "discards_remaining": 2,
+        "money": 5,
+        "deck_size": 10,
+        "hand": "AS AD 2C 3D",
+        "modifiers": {
+          "hands": {
+            "Pair": {
+              "played_this_round": 1,
+              "played": 4,
+              "order": 1
+            }
+          }
+        }
+      },
+      "action": {
+        "type": "play_hand",
+        "card_indices": [0, 1]
+      },
+      "drawn_cards": "QS QC",
+      "expected_state": {
+        "phase": "selecting_hand",
+        "current_score": 100,
+        "hands_remaining": 2,
+        "deck_size": 8,
+        "hand": ["2C", "3D", "QS", "QC"],
+        "run_over": false
+      }
+    },
+    {
+      "name": "discard_transition_never_invents_draws",
+      "kind": "discard_transition",
+      "source": "synthetic",
+      "pre_state": {
+        "phase": "selecting_hand",
+        "ante": 1,
+        "blind": "Small Blind",
+        "required_score": 300,
+        "current_score": 0,
+        "hands_remaining": 4,
+        "discards_remaining": 3,
+        "deck_size": 12,
+        "hand": "AS KD QC JH"
+      },
+      "action": {
+        "type": "discard",
+        "card_indices": [1, 3]
+      },
+      "drawn_cards": "9S 8D",
+      "expected_state": {
+        "current_score": 0,
+        "hands_remaining": 4,
+        "discards_remaining": 2,
+        "deck_size": 10,
+        "hand": ["AS", "QC", "9S", "8D"]
+      }
+    }
+  ]
+}

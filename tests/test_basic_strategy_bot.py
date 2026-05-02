@@ -5,7 +5,7 @@ import unittest
 
 import context  # noqa: F401
 from balatro_ai.api.actions import Action, ActionType
-from balatro_ai.api.state import Card, GameState, Joker
+from balatro_ai.api.state import Card, GamePhase, GameState, Joker
 from balatro_ai.bots import basic_strategy_bot as strategy
 from balatro_ai.bots.basic_strategy_bot import BasicStrategyBot
 from balatro_ai.rules.hand_evaluator import HandType
@@ -854,6 +854,153 @@ class BasicStrategyBotTests(unittest.TestCase):
 
         self.assertEqual(action.action_type, ActionType.END_SHOP)
         buy_option = next(option for option in action.metadata["shop_audit"]["options"] if option["type"] == "buy")
+        self.assertEqual(buy_option["value"], 0.0)
+
+    def test_last_slot_buy_blocks_followup_joker_buy_if_bridge_state_is_stale(self) -> None:
+        bot = BasicStrategyBot(seed=1)
+        filled_last_slot = GameState(
+            ante=4,
+            blind="Small Blind",
+            required_score=5000,
+            money=27,
+            jokers=(
+                Joker("Half Joker"),
+                Joker("Odd Todd"),
+                Joker("Jolly Joker"),
+                Joker("Gros Michel"),
+            ),
+            modifiers={
+                "shop_cards": (
+                    {"label": "Castle", "set": "JOKER", "cost": {"buy": 6}},
+                ),
+            },
+            legal_actions=(
+                Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),
+                Action(ActionType.END_SHOP),
+            ),
+        )
+        stale_after_buy = GameState(
+            ante=4,
+            blind="Small Blind",
+            required_score=5000,
+            money=21,
+            jokers=filled_last_slot.jokers,
+            modifiers={
+                "shop_cards": (
+                    {"label": "Raised Fist", "set": "JOKER", "cost": {"buy": 5}},
+                ),
+            },
+            legal_actions=(
+                Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),
+                Action(ActionType.END_SHOP),
+            ),
+        )
+
+        first_action = bot.choose_action(filled_last_slot)
+        second_action = bot.choose_action(stale_after_buy)
+
+        self.assertEqual(first_action.action_type, ActionType.BUY)
+        self.assertEqual(second_action.action_type, ActionType.END_SHOP)
+        buy_option = next(
+            option for option in second_action.metadata["shop_audit"]["options"] if option["type"] == "buy"
+        )
+        self.assertEqual(buy_option["value"], 0.0)
+
+    def test_last_slot_pack_joker_blocks_stale_followup_pack_joker(self) -> None:
+        bot = BasicStrategyBot(seed=1)
+        filled_last_slot = GameState(
+            ante=2,
+            blind="Small Blind",
+            required_score=5000,
+            money=18,
+            jokers=(
+                Joker("Half Joker"),
+                Joker("Odd Todd"),
+                Joker("Jolly Joker"),
+                Joker("Gros Michel"),
+            ),
+            modifiers={
+                "pack_cards": (
+                    {"label": "Devious Joker", "set": "JOKER", "cost": {"buy": 0}},
+                ),
+            },
+            legal_actions=(
+                Action(ActionType.CHOOSE_PACK_CARD, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),
+                Action(ActionType.CHOOSE_PACK_CARD, target_id="skip", metadata={"kind": "skip", "index": True}),
+            ),
+        )
+        stale_after_pick = GameState(
+            ante=2,
+            blind="Small Blind",
+            required_score=5000,
+            money=18,
+            jokers=filled_last_slot.jokers,
+            modifiers={
+                "pack_cards": (
+                    {"label": "Raised Fist", "set": "JOKER", "cost": {"buy": 0}},
+                ),
+            },
+            legal_actions=(
+                Action(ActionType.CHOOSE_PACK_CARD, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),
+                Action(ActionType.CHOOSE_PACK_CARD, target_id="skip", metadata={"kind": "skip", "index": True}),
+            ),
+        )
+
+        first_action = bot.choose_action(filled_last_slot)
+        second_action = bot.choose_action(stale_after_pick)
+
+        self.assertEqual(first_action.action_type, ActionType.CHOOSE_PACK_CARD)
+        self.assertEqual(first_action.target_id, "card")
+        self.assertEqual(second_action.action_type, ActionType.CHOOSE_PACK_CARD)
+        self.assertEqual(second_action.target_id, "skip")
+
+    def test_last_slot_pack_joker_blocks_stale_followup_shop_joker_buy(self) -> None:
+        bot = BasicStrategyBot(seed=1)
+        filled_last_slot = GameState(
+            ante=2,
+            blind="Small Blind",
+            required_score=5000,
+            money=18,
+            jokers=(
+                Joker("Half Joker"),
+                Joker("Odd Todd"),
+                Joker("Jolly Joker"),
+                Joker("Gros Michel"),
+            ),
+            modifiers={
+                "pack_cards": (
+                    {"label": "Devious Joker", "set": "JOKER", "cost": {"buy": 0}},
+                ),
+            },
+            legal_actions=(
+                Action(ActionType.CHOOSE_PACK_CARD, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),
+                Action(ActionType.CHOOSE_PACK_CARD, target_id="skip", metadata={"kind": "skip", "index": True}),
+            ),
+        )
+        stale_shop = GameState(
+            ante=2,
+            blind="Small Blind",
+            required_score=5000,
+            money=18,
+            jokers=filled_last_slot.jokers,
+            modifiers={
+                "shop_cards": (
+                    {"label": "Raised Fist", "set": "JOKER", "cost": {"buy": 5}},
+                ),
+            },
+            legal_actions=(
+                Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),
+                Action(ActionType.END_SHOP),
+            ),
+        )
+
+        first_action = bot.choose_action(filled_last_slot)
+        second_action = bot.choose_action(stale_shop)
+
+        self.assertEqual(first_action.action_type, ActionType.CHOOSE_PACK_CARD)
+        self.assertEqual(first_action.target_id, "card")
+        self.assertEqual(second_action.action_type, ActionType.END_SHOP)
+        buy_option = next(option for option in second_action.metadata["shop_audit"]["options"] if option["type"] == "buy")
         self.assertEqual(buy_option["value"], 0.0)
 
     def test_full_slots_can_still_buy_negative_joker(self) -> None:
@@ -2001,6 +2148,21 @@ class BasicStrategyBotTests(unittest.TestCase):
 
         self.assertEqual(action.action_type, ActionType.CHOOSE_PACK_CARD)
         self.assertEqual(action.target_id, "card")
+
+    def test_empty_booster_state_uses_no_op_instead_of_pack_skip(self) -> None:
+        state = GameState(
+            phase=GamePhase.BOOSTER_OPENED,
+            money=117,
+            pack=(),
+            modifiers={"pack_cards": ()},
+            legal_actions=(
+                Action(ActionType.CHOOSE_PACK_CARD, target_id="skip", metadata={"kind": "skip", "index": True}),
+            ),
+        )
+
+        action = BasicStrategyBot(seed=1).choose_action(state)
+
+        self.assertEqual(action.action_type, ActionType.NO_OP)
 
     def test_pack_choice_skips_medium_card_to_scale_red_card(self) -> None:
         state = GameState(

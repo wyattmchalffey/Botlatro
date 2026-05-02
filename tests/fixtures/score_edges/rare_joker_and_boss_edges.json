@@ -1,0 +1,179 @@
+{
+  "schema": "balatro-ai.score-edge.v1",
+  "cases": [
+    {
+      "name": "blueprint_copies_next_joker",
+      "kind": "score",
+      "source": "synthetic",
+      "cards": "AS",
+      "jokers": ["Blueprint", "Joker"],
+      "expected": {
+        "hand_type": "High Card",
+        "chips": 16,
+        "mult": 9,
+        "score": 144
+      }
+    },
+    {
+      "name": "brainstorm_copies_first_joker",
+      "kind": "score",
+      "source": "synthetic",
+      "cards": "AS",
+      "jokers": ["Joker", "Brainstorm"],
+      "expected": {
+        "hand_type": "High Card",
+        "chips": 16,
+        "mult": 9,
+        "score": 144
+      }
+    },
+    {
+      "name": "disabled_joker_skips_ability_and_edition",
+      "kind": "score",
+      "source": "synthetic from replay-diff bug class",
+      "cards": "8S 8D",
+      "money": 165,
+      "jokers": [
+        {
+          "name": "The Order",
+          "edition": "HOLO",
+          "metadata": {
+            "value": {
+              "effect": "All abilities are disabled"
+            }
+          }
+        },
+        {
+          "name": "Bull",
+          "metadata": {
+            "value": {
+              "effect": "+2 Chips for each $1 you have (Currently +330 Chips)"
+            }
+          }
+        },
+        "Even Steven",
+        {
+          "name": "Bootstraps",
+          "metadata": {
+            "value": {
+              "effect": "+2 Mult for every $5 you have (Currently +66 Mult)"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "hand_type": "Pair",
+        "chips": 356,
+        "mult": 76,
+        "xmult": 1.0,
+        "score": 27056
+      }
+    },
+    {
+      "name": "red_seal_glass_hanging_chad_photograph_stack",
+      "kind": "score",
+      "source": "synthetic rare retrigger/order oracle candidate",
+      "cards": [
+        {
+          "rank": "K",
+          "suit": "S",
+          "enhancement": "m_glass",
+          "seal": "red"
+        }
+      ],
+      "jokers": ["Hanging Chad", "Photograph"],
+      "expected": {
+        "hand_type": "High Card",
+        "chips": 45,
+        "mult": 1,
+        "xmult": 256.0,
+        "score": 11520
+      }
+    },
+    {
+      "name": "dusk_last_hand_retriggers_fibonacci_pair",
+      "kind": "score",
+      "source": "synthetic",
+      "cards": "AS AD",
+      "hands_remaining": 1,
+      "jokers": ["Dusk", "Fibonacci"],
+      "expected": {
+        "hand_type": "Pair",
+        "chips": 54,
+        "mult": 34,
+        "score": 1836
+      }
+    },
+    {
+      "name": "mime_retriggers_steel_baron_held_king",
+      "kind": "score",
+      "source": "synthetic",
+      "cards": "AS",
+      "held": [
+        {
+          "rank": "K",
+          "suit": "S",
+          "enhancement": "Steel"
+        }
+      ],
+      "jokers": ["Mime", "Baron"],
+      "expected": {
+        "hand_type": "High Card",
+        "chips": 16,
+        "mult": 1,
+        "xmult": 5.0625,
+        "score": 81
+      }
+    },
+    {
+      "name": "raised_fist_ignores_debuffed_lower_held_cards",
+      "kind": "score",
+      "source": "synthetic from replay-diff bug class",
+      "cards": "QS QC",
+      "held": [
+        {
+          "rank": "A",
+          "suit": "H",
+          "debuffed": true
+        },
+        {
+          "rank": "7",
+          "suit": "H",
+          "debuffed": true
+        },
+        "10S"
+      ],
+      "jokers": ["Raised Fist", "Photograph"],
+      "expected": {
+        "hand_type": "Pair",
+        "chips": 30,
+        "mult": 2,
+        "xmult": 2.0,
+        "score": 120
+      }
+    },
+    {
+      "name": "the_psychic_zeroes_non_five_card_play",
+      "kind": "score",
+      "source": "synthetic",
+      "blind": "The Psychic",
+      "cards": "KS KC 8S 8H",
+      "expected": {
+        "hand_type": "Two Pair",
+        "score": 0
+      }
+    },
+    {
+      "name": "the_mouth_zeroes_different_hand_after_first_type",
+      "kind": "score",
+      "source": "synthetic",
+      "blind": "The Mouth",
+      "cards": "AS AD",
+      "played_hand_types_this_round": ["High Card"],
+      "expected": {
+        "hand_type": "Pair",
+        "score": 0
+      }
+    }
+  ]
+}

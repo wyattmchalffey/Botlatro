@@ -90,6 +90,92 @@ class HandEvaluatorTests(unittest.TestCase):
         self.assertEqual(evaluation.mult, 6)
         self.assertEqual(evaluation.score, 372)
 
+    def test_wild_card_can_complete_flush(self) -> None:
+        evaluation = evaluate_played_cards(
+            (
+                Card(rank="K", suit="D", enhancement="WILD"),
+                Card(rank="Q", suit="S"),
+                Card(rank="9", suit="S"),
+                Card(rank="7", suit="S"),
+                Card(rank="4", suit="S"),
+            )
+        )
+
+        self.assertEqual(evaluation.hand_type, HandType.FLUSH)
+
+    def test_wild_card_counts_for_suit_debuffs(self) -> None:
+        evaluation = evaluate_played_cards(
+            (Card(rank="K", suit="D", enhancement="WILD"),),
+            debuffed_suits=debuffed_suits_for_blind("The Goad"),
+        )
+
+        self.assertEqual(evaluation.card_chips, 0)
+        self.assertEqual(evaluation.score, 5)
+
+    def test_debuffed_wild_card_does_not_complete_flush(self) -> None:
+        evaluation = evaluate_played_cards(
+            (
+                Card(rank="K", suit="H", enhancement="WILD", debuffed=True),
+                Card(rank="Q", suit="S"),
+                Card(rank="9", suit="S"),
+                Card(rank="7", suit="S"),
+                Card(rank="4", suit="S"),
+            )
+        )
+
+        self.assertEqual(evaluation.hand_type, HandType.HIGH_CARD)
+
+    def test_smeared_joker_extends_suit_based_card_effects(self) -> None:
+        wrathful = evaluate_played_cards(
+            cards(["AC"]),
+            jokers=(Joker("Smeared Joker"), Joker("Wrathful Joker")),
+        )
+        greedy = evaluate_played_cards(
+            cards(["JH"]),
+            jokers=(Joker("Smeared Joker"), Joker("Greedy Joker")),
+        )
+        onyx = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(Joker("Smeared Joker"), Joker("Onyx Agate")),
+        )
+
+        self.assertEqual(wrathful.score, 64)
+        self.assertEqual(greedy.score, 60)
+        self.assertEqual(onyx.score, 128)
+
+    def test_smeared_joker_extends_seeing_double_like_source(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(Joker("Smeared Joker"), Joker("Seeing Double")),
+        )
+
+        self.assertEqual(evaluation.effect_xmult, 2)
+        self.assertEqual(evaluation.score, 32)
+
+    def test_wild_cards_fill_missing_flower_pot_suits_like_source(self) -> None:
+        evaluation = evaluate_played_cards(
+            (
+                Card(rank="A", suit="H"),
+                Card(rank="K", suit="D"),
+                Card(rank="Q", suit="S"),
+                Card(rank="2", suit="H", enhancement="WILD"),
+            ),
+            jokers=(Joker("Splash"), Joker("Flower Pot")),
+        )
+
+        self.assertEqual(evaluation.effect_xmult, 3)
+        self.assertEqual(evaluation.score, 114)
+
+    def test_blackboard_counts_held_wild_cards_as_black_like_source(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(Joker("Blackboard"),),
+            held_cards=(Card(rank="7", suit="H", enhancement="WILD"),),
+        )
+
+        self.assertEqual(evaluation.effect_xmult, 3)
+        self.assertEqual(evaluation.score, 48)
+
     def test_stone_card_scores_exactly_50_chips(self) -> None:
         evaluation = evaluate_played_cards(
             (Card(rank="A", suit="H", enhancement="STONE"),),
@@ -99,6 +185,22 @@ class HandEvaluatorTests(unittest.TestCase):
         self.assertEqual(evaluation.card_chips, 50)
         self.assertEqual(evaluation.chips, 55)
         self.assertEqual(evaluation.score, 55)
+
+    def test_stone_card_uses_displayed_chip_total(self) -> None:
+        evaluation = evaluate_played_cards(
+            (
+                Card.from_mapping(
+                    {
+                        "label": "Stone Card",
+                        "modifier": {"enhancement": "STONE"},
+                        "value": {"rank": "3", "suit": "H", "effect": "+55 chips no rank or suit"},
+                    }
+                ),
+            )
+        )
+
+        self.assertEqual(evaluation.card_chips, 55)
+        self.assertEqual(evaluation.score, 60)
 
     def test_stone_card_has_no_rank_or_suit_for_scoring_effects(self) -> None:
         evaluation = evaluate_played_cards(
@@ -125,6 +227,33 @@ class HandEvaluatorTests(unittest.TestCase):
         self.assertEqual(evaluation.card_chips, 72)
         self.assertEqual(evaluation.score, 164)
 
+    def test_midas_mask_removes_face_card_enhancement_before_scoring(self) -> None:
+        evaluation = evaluate_played_cards(
+            (
+                Card(rank="Q", suit="H", enhancement="BONUS"),
+                Card(rank="Q", suit="D"),
+            ),
+            jokers=(Joker("Midas Mask"),),
+        )
+
+        self.assertEqual(evaluation.card_chips, 20)
+        self.assertEqual(evaluation.score, 60)
+
+    def test_vampire_strips_scoring_enhancements_before_same_hand_xmult(self) -> None:
+        evaluation = evaluate_played_cards(
+            (
+                Card(rank="A", suit="S", enhancement="BONUS"),
+                Card(rank="A", suit="D", enhancement="MULT"),
+            ),
+            jokers=(Joker("Vampire", metadata={"current_xmult": 1.5}),),
+        )
+
+        self.assertEqual(evaluation.hand_type, HandType.PAIR)
+        self.assertEqual(evaluation.card_chips, 22)
+        self.assertEqual(evaluation.mult, 2)
+        self.assertAlmostEqual(evaluation.effect_xmult, 1.7)
+        self.assertEqual(evaluation.score, 108)
+
     def test_permanent_card_chip_metadata_is_applied(self) -> None:
         evaluation = evaluate_played_cards(
             (
@@ -135,6 +264,63 @@ class HandEvaluatorTests(unittest.TestCase):
 
         self.assertEqual(evaluation.card_chips, 37)
         self.assertEqual(evaluation.score, 94)
+
+    def test_displayed_card_chip_total_supplies_missing_permanent_chips(self) -> None:
+        evaluation = evaluate_played_cards(
+            (
+                Card.from_mapping(
+                    {
+                        "label": "Base Card",
+                        "value": {"rank": "7", "suit": "H", "effect": "+47 chips"},
+                    }
+                ),
+            )
+        )
+
+        self.assertEqual(evaluation.card_chips, 47)
+        self.assertEqual(evaluation.score, 52)
+
+    def test_displayed_extra_chip_text_supplies_missing_permanent_chips(self) -> None:
+        evaluation = evaluate_played_cards(
+            (
+                Card.from_mapping(
+                    {
+                        "label": "Base Card",
+                        "value": {"rank": "K", "suit": "S", "effect": "+10 chips +15 extra chips"},
+                    }
+                ),
+            )
+        )
+
+        self.assertEqual(evaluation.card_chips, 25)
+        self.assertEqual(evaluation.score, 30)
+
+    def test_bonus_card_extra_chip_text_does_not_double_count_bonus_enhancement(self) -> None:
+        plain_bonus = evaluate_played_cards(
+            (
+                Card.from_mapping(
+                    {
+                        "label": "Bonus Card",
+                        "value": {"rank": "K", "suit": "S", "effect": "+10 chips +30 extra chips"},
+                        "set": "ENHANCED",
+                    }
+                ),
+            )
+        )
+        hiked_bonus = evaluate_played_cards(
+            (
+                Card.from_mapping(
+                    {
+                        "label": "Bonus Card",
+                        "value": {"rank": "8", "suit": "S", "effect": "+8 chips +40 extra chips"},
+                        "set": "ENHANCED",
+                    }
+                ),
+            )
+        )
+
+        self.assertEqual(plain_bonus.card_chips, 40)
+        self.assertEqual(hiked_bonus.card_chips, 48)
 
     def test_glass_and_joker_edition_xmult_are_applied(self) -> None:
         evaluation = evaluate_played_cards(
@@ -225,6 +411,29 @@ class HandEvaluatorTests(unittest.TestCase):
         self.assertEqual(evaluation.base_chips, 15)
         self.assertEqual(evaluation.base_mult, 2)
         self.assertEqual(evaluation.score, 124)
+
+    def test_the_flint_rounds_halved_base_values_up(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["AS"]),
+            blind_name="The Flint",
+        )
+
+        self.assertEqual(evaluation.base_chips, 3)
+        self.assertEqual(evaluation.base_mult, 1)
+        self.assertEqual(evaluation.score, 14)
+
+    def test_the_flint_halves_leveled_hand_values(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["QC", "QD", "JS", "JD", "5C"]),
+            {"Two Pair": 4},
+            blind_name="The Flint",
+        )
+
+        self.assertEqual(evaluation.base_chips, 10)
+        self.assertEqual(evaluation.level_chips, 30)
+        self.assertEqual(evaluation.base_mult, 1)
+        self.assertEqual(evaluation.level_mult, 2)
+        self.assertEqual(evaluation.score, 240)
 
     def test_the_psychic_zeroes_non_five_card_plays(self) -> None:
         evaluation = evaluate_played_cards(
@@ -430,6 +639,16 @@ class HandEvaluatorTests(unittest.TestCase):
         self.assertEqual(evaluation.scoring_indices, (0, 1, 2))
         self.assertEqual(evaluation.score, 78)
 
+    def test_disabled_splash_does_not_change_scoring_indices(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["TS", "TD", "8S", "8H", "2S"]),
+            jokers=(Joker("Splash", metadata={"state": {"debuff": True}}),),
+        )
+
+        self.assertEqual(evaluation.hand_type, HandType.TWO_PAIR)
+        self.assertEqual(evaluation.scoring_indices, (0, 1, 2, 3))
+        self.assertEqual(evaluation.score, 112)
+
     def test_pareidolia_makes_all_cards_face_cards(self) -> None:
         evaluation = evaluate_played_cards(
             cards(["AS", "AD"]),
@@ -471,6 +690,15 @@ class HandEvaluatorTests(unittest.TestCase):
         self.assertEqual(sock.mult, 11)
         self.assertEqual(sock.score, 275)
 
+    def test_hiker_permanent_chips_affect_same_card_retriggers(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(Joker("Hiker"), Joker("Hanging Chad")),
+        )
+
+        self.assertEqual(evaluation.chips, 53)
+        self.assertEqual(evaluation.score, 53)
+
     def test_hanging_chad_and_photograph_stack_on_first_face_card(self) -> None:
         evaluation = evaluate_played_cards(
             cards(["KS"]),
@@ -478,7 +706,7 @@ class HandEvaluatorTests(unittest.TestCase):
         )
 
         self.assertEqual(evaluation.chips, 35)
-        self.assertEqual(evaluation.mult, 8)
+        self.assertEqual(evaluation.effect_xmult, 8)
         self.assertEqual(evaluation.score, 280)
 
     def test_photograph_triggers_before_flat_joker_mult(self) -> None:
@@ -488,8 +716,45 @@ class HandEvaluatorTests(unittest.TestCase):
         )
 
         self.assertEqual(evaluation.chips, 62)
-        self.assertEqual(evaluation.mult, 10)
+        self.assertEqual(evaluation.mult, 8)
+        self.assertEqual(evaluation.effect_xmult, 2)
         self.assertEqual(evaluation.score, 620)
+
+    def test_photograph_triggers_before_earlier_xmult_jokers(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["KS"]),
+            jokers=(Joker("Cavendish"), Joker("Photograph")),
+        )
+
+        self.assertEqual(evaluation.effect_xmult, 6)
+        self.assertEqual(evaluation.score, 90)
+
+    def test_photograph_triggers_before_earlier_polychrome_joker(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["KS"]),
+            jokers=(Joker("Joker", edition="Polychrome"), Joker("Photograph")),
+        )
+
+        self.assertEqual(evaluation.mult, 5)
+        self.assertEqual(evaluation.effect_xmult, 3)
+        self.assertEqual(evaluation.score, 135)
+
+    def test_disabled_joker_does_not_apply_ability_or_edition(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["8S", "8D"]),
+            jokers=(
+                Joker("The Order", edition="HOLO", metadata={"value": {"effect": "All abilities are disabled"}}),
+                Joker("The Tribe", edition="POLYCHROME", metadata={"state": {"debuff": True}}),
+                Joker("Bull", metadata={"value": {"effect": "+2 Chips for each $1 you have (Currently +330 Chips)"}}),
+                Joker("Even Steven"),
+                Joker("Bootstraps", metadata={"value": {"effect": "+2 Mult for every $5 you have (Currently +66 Mult)"}}),
+            ),
+            money=165,
+        )
+
+        self.assertEqual(evaluation.chips, 356)
+        self.assertEqual(evaluation.mult, 76)
+        self.assertEqual(evaluation.score, 27056)
 
     def test_raised_fist_does_not_skip_lower_debuffed_held_card(self) -> None:
         evaluation = evaluate_played_cards(
@@ -559,6 +824,28 @@ class HandEvaluatorTests(unittest.TestCase):
         self.assertEqual(evaluation.mult, 5)
         self.assertEqual(evaluation.score, 190)
 
+    def test_scoring_time_dollars_feed_money_scaled_jokers(self) -> None:
+        evaluation = evaluate_played_cards(
+            (Card(rank="A", suit="D", enhancement="GOLD"),),
+            jokers=(Joker("Golden Ticket"), Joker("Rough Gem"), Joker("Bull"), Joker("Bootstraps")),
+        )
+
+        self.assertEqual(evaluation.chips, 26)
+        self.assertEqual(evaluation.mult, 3)
+        self.assertEqual(evaluation.score, 78)
+
+    def test_the_tooth_reduces_money_before_money_scaled_jokers(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["AS", "KD", "QC", "JH", "TC"]),
+            jokers=(Joker("Bull"), Joker("Bootstraps")),
+            blind_name="The Tooth",
+            money=11,
+        )
+
+        self.assertEqual(evaluation.chips, 93)
+        self.assertEqual(evaluation.mult, 6)
+        self.assertEqual(evaluation.score, 558)
+
     def test_acrobat_and_suit_xmult_jokers_are_applied(self) -> None:
         acrobat = evaluate_played_cards(
             cards(["AS"]),
@@ -613,6 +900,21 @@ class HandEvaluatorTests(unittest.TestCase):
         self.assertEqual(mad.score, 1022)
         self.assertEqual(clever.score, 612)
 
+    def test_spare_trousers_applies_to_full_house(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["JS", "JC", "JD", "5C", "5D"]),
+            jokers=(
+                joker_with_effect(
+                    "Spare Trousers",
+                    "This Joker gains +2 Mult if played hand contains a Two Pair (Currently +6 Mult)",
+                ),
+            ),
+        )
+
+        self.assertEqual(evaluation.chips, 80)
+        self.assertEqual(evaluation.mult, 12)
+        self.assertEqual(evaluation.score, 960)
+
     def test_specific_scored_card_xmult_jokers_are_applied(self) -> None:
         ancient = evaluate_played_cards(
             cards(["AS", "AH"]),
@@ -646,6 +948,11 @@ class HandEvaluatorTests(unittest.TestCase):
             cards(["AS"]),
             jokers=(joker_with_effect("Supernova", "Adds times played to Mult (Currently +4 Mult)"),),
         )
+        supernova_from_hand_counts = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(Joker("Supernova"),),
+            played_hand_counts={"High Card": 3},
+        )
         ramen = evaluate_played_cards(
             cards(["AS"]),
             jokers=(joker_with_effect("Ramen", "X2 Mult, loses X0.01 per card discarded (Currently X1.6 Mult)"),),
@@ -653,6 +960,15 @@ class HandEvaluatorTests(unittest.TestCase):
         ramen_live_text = evaluate_played_cards(
             cards(["AS"]),
             jokers=(joker_with_effect("Ramen", "X1.92 Mult, loses X0.01 Mult per card discarded"),),
+        )
+        ramen_visible_rounding = evaluate_played_cards(
+            cards(["AS", "AD", "KH", "9S", "9D"]),
+            {"Two Pair": 7},
+            jokers=(
+                Joker("Bootstraps"),
+                joker_with_effect("Ramen", "X1.58 Mult, loses X0.01 Mult per card discarded"),
+            ),
+            money=105,
         )
         baseball = evaluate_played_cards(
             cards(["AS"]),
@@ -667,8 +983,10 @@ class HandEvaluatorTests(unittest.TestCase):
         )
 
         self.assertEqual(supernova.score, 80)
+        self.assertEqual(supernova_from_hand_counts.score, 80)
         self.assertEqual(ramen.score, 25)
         self.assertEqual(ramen_live_text.score, 30)
+        self.assertEqual(ramen_visible_rounding.score, 14219)
         self.assertEqual(baseball.score, 36)
         self.assertEqual(baseball_with_fallback_rarity.score, 120)
 
@@ -704,9 +1022,39 @@ class HandEvaluatorTests(unittest.TestCase):
             cards(["AS"]),
             jokers=(joker_with_effect("Stone Joker", "Gives +25 Chips for each Stone Card in your full deck (Currently +50 Chips)"),),
         )
+        ice_cream_from_metadata = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(Joker("Ice Cream", metadata={"ability": {"extra": {"chips": 85}}}),),
+        )
+        ice_cream_live_text = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(joker_with_effect("Ice Cream", "+95 Chips -5 Chips for every hand played"),),
+        )
+        blue_joker_live_text = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(joker_with_effect("Blue Joker", "+2 Chips for each remaining card in deck (Currently +64 Chips)"),),
+            deck_size=10,
+        )
+        hidden_blue_joker = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(
+                Joker(
+                    "Blue Joker",
+                    metadata={
+                        "state": {"hidden": True},
+                        "value": {"effect": "+2 Chips for each remaining card in deck (Currently +64 Chips)"},
+                    },
+                ),
+            ),
+            deck_size=10,
+        )
         castle = evaluate_played_cards(
             cards(["AS"]),
             jokers=(joker_with_effect("Castle", "This Joker gains +3 Chips per discarded Spade card (Currently +9 Chips)"),),
+        )
+        square_four_card_play = evaluate_played_cards(
+            cards(["AS", "KH", "QD", "JC"]),
+            jokers=(Joker("Square Joker", metadata={"current_chips": 8}),),
         )
         erosion = evaluate_played_cards(
             cards(["AS"]),
@@ -714,8 +1062,38 @@ class HandEvaluatorTests(unittest.TestCase):
         )
 
         self.assertEqual(stone.score, 66)
+        self.assertEqual(ice_cream_from_metadata.score, 101)
+        self.assertEqual(ice_cream_live_text.score, 111)
+        self.assertEqual(blue_joker_live_text.score, 80)
+        self.assertEqual(hidden_blue_joker.score, 36)
         self.assertEqual(castle.score, 25)
+        self.assertEqual(square_four_card_play.score, 28)
         self.assertEqual(erosion.score, 144)
+
+    def test_played_gold_seal_money_is_available_to_bootstraps(self) -> None:
+        evaluation = evaluate_played_cards(
+            (Card(rank="A", suit="S", seal="GOLD"),),
+            jokers=(Joker("Bootstraps"),),
+            money=59,
+        )
+
+        self.assertEqual(evaluation.mult, 25)
+        self.assertEqual(evaluation.score, 400)
+
+    def test_current_value_mult_jokers_can_use_metadata(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(Joker("Popcorn", metadata={"config": {"extra": {"mult": 12}}}),),
+        )
+        live_text = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(joker_with_effect("Popcorn", "+16 Mult -4 Mult per round played"),),
+        )
+
+        self.assertEqual(evaluation.mult, 13)
+        self.assertEqual(evaluation.score, 208)
+        self.assertEqual(live_text.mult, 17)
+        self.assertEqual(live_text.score, 272)
 
     def test_current_value_xmult_jokers_are_applied(self) -> None:
         steel = evaluate_played_cards(
@@ -734,11 +1112,16 @@ class HandEvaluatorTests(unittest.TestCase):
             cards(["AS"]),
             jokers=(joker_with_effect("Hit the Road", "Gains X0.5 Mult for every Jack discarded this round (Currently X2.5 Mult)"),),
         )
+        ramen_from_metadata = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(Joker("Ramen", metadata={"ability": {"extra": {"xmult": 1.5}}}),),
+        )
 
         self.assertEqual(steel.score, 22)
         self.assertEqual(glass.score, 28)
         self.assertEqual(stencil.score, 48)
         self.assertEqual(hit_the_road.score, 40)
+        self.assertEqual(ramen_from_metadata.score, 24)
 
     def test_license_and_loyalty_card_are_applied_from_effect_text(self) -> None:
         license_active = evaluate_played_cards(
@@ -753,15 +1136,79 @@ class HandEvaluatorTests(unittest.TestCase):
             cards(["AS"]),
             jokers=(joker_with_effect("Loyalty Card", "X4 Mult every 6 hands played 0 remaining"),),
         )
+        loyalty_active = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(joker_with_effect("Loyalty Card", "X4 Mult every 6 hands played Active!"),),
+        )
         loyalty_waiting = evaluate_played_cards(
             cards(["AS"]),
             jokers=(joker_with_effect("Loyalty Card", "X4 Mult every 6 hands played 2 remaining"),),
+        )
+        loyalty_active_from_metadata = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(Joker("Loyalty Card", metadata={"config": {"extra": {"remaining": 0}}}),),
+        )
+        loyalty_waiting_from_metadata = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(Joker("Loyalty Card", metadata={"config": {"extra": {"remaining": 1}}}),),
         )
 
         self.assertEqual(license_active.score, 48)
         self.assertEqual(license_inactive.score, 16)
         self.assertEqual(loyalty_ready.score, 64)
+        self.assertEqual(loyalty_active.score, 64)
         self.assertEqual(loyalty_waiting.score, 16)
+        self.assertEqual(loyalty_active_from_metadata.score, 64)
+        self.assertEqual(loyalty_waiting_from_metadata.score, 16)
+
+    def test_stochastic_play_outcomes_can_be_injected(self) -> None:
+        misprint = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(Joker("Misprint"),),
+            stochastic_outcomes={"misprint_mult": 10},
+        )
+        bloodstone = evaluate_played_cards(
+            cards(["AH"]),
+            jokers=(Joker("Bloodstone"),),
+            stochastic_outcomes={"bloodstone_triggers": 1},
+        )
+        space = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(Joker("Space Joker"),),
+            stochastic_outcomes={"space_joker_triggers": 1},
+        )
+
+        self.assertEqual(misprint.score, 176)
+        self.assertEqual(bloodstone.score, 32)
+        self.assertEqual(space.score, 52)
+
+    def test_scoring_time_money_outcomes_feed_money_scaled_jokers(self) -> None:
+        business_card = evaluate_played_cards(
+            cards(["KS"]),
+            money=4,
+            jokers=(Joker("Business Card"), Joker("Bootstraps")),
+            stochastic_outcomes={"business_card_triggers": 1},
+        )
+        reserved_parking = evaluate_played_cards(
+            cards(["AS"]),
+            money=4,
+            held_cards=cards(["KS"]),
+            jokers=(Joker("Reserved Parking"), Joker("Bootstraps")),
+            stochastic_outcomes={"reserved_parking_triggers": 1},
+        )
+        matador = evaluate_played_cards(
+            cards(["AS"]),
+            money=0,
+            jokers=(Joker("Matador"), Joker("Bootstraps")),
+            stochastic_outcomes={"matador_triggered": True},
+        )
+
+        self.assertEqual(business_card.money_delta, 2)
+        self.assertEqual(business_card.score, 45)
+        self.assertEqual(reserved_parking.money_delta, 1)
+        self.assertEqual(reserved_parking.score, 48)
+        self.assertEqual(matador.money_delta, 8)
+        self.assertEqual(matador.score, 48)
 
 
 if __name__ == "__main__":

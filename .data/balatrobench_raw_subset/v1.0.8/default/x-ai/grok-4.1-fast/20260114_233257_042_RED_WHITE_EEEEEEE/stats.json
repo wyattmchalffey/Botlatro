@@ -1,0 +1,25 @@
+{
+  "run_won": false,
+  "run_completed": true,
+  "final_ante": 6,
+  "final_round": 17,
+  "providers": {
+    "xAI": 110
+  },
+  "calls_total": 110,
+  "calls_success": 110,
+  "calls_error": 0,
+  "calls_failed": 0,
+  "tokens_in_total": 1760426,
+  "tokens_out_total": 332493,
+  "tokens_in_avg": 16003.872727272726,
+  "tokens_out_avg": 3022.663636363636,
+  "tokens_in_std": 1212.4729911611416,
+  "tokens_out_std": 2242.1367973278548,
+  "time_total_ms": 4068205,
+  "time_avg_ms": 36983.681818181816,
+  "time_std_ms": 27907.98601825433,
+  "cost_total": 0.50559205,
+  "cost_avg": 0.004596291363636363,
+  "cost_std": 0.0013530457930074605
+}

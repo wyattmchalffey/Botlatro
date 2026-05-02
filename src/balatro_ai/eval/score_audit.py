@@ -24,6 +24,8 @@ class ScoreAuditRecord:
     jokers: tuple[str, ...]
     held_cards_known: bool = False
     deck_size_known: bool = False
+    known_current_jokers: tuple[str, ...] = ()
+    hand_counts_known: bool = False
 
     @property
     def error(self) -> int:
@@ -36,44 +38,59 @@ class ScoreAuditRecord:
     @property
     def uncertainty_reason(self) -> str | None:
         joker_text = " ".join(self.jokers)
+        money_scaled_score = "Bull" in joker_text or "Bootstraps" in joker_text
         if "Misprint" in joker_text:
             return "Misprint has random mult"
-        if "Popcorn" in joker_text:
-            return "Popcorn's current mult is dynamic and not exposed in replay state"
-        if "Ice Cream" in joker_text:
-            return "Ice Cream's current chip counter is dynamic and not exposed in replay state"
-        if "Ramen" in joker_text:
-            return "Ramen's displayed XMult can be rounded and discard-timing dependent"
+        if money_scaled_score and "Business Card" in joker_text:
+            return "Business Card can randomly add scoring-time dollars before money-scaled jokers"
+        if money_scaled_score and "Reserved Parking" in joker_text:
+            return "Reserved Parking can randomly add scoring-time dollars before money-scaled jokers"
+        if money_scaled_score and "Matador" in joker_text:
+            return "Matador can add boss-triggered scoring-time dollars before money-scaled jokers"
+        if money_scaled_score and "To Do List" in joker_text:
+            return "To Do List depends on the current target hand before money-scaled jokers"
+        if "Popcorn" in joker_text and "Popcorn" not in self.known_current_jokers:
+            return "Popcorn's visible current mult was not logged in this replay row"
+        if "Ice Cream" in joker_text and "Ice Cream" not in self.known_current_jokers:
+            return "Ice Cream's visible current chip counter was not logged in this replay row"
+        if "Ramen" in joker_text and "Ramen" not in self.known_current_jokers:
+            return "Ramen's visible current XMult was not logged in this replay row"
         if "Shoot the Moon" in joker_text and not self.held_cards_known:
             return "Shoot the Moon depends on held Queens, missing from older score audit rows"
-        if "Loyalty Card" in joker_text:
-            return "Loyalty Card's hand counter is dynamic and not exposed in replay state"
+        if "Loyalty Card" in joker_text and "Loyalty Card" not in self.known_current_jokers:
+            return "Loyalty Card's visible countdown was not logged in this replay row"
         if "Bloodstone" in joker_text:
             return "Bloodstone has probabilistic XMult triggers"
         if "Space Joker" in joker_text:
             return "Space Joker can randomly upgrade hand level before scoring"
         if "Obelisk" in joker_text:
             return "Obelisk depends on prior hand-type history and can reset before scoring"
-        if "Green Joker" in joker_text:
-            return "Green Joker's counter timing can differ between gamestate and scoring"
+        if "Green Joker" in joker_text and "Green Joker" not in self.known_current_jokers:
+            return "Green Joker's visible mult counter was not logged in this replay row"
         if "Card Sharp" in joker_text:
             return "Card Sharp depends on previous hand types this round, not included in score audit rows yet"
         if "Ceremonial Dagger" in joker_text:
             return "Ceremonial Dagger's current mult is dynamic and not exposed in replay state"
-        if "Square Joker" in joker_text:
-            return "Square Joker's current chip counter is dynamic and not exposed in replay state"
-        if "Supernova" in joker_text:
-            return "Supernova's current per-hand counter is dynamic and not exposed in replay state"
+        if "Certificate" in joker_text:
+            return "Certificate-created sealed cards can differ in older replay hand/deck snapshots"
+        if "Square Joker" in joker_text and "Square Joker" not in self.known_current_jokers:
+            return "Square Joker's visible chip counter was not logged in this replay row"
+        if "Supernova" in joker_text and not self.hand_counts_known and "Supernova" not in self.known_current_jokers:
+            return "Supernova depends on visible hand play counts that were not logged in this replay row"
         if "Raised Fist" in joker_text and not self.held_cards_known:
             return "Raised Fist depends on held cards, missing from older score audit rows"
         if "Blue Joker" in joker_text and not self.deck_size_known:
             return "Blue Joker depends on live deck size, missing from older score audit rows"
         if self.blind == "The Pillar":
             return "The Pillar debuffs previously played cards not yet represented in card state"
-        if self.blind == "The Mouth":
+        if self.blind == "The Eye":
+            return "The Eye depends on prior hand-type history, not included in isolated score audit rows"
+        if self.blind == "The Mouth" and not self.hand_counts_known:
             return "The Mouth can zero hands after the first played hand type this round"
         if self.blind == "The Hook":
             return "The Hook discards held cards before scoring, changing held-card effects"
+        if self.blind == "Cerulean Bell":
+            return "Cerulean Bell forced selection can make bridge-scored cards differ from requested action cards"
         return None
 
     @property
@@ -204,6 +221,8 @@ def _records_from_file(path: Path) -> list[ScoreAuditRecord]:
                     jokers=_joker_labels(audit),
                     held_cards_known="held_card_details" in audit or "held_cards" in audit,
                     deck_size_known="deck_size" in audit,
+                    known_current_jokers=_known_current_jokers(audit),
+                    hand_counts_known="played_hand_counts" in audit or "hands" in audit,
                 )
             )
     return records
@@ -221,6 +240,88 @@ def _joker_labels(audit: dict) -> tuple[str, ...]:
             labels.append(f"{name} ({edition})" if edition else name)
         return tuple(labels)
     return tuple(str(joker) for joker in audit.get("jokers", ()))
+
+
+def _known_current_jokers(audit: dict) -> tuple[str, ...]:
+    known: list[str] = []
+    for joker in audit.get("joker_details", ()):
+        if not isinstance(joker, dict):
+            continue
+        name = str(joker.get("name", ""))
+        metadata = joker.get("metadata")
+        if name in {"Ice Cream", "Square Joker", "Stone Joker", "Castle"} and _has_current_value(metadata, "chips"):
+            known.append(name)
+        elif name in {"Popcorn", "Supernova", "Green Joker", "Ride the Bus"} and _has_current_value(metadata, "mult"):
+            known.append(name)
+        elif name == "Ramen" and (_has_current_value(metadata, "xmult") or _has_ramen_effect_value(metadata)):
+            known.append(name)
+        elif name == "Loyalty Card" and _has_countdown_value(metadata):
+            known.append(name)
+    return tuple(known)
+
+
+def _has_current_value(metadata: object, suffix: str) -> bool:
+    if not isinstance(metadata, dict):
+        return False
+    keys = {
+        "chips": ("current_chips", "chips"),
+        "mult": ("current_mult", "mult"),
+    }.get(suffix, (f"current_{suffix}", suffix))
+    for source in _metadata_sources(metadata):
+        if any(key in source for key in keys):
+            return True
+        value = source.get("effect")
+        if isinstance(value, str) and "currently" in value.lower():
+            return True
+    value = metadata.get("value")
+    if isinstance(value, dict):
+        effect = value.get("effect")
+        if isinstance(effect, str) and "currently" in effect.lower():
+            return True
+    return False
+
+
+def _has_countdown_value(metadata: object) -> bool:
+    if not isinstance(metadata, dict):
+        return False
+    for source in _metadata_sources(metadata):
+        if any(key in source for key in ("current_remaining", "remaining", "hands_remaining", "hands_left")):
+            return True
+        value = source.get("effect")
+        if isinstance(value, str) and ("remaining" in value.lower() or "active" in value.lower()):
+            return True
+    value = metadata.get("value")
+    if isinstance(value, dict):
+        effect = value.get("effect")
+        if isinstance(effect, str) and ("remaining" in effect.lower() or "active" in effect.lower()):
+            return True
+    return False
+
+
+def _has_ramen_effect_value(metadata: object) -> bool:
+    if not isinstance(metadata, dict):
+        return False
+    for source in _metadata_sources(metadata):
+        value = source.get("effect")
+        if isinstance(value, str) and "x" in value.lower() and "mult" in value.lower():
+            return True
+    value = metadata.get("value")
+    if isinstance(value, dict):
+        effect = value.get("effect")
+        return isinstance(effect, str) and "x" in effect.lower() and "mult" in effect.lower()
+    return False
+
+
+def _metadata_sources(metadata: dict) -> tuple[dict, ...]:
+    sources = [metadata]
+    for key in ("ability", "config", "extra"):
+        value = metadata.get(key)
+        if isinstance(value, dict):
+            sources.append(value)
+            nested_extra = value.get("extra")
+            if isinstance(nested_extra, dict):
+                sources.append(nested_extra)
+    return tuple(sources)
 
 
 def _group_by_hand_type(records: tuple[ScoreAuditRecord, ...]) -> Iterable[tuple[str, tuple[ScoreAuditRecord, ...]]]:

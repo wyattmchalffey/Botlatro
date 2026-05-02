@@ -51,6 +51,15 @@ def run_single_seed(
     steps = 0
     stale_state_recoveries = 0
     while not state.run_over and steps < options.max_steps:
+        if not state.legal_actions:
+            if stale_state_recoveries >= 5:
+                raise ValueError("No legal actions available in nonterminal state")
+            stale_state_recoveries += 1
+            sleep(0.15 * stale_state_recoveries)
+            state = _refreshed_state(env, fallback=state)
+            env.state = state
+            continue
+
         legal_actions = state.legal_actions
         action = bot.choose_action(state)
         try:
@@ -132,9 +141,11 @@ def _reset_with_retries(
 
 
 def _with_standard_win_boundary(state: GameState) -> GameState:
-    if state.run_over or state.won or state.ante < 9:
+    if state.ante >= 9:
+        return replace(state, ante=8, run_over=True, won=True, legal_actions=())
+    if state.run_over or state.won:
         return state
-    return replace(state, ante=8, run_over=True, won=True)
+    return state
 
 
 def _step_extra(*, state: GameState, next_state: GameState, action: Action) -> dict[str, object]:
@@ -155,6 +166,7 @@ def _step_extra(*, state: GameState, next_state: GameState, action: Action) -> d
         deck_size=state.deck_size,
         money=state.money,
         played_hand_types_this_round=_played_hand_types_this_round(state),
+        played_hand_counts=_played_hand_counts(state),
     )
     actual_score_delta = next_state.current_score - state.current_score
     return {
@@ -180,6 +192,8 @@ def _step_extra(*, state: GameState, next_state: GameState, action: Action) -> d
             "discards_remaining": state.discards_remaining,
             "deck_size": state.deck_size,
             "hand_levels": dict(state.hand_levels),
+            "hands": dict(state.modifiers.get("hands", {})) if isinstance(state.modifiers.get("hands"), dict) else {},
+            "played_hand_counts": _played_hand_counts(state),
             "jokers": [joker.name for joker in state.jokers],
             "joker_details": [_joker_audit_payload(joker) for joker in state.jokers],
         }
@@ -209,6 +223,20 @@ def _played_hand_types_this_round(state: GameState) -> tuple[str, ...]:
     return tuple(name for _, name in sorted(played, key=lambda item: item[0]))
 
 
+def _played_hand_counts(state: GameState) -> dict[str, int]:
+    hands = state.modifiers.get("hands", {})
+    if not isinstance(hands, dict):
+        return {}
+
+    counts: dict[str, int] = {}
+    for name, value in hands.items():
+        if isinstance(value, dict):
+            counts[str(name)] = _int_value(value.get("played"))
+        else:
+            counts[str(name)] = _int_value(value)
+    return counts
+
+
 def _card_audit_payload(card) -> dict[str, str | None]:
     return {
         "rank": card.rank,
@@ -228,6 +256,13 @@ def _joker_audit_payload(joker) -> dict[str, object]:
         "sell_value": joker.sell_value,
         "metadata": dict(joker.metadata),
     }
+
+
+def _int_value(value: object) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _is_recoverable_step_error(exc: Exception) -> bool:

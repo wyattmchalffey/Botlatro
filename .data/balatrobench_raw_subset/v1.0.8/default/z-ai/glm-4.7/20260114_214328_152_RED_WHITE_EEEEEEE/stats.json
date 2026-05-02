@@ -1,0 +1,26 @@
+{
+  "run_won": false,
+  "run_completed": true,
+  "final_ante": 3,
+  "final_round": 8,
+  "providers": {
+    "SiliconFlow": 51,
+    "Parasail": 1
+  },
+  "calls_total": 52,
+  "calls_success": 50,
+  "calls_error": 1,
+  "calls_failed": 1,
+  "tokens_in_total": 742114,
+  "tokens_out_total": 76192,
+  "tokens_in_avg": 14271.423076923076,
+  "tokens_out_avg": 1465.2307692307693,
+  "tokens_in_std": 567.4779894204016,
+  "tokens_out_std": 648.4815027638396,
+  "time_total_ms": 1113387,
+  "time_avg_ms": 21411.28846153846,
+  "time_std_ms": 9922.517438983066,
+  "cost_total": 0.4795311,
+  "cost_avg": 0.009221751923076922,
+  "cost_std": 0.0015000142597714856
+}

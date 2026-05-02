@@ -7,7 +7,7 @@ from pathlib import Path
 
 import context  # noqa: F401
 from balatro_ai.api.actions import Action, ActionType
-from balatro_ai.api.state import Card, GamePhase, GameState
+from balatro_ai.api.state import Card, GamePhase, GameState, Joker
 from balatro_ai.data.replay_logger import ReplayLogger
 
 
@@ -21,8 +21,11 @@ class ReplayLoggerTests(unittest.TestCase):
                 money=8,
                 deck_size=44,
                 hand=(Card("A", "S"), Card("A", "H", enhancement="Bonus")),
+                known_deck=(Card("K", "S"), Card("Q", "D", seal="Red")),
+                jokers=(Joker("Ice Cream", metadata={"ability": {"extra": {"chips": 85}}}),),
                 hand_levels={"Pair": 2},
                 modifiers={
+                    "hands": {"Pair": {"level": 2, "played_this_round": 1}},
                     "shop_cards": (
                         {"label": "Joker", "set": "Joker", "cost": {"buy": 3}, "rarity": 1},
                         {"label": "Cavendish", "set": "Joker", "cost": {"buy": 4}, "rarity": 2},
@@ -40,7 +43,11 @@ class ReplayLoggerTests(unittest.TestCase):
         self.assertEqual(row["state_detail"]["booster_packs"][0]["name"], "Arcana Pack")
         self.assertEqual(row["state_detail"]["hand"][0]["name"], "AS")
         self.assertEqual(row["state_detail"]["hand"][1]["enhancement"], "Bonus")
+        self.assertEqual(row["state_detail"]["known_deck"][0]["name"], "KS")
+        self.assertEqual(row["state_detail"]["known_deck"][1]["seal"], "Red")
         self.assertEqual(row["state_detail"]["hand_levels"], {"Pair": 2})
+        self.assertEqual(row["state_detail"]["hands"]["Pair"]["played_this_round"], 1)
+        self.assertEqual(row["state_detail"]["jokers"][0]["metadata"]["ability"]["extra"]["chips"], 85)
         self.assertEqual(row["state_detail"]["deck_size"], 44)
         self.assertEqual(row["chosen_item"]["name"], "Cavendish")
 

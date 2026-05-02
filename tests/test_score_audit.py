@@ -92,6 +92,88 @@ class ScoreAuditTests(unittest.TestCase):
         self.assertEqual(len(summary.uncertain_records), 1)
         self.assertIn("Misprint has random mult", summary.to_text())
 
+    def test_audit_marks_history_and_certificate_rows_uncertain(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            replay_path = Path(directory) / "run.jsonl"
+            replay_path.write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "seed": 123,
+                                "extra": {
+                                    "score_audit": {
+                                        "cards": ["KS"],
+                                        "hand_type": "High Card",
+                                        "predicted_score": 15,
+                                        "actual_score_delta": 0,
+                                        "ante": 1,
+                                        "blind": "The Eye",
+                                        "jokers": [],
+                                    }
+                                },
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "seed": 123,
+                                "extra": {
+                                    "score_audit": {
+                                        "cards": ["KS"],
+                                        "hand_type": "High Card",
+                                        "predicted_score": 15,
+                                        "actual_score_delta": 20,
+                                        "ante": 1,
+                                        "blind": "Small Blind",
+                                        "jokers": ["Certificate"],
+                                    }
+                                },
+                            }
+                        ),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            summary = audit_replays((replay_path,))
+
+        self.assertEqual(len(summary.supported_records), 0)
+        self.assertEqual(len(summary.uncertain_records), 2)
+        text = summary.to_text()
+        self.assertIn("The Eye depends on prior hand-type history", text)
+        self.assertIn("Certificate-created sealed cards", text)
+
+    def test_audit_marks_cerulean_bell_rows_uncertain(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            replay_path = Path(directory) / "run.jsonl"
+            replay_path.write_text(
+                json.dumps(
+                    {
+                        "seed": 123,
+                        "extra": {
+                            "score_audit": {
+                                "cards": ["TS", "9H", "8D", "7D", "6C"],
+                                "hand_type": "Straight",
+                                "predicted_score": 100,
+                                "actual_score_delta": 10,
+                                "ante": 8,
+                                "blind": "Cerulean Bell",
+                                "jokers": [],
+                            }
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            summary = audit_replays((replay_path,))
+
+        self.assertEqual(len(summary.supported_records), 0)
+        self.assertEqual(len(summary.uncertain_records), 1)
+        self.assertIn("Cerulean Bell forced selection", summary.to_text())
+
 
 if __name__ == "__main__":
     unittest.main()

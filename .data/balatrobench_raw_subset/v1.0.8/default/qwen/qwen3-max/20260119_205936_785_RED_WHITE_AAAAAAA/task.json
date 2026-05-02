@@ -1,0 +1,10 @@
+{
+  "model": {
+    "vendor": "qwen",
+    "name": "qwen3-max"
+  },
+  "seed": "AAAAAAA",
+  "deck": "RED",
+  "stake": "WHITE",
+  "strategy": "default"
+}

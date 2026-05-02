@@ -1,0 +1,27 @@
+{
+  "run_won": false,
+  "run_completed": false,
+  "final_ante": 7,
+  "final_round": 19,
+  "providers": {
+    "Google": 213,
+    "SiliconFlow": 1,
+    "AtlasCloud": 3
+  },
+  "calls_total": 217,
+  "calls_success": 179,
+  "calls_error": 37,
+  "calls_failed": 1,
+  "tokens_in_total": 3380218,
+  "tokens_out_total": 640873,
+  "tokens_in_avg": 15577.041474654377,
+  "tokens_out_avg": 2953.3317972350233,
+  "tokens_in_std": 472.71905869879475,
+  "tokens_out_std": 1551.0312640283928,
+  "time_total_ms": 14765054,
+  "time_avg_ms": 68041.72350230414,
+  "time_std_ms": 40996.36694288639,
+  "cost_total": 2.94408745,
+  "cost_avg": 0.013567223271889401,
+  "cost_std": 0.00293475196863016
+}

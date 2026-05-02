@@ -1,0 +1,97 @@
+{
+  "schema": "balatro-ai.score-edge.v1",
+  "cases": [
+    {
+      "name": "square_joker_scores_current_four_card_gain",
+      "kind": "score",
+      "source": "synthetic",
+      "cards": "AS KH QD JC",
+      "jokers": [
+        {
+          "name": "Square Joker",
+          "metadata": {
+            "current_chips": 8
+          }
+        }
+      ],
+      "expected": {
+        "hand_type": "High Card",
+        "chips": 28,
+        "mult": 1,
+        "score": 28
+      }
+    },
+    {
+      "name": "loyalty_card_active_text_scores_this_hand",
+      "kind": "score",
+      "source": "synthetic from replay audit text",
+      "cards": "AS",
+      "jokers": [
+        {
+          "name": "Loyalty Card",
+          "metadata": {
+            "value": {
+              "effect": "X4 Mult every 6 hands played Active!"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "hand_type": "High Card",
+        "xmult": 4.0,
+        "score": 64
+      }
+    },
+    {
+      "name": "supernova_uses_visible_played_hand_count",
+      "kind": "score",
+      "source": "synthetic",
+      "cards": "AS",
+      "jokers": ["Supernova"],
+      "played_hand_counts": {
+        "High Card": 3
+      },
+      "expected": {
+        "hand_type": "High Card",
+        "mult": 5,
+        "score": 80
+      }
+    },
+    {
+      "name": "ramen_uses_visible_metadata_xmult",
+      "kind": "score",
+      "source": "synthetic",
+      "cards": "AS",
+      "jokers": [
+        {
+          "name": "Ramen",
+          "metadata": {
+            "ability": {
+              "extra": {
+                "xmult": 1.5
+              }
+            }
+          }
+        }
+      ],
+      "expected": {
+        "hand_type": "High Card",
+        "xmult": 1.5,
+        "score": 24
+      }
+    },
+    {
+      "name": "card_sharp_uses_prior_hand_type_this_round",
+      "kind": "score",
+      "source": "synthetic",
+      "cards": "AS AD",
+      "jokers": ["Card Sharp"],
+      "played_hand_types_this_round": ["Pair"],
+      "expected": {
+        "hand_type": "Pair",
+        "xmult": 3.0,
+        "score": 192
+      }
+    }
+  ]
+}

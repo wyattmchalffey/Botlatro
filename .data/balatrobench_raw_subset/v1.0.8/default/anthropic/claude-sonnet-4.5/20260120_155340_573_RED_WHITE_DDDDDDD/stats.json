@@ -1,0 +1,26 @@
+{
+  "run_won": false,
+  "run_completed": true,
+  "final_ante": 6,
+  "final_round": 18,
+  "providers": {
+    "Google": 65,
+    "Amazon Bedrock": 106
+  },
+  "calls_total": 171,
+  "calls_success": 171,
+  "calls_error": 0,
+  "calls_failed": 0,
+  "tokens_in_total": 2887956,
+  "tokens_out_total": 640170,
+  "tokens_in_avg": 16888.63157894737,
+  "tokens_out_avg": 3743.684210526316,
+  "tokens_in_std": 524.6650796655266,
+  "tokens_out_std": 1888.1338109164024,
+  "time_total_ms": 10567958,
+  "time_avg_ms": 61800.92397660819,
+  "time_std_ms": 26983.317858394057,
+  "cost_total": 18.266418,
+  "cost_avg": 0.10682115789473685,
+  "cost_std": 0.0289445919519201
+}

@@ -1,0 +1,26 @@
+{
+  "run_won": true,
+  "run_completed": true,
+  "final_ante": 9,
+  "final_round": 24,
+  "providers": {
+    "Google AI Studio": 249,
+    "Google": 2
+  },
+  "calls_total": 251,
+  "calls_success": 223,
+  "calls_error": 28,
+  "calls_failed": 0,
+  "tokens_in_total": 3703505,
+  "tokens_out_total": 674041,
+  "tokens_in_avg": 14755.0,
+  "tokens_out_avg": 2685.422310756972,
+  "tokens_in_std": 620.5230116603251,
+  "tokens_out_std": 1580.2868945037287,
+  "time_total_ms": 8083845,
+  "time_avg_ms": 32206.553784860556,
+  "time_std_ms": 17124.92863004385,
+  "cost_total": 11.7289804,
+  "cost_avg": 0.04672900557768924,
+  "cost_std": 0.020256246645847516
+}

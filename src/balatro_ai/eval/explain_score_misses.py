@@ -55,7 +55,7 @@ def explain_replays(
     worst_count: int = 10,
     include_uncertain: bool = False,
 ) -> str:
-    explanations = tuple(_explanations_from_paths(paths, include_uncertain=include_uncertain))
+    explanations = collect_score_explanations(paths, include_uncertain=include_uncertain)
     miss_explanations = tuple(item for item in explanations if item.error != 0)
     selected = sorted(miss_explanations, key=lambda item: item.absolute_error, reverse=True)[:worst_count]
 
@@ -74,6 +74,16 @@ def explain_replays(
         lines.extend(_format_explanation(index, item))
         lines.append("")
     return "\n".join(lines).rstrip()
+
+
+def collect_score_explanations(
+    paths: Iterable[Path],
+    *,
+    include_uncertain: bool = False,
+) -> tuple[MissExplanation, ...]:
+    """Recompute replay score-audit rows with the current evaluator."""
+
+    return tuple(_explanations_from_paths(paths, include_uncertain=include_uncertain))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -156,6 +166,7 @@ def _explanation_from_payload(
         held_cards=held_cards,
         deck_size=int(audit.get("deck_size", 0)),
         money=int(audit.get("money", 0)),
+        played_hand_counts=_played_hand_counts(audit),
     )
 
     stored_predicted = int(audit.get("predicted_score", 0))
@@ -302,6 +313,37 @@ def _int_mapping(value: Any) -> dict[str, int]:
     if not isinstance(value, dict):
         return {}
     return {str(key): int(item) for key, item in value.items()}
+
+
+def _played_hand_counts(audit: dict[str, Any]) -> dict[str, int]:
+    direct = audit.get("played_hand_counts")
+    if isinstance(direct, dict):
+        return {str(key): _int_value(value) for key, value in direct.items()}
+
+    hands = audit.get("hands")
+    if not isinstance(hands, dict):
+        return {}
+    counts: dict[str, int] = {}
+    for name, value in hands.items():
+        if isinstance(value, dict):
+            counts[str(name)] = _hand_play_count(value)
+        else:
+            counts[str(name)] = _int_value(value)
+    return counts
+
+
+def _hand_play_count(value: dict[str, Any]) -> int:
+    for key in ("played", "played_this_run", "played_count", "times_played", "count"):
+        if key in value:
+            return _int_value(value[key])
+    return _int_value(value.get("played_this_round"))
+
+
+def _int_value(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _card_indices(payload: dict[str, Any]) -> tuple[int, ...]:

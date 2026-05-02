@@ -1,0 +1,26 @@
+{
+  "run_won": false,
+  "run_completed": true,
+  "final_ante": 1,
+  "final_round": 3,
+  "providers": {
+    "DeepInfra": 12,
+    "Fireworks": 9
+  },
+  "calls_total": 21,
+  "calls_success": 19,
+  "calls_error": 2,
+  "calls_failed": 0,
+  "tokens_in_total": 290289,
+  "tokens_out_total": 32615,
+  "tokens_in_avg": 13823.285714285714,
+  "tokens_out_avg": 1553.095238095238,
+  "tokens_in_std": 556.6996625521829,
+  "tokens_out_std": 652.2812203920871,
+  "time_total_ms": 319911,
+  "time_avg_ms": 15233.857142857143,
+  "time_std_ms": 4504.334726524155,
+  "cost_total": 0.12299416,
+  "cost_avg": 0.005856864761904762,
+  "cost_std": 0.0009545739803264023
+}
