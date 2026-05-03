@@ -5,12 +5,14 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 from dataclasses import dataclass, field, replace
+from itertools import combinations
 import json
 from pathlib import Path
 from typing import Iterable
 
 from balatro_ai.api.actions import Action, ActionType
-from balatro_ai.api.state import Card, GamePhase, GameState, Joker, Stake
+from balatro_ai.api.state import Card, GamePhase, GameState, Joker, Stake, VOUCHER_KEY_TO_NAME
+from balatro_ai.rules.joker_compat import is_blueprint_compatible
 from balatro_ai.search.forward_sim import (
     simulate_buy,
     simulate_cash_out,
@@ -22,6 +24,7 @@ from balatro_ai.search.forward_sim import (
     simulate_reroll,
     simulate_select_blind,
     simulate_sell,
+    simulate_use_consumable,
 )
 
 SUPPORTED_ACTIONS = frozenset(
@@ -31,6 +34,7 @@ SUPPORTED_ACTIONS = frozenset(
         ActionType.CASH_OUT,
         ActionType.BUY,
         ActionType.SELL,
+        ActionType.USE_CONSUMABLE,
         ActionType.REROLL,
         ActionType.OPEN_PACK,
         ActionType.CHOOSE_PACK_CARD,
@@ -46,12 +50,9 @@ KNOWN_GAP_JOKERS = {
     "Misprint": "Misprint has random mult",
     "Obelisk": "Obelisk depends on prior hand-type history and reset timing",
     "Ramen": "Ramen fractional XMult can differ by Lua rounding",
-    "Red Card": "Red Card increments when booster packs are skipped; skip timing is not fully modeled yet",
     "Space Joker": "Space Joker can randomly upgrade hand level before scoring",
 }
 KNOWN_GAP_BLINDS = {
-    "Cerulean Bell": "Cerulean Bell forced selection can make scored cards differ from requested action cards",
-    "The Hook": "The Hook discards random held cards during play transitions",
     "The Pillar": "The Pillar debuffs previously played cards not always represented in card state",
 }
 COMPARE_FIELDS = (
@@ -315,7 +316,7 @@ def _diff_rows(path: Path, rows: tuple[dict[str, object], ...]) -> tuple[list[Tr
             continue
         mismatch_details = _state_mismatch_details(simulated, post_state, action.action_type)
         mismatches = tuple(detail.field for detail in mismatch_details)
-        known_gap_reason = _known_gap_reason(pre_state) if mismatches else None
+        known_gap_reason = _known_gap_reason(pre_state, action=action, mismatch_details=mismatch_details) if mismatches else None
         diffs.append(
             TransitionDiff(
                 path=path,
@@ -355,21 +356,30 @@ def _diff_rows(path: Path, rows: tuple[dict[str, object], ...]) -> tuple[list[Tr
 
 def _simulate_transition(pre_state: GameState, post_state: GameState, action: Action) -> GameState:
     if action.action_type == ActionType.PLAY_HAND:
-        held_cards = tuple(card for index, card in enumerate(pre_state.hand) if index not in set(action.card_indices))
-        drawn_cards = _drawn_cards_from_post_state(held_cards, post_state.hand)
-        return simulate_play(
-            pre_state,
-            action,
-            drawn_cards,
-            created_consumables=_added_labels(pre_state.consumables, post_state.consumables),
-        )
+        if pre_state.blind == "Cerulean Bell" and not _truthy(pre_state.modifiers.get("boss_disabled")):
+            best_simulated: GameState | None = None
+            best_mismatch_count: int | None = None
+            for candidate in _cerulean_candidate_actions(pre_state, action):
+                try:
+                    simulated = _simulate_play_transition(pre_state, post_state, candidate)
+                except ValueError:
+                    continue
+                mismatch_count = len(_state_mismatch_details(simulated, post_state, action.action_type))
+                if mismatch_count == 0:
+                    return simulated
+                if best_mismatch_count is None or mismatch_count < best_mismatch_count:
+                    best_simulated = simulated
+                    best_mismatch_count = mismatch_count
+            if best_simulated is not None:
+                return best_simulated
+        return _simulate_play_transition(pre_state, post_state, action)
     if action.action_type == ActionType.DISCARD:
         held_cards = tuple(card for index, card in enumerate(pre_state.hand) if index not in set(action.card_indices))
         drawn_cards = _drawn_cards_from_post_state(held_cards, post_state.hand)
         return simulate_discard(pre_state, action, drawn_cards)
     if action.action_type == ActionType.CASH_OUT:
         return simulate_cash_out(
-            pre_state,
+            _with_observed_cash_out_delta(pre_state, post_state),
             next_shop_cards=_modifier_items(post_state.modifiers, "shop_cards"),
             next_voucher_cards=_modifier_items(post_state.modifiers, "voucher_cards"),
             next_booster_packs=_modifier_items(post_state.modifiers, "booster_packs"),
@@ -378,7 +388,7 @@ def _simulate_transition(pre_state: GameState, post_state: GameState, action: Ac
         )
     if action.action_type == ActionType.SELECT_BLIND:
         certificate_cards = _select_blind_created_hand_cards(pre_state, post_state)
-        drawn_cards = post_state.hand[: len(post_state.hand) - len(certificate_cards)]
+        drawn_cards = _without_card_instances(post_state.hand, certificate_cards)
         return simulate_select_blind(
             pre_state,
             drawn_cards=drawn_cards,
@@ -386,11 +396,23 @@ def _simulate_transition(pre_state: GameState, post_state: GameState, action: Ac
             created_deck_cards=_select_blind_created_deck_cards(pre_state, post_state),
             created_consumables=_added_labels(pre_state.consumables, post_state.consumables),
             created_jokers=_added_joker_items(pre_state, post_state),
+            **_select_blind_destroyed_joker_injections(pre_state, post_state),
         )
     if action.action_type == ActionType.BUY:
-        return simulate_buy(pre_state, action)
+        return simulate_buy(
+            pre_state,
+            action,
+            **_buy_surface_injections(pre_state, post_state, action),
+        )
     if action.action_type == ActionType.SELL:
         return simulate_sell(pre_state, action)
+    if action.action_type == ActionType.USE_CONSUMABLE:
+        return simulate_use_consumable(
+            pre_state,
+            action,
+            created_consumables=_added_labels(pre_state.consumables, post_state.consumables),
+            created_jokers=_added_joker_items(pre_state, post_state),
+        )
     if action.action_type == ActionType.REROLL:
         return simulate_reroll(
             _with_inferred_reroll_cost(pre_state, post_state),
@@ -403,6 +425,7 @@ def _simulate_transition(pre_state: GameState, post_state: GameState, action: Ac
             action,
             pack_contents=_modifier_items(post_state.modifiers, "pack_cards"),
             created_consumables=_added_labels(pre_state.consumables, post_state.consumables),
+            drawn_cards=post_state.hand,
         )
     if action.action_type == ActionType.CHOOSE_PACK_CARD:
         remaining_pack_cards = (
@@ -410,13 +433,202 @@ def _simulate_transition(pre_state: GameState, post_state: GameState, action: Ac
             if post_state.phase == GamePhase.BOOSTER_OPENED
             else None
         )
-        return simulate_choose_pack_card(pre_state, action, remaining_pack_cards=remaining_pack_cards)
+        return simulate_choose_pack_card(
+            pre_state,
+            action,
+            remaining_pack_cards=remaining_pack_cards,
+            created_consumables=_added_labels(pre_state.consumables, post_state.consumables),
+            created_jokers=_added_joker_items(pre_state, post_state),
+        )
     if action.action_type == ActionType.END_SHOP:
         return simulate_end_shop(
             pre_state,
             created_consumables=_added_labels(pre_state.consumables, post_state.consumables),
         )
     raise ValueError(f"Unsupported action: {action.action_type.value}")
+
+
+def _simulate_play_transition(pre_state: GameState, post_state: GameState, action: Action) -> GameState:
+    held_cards = tuple(card for index, card in enumerate(pre_state.hand) if index not in set(action.card_indices))
+    created_consumables = _added_labels(pre_state.consumables, post_state.consumables)
+    stochastic_outcomes = _play_stochastic_outcomes_from_post_state(pre_state, post_state)
+    stochastic_outcomes.update(_action_stochastic_outcomes(action))
+    hook_discarded_cards = _hook_discarded_cards_from_post_state(
+        pre_state,
+        held_cards,
+        post_state,
+        action,
+        created_consumables=created_consumables,
+        stochastic_outcomes=stochastic_outcomes,
+    )
+    if not hook_discarded_cards:
+        hook_discarded_cards = _hook_discarded_cards_from_score(
+            pre_state,
+            post_state,
+            action,
+            held_cards,
+            created_consumables=created_consumables,
+            stochastic_outcomes=stochastic_outcomes,
+        )
+    held_cards_after_hook = _without_card_instances(held_cards, hook_discarded_cards)
+    drawn_cards = _drawn_cards_from_post_state(held_cards_after_hook, post_state.hand)
+    if hook_discarded_cards:
+        stochastic_outcomes["hook_discarded_cards"] = hook_discarded_cards
+    misprint_mult = _infer_misprint_mult(
+        pre_state,
+        post_state,
+        action,
+        drawn_cards,
+        created_consumables,
+        stochastic_outcomes,
+    )
+    if misprint_mult is not None:
+        stochastic_outcomes["misprint_mult"] = misprint_mult
+    reserved_parking_triggers = _infer_reserved_parking_triggers(
+        pre_state,
+        post_state,
+        action,
+        drawn_cards,
+        created_consumables,
+        stochastic_outcomes,
+    )
+    if reserved_parking_triggers is not None:
+        stochastic_outcomes["reserved_parking_triggers"] = reserved_parking_triggers
+    simulated = simulate_play(
+        pre_state,
+        action,
+        drawn_cards,
+        created_consumables=created_consumables,
+        stochastic_outcomes=stochastic_outcomes,
+    )
+    return _with_observed_final_win_flag(simulated, pre_state, post_state)
+
+
+def _action_stochastic_outcomes(action: Action) -> dict[str, object]:
+    outcomes = action.metadata.get("stochastic_outcomes")
+    return dict(outcomes) if isinstance(outcomes, dict) else {}
+
+
+def _infer_reserved_parking_triggers(
+    pre_state: GameState,
+    post_state: GameState,
+    action: Action,
+    drawn_cards: tuple[Card, ...],
+    created_consumables: tuple[str, ...],
+    stochastic_outcomes: dict[str, object],
+) -> int | None:
+    if "reserved_parking_triggers" in stochastic_outcomes:
+        return None
+    if not any(joker.name == "Reserved Parking" for joker in pre_state.jokers):
+        return None
+    try:
+        baseline = simulate_play(
+            pre_state,
+            action,
+            drawn_cards,
+            created_consumables=created_consumables,
+            stochastic_outcomes=stochastic_outcomes,
+        )
+    except ValueError:
+        return None
+    missing_money = post_state.money - baseline.money
+    return missing_money if missing_money > 0 else None
+
+
+def _select_blind_destroyed_joker_injections(
+    pre_state: GameState,
+    post_state: GameState,
+) -> dict[str, int]:
+    injections: dict[str, int] = {}
+    ceremonial_index = _ceremonial_destroyed_joker_index_from_post_state(pre_state, post_state)
+    if ceremonial_index is not None:
+        injections["ceremonial_destroyed_joker_index"] = ceremonial_index
+    madness_index = _madness_destroyed_joker_index_from_post_state(pre_state, post_state, ceremonial_index)
+    if madness_index is not None:
+        injections["madness_destroyed_joker_index"] = madness_index
+    return injections
+
+
+def _ceremonial_destroyed_joker_index_from_post_state(
+    pre_state: GameState,
+    post_state: GameState,
+) -> int | None:
+    for index in range(1, len(pre_state.jokers)):
+        dagger = pre_state.jokers[index - 1]
+        if dagger.name != "Ceremonial Dagger" or _joker_is_disabled(dagger):
+            continue
+        remaining = tuple(joker for candidate_index, joker in enumerate(pre_state.jokers) if candidate_index != index)
+        if _joker_counter(remaining) == _joker_counter(post_state.jokers):
+            return index
+    return None
+
+
+def _madness_destroyed_joker_index_from_post_state(
+    pre_state: GameState,
+    post_state: GameState,
+    ceremonial_destroyed_joker_index: int | None,
+) -> int | None:
+    if _select_blind_is_boss(pre_state):
+        return None
+    remaining_after_dagger = tuple(
+        joker
+        for index, joker in enumerate(pre_state.jokers)
+        if index != ceremonial_destroyed_joker_index
+    )
+    if not any(joker.name == "Madness" and not _joker_is_disabled(joker) for joker in remaining_after_dagger):
+        return None
+    for index, joker in enumerate(remaining_after_dagger):
+        if joker.name == "Madness":
+            continue
+        remaining = tuple(
+            candidate
+            for candidate_index, candidate in enumerate(remaining_after_dagger)
+            if candidate_index != index
+        )
+        if _joker_counter(remaining) == _joker_counter(post_state.jokers):
+            return index
+    return None
+
+
+def _select_blind_is_boss(state: GameState) -> bool:
+    current_blind = state.modifiers.get("current_blind")
+    if isinstance(current_blind, dict):
+        blind_type = str(current_blind.get("type", current_blind.get("kind", ""))).upper()
+        if blind_type == "BOSS":
+            return True
+        if blind_type in {"SMALL", "BIG"}:
+            return False
+    return state.blind.strip() not in {"", "Small Blind", "Big Blind"}
+
+
+def _with_observed_final_win_flag(simulated: GameState, pre_state: GameState, post_state: GameState) -> GameState:
+    if not post_state.won or simulated.won:
+        return simulated
+    if pre_state.ante < 8:
+        return simulated
+    if simulated.phase != GamePhase.ROUND_EVAL:
+        return simulated
+    if simulated.required_score <= 0 or simulated.current_score < simulated.required_score:
+        return simulated
+    return replace(simulated, won=True)
+
+
+def _cerulean_candidate_actions(pre_state: GameState, action: Action) -> tuple[Action, ...]:
+    selected = set(action.card_indices)
+    candidates = [action]
+    for index in range(len(pre_state.hand)):
+        if index in selected:
+            continue
+        candidates.append(
+            Action(
+                action.action_type,
+                card_indices=tuple(sorted(selected | {index})),
+                target_id=action.target_id,
+                amount=action.amount,
+                metadata=action.metadata,
+            )
+        )
+    return tuple(candidates)
 
 
 def _with_inferred_reroll_cost(pre_state: GameState, post_state: GameState) -> GameState:
@@ -454,9 +666,22 @@ def _select_blind_created_hand_cards(pre_state: GameState, post_state: GameState
     count = _first_draw_effective_joker_count(pre_state.jokers, "Certificate")
     if count <= 0:
         return ()
+    sealed_cards = tuple(card for card in post_state.hand if card.seal)
+    if len(sealed_cards) >= count:
+        return sealed_cards[:count]
+    observed_added_to_hand = _added_cards(pre_state.known_deck, post_state.hand) if pre_state.known_deck else ()
+    if len(observed_added_to_hand) >= count:
+        return observed_added_to_hand[:count]
+    visible_extra_cards = len(post_state.hand) - _opening_hand_size(pre_state)
+    if visible_extra_cards < count:
+        return ()
     if count > len(post_state.hand):
         raise ValueError(f"Certificate expected {count} created hand cards, got {len(post_state.hand)} total hand cards")
     return post_state.hand[-count:]
+
+
+def _opening_hand_size(state: GameState) -> int:
+    return max(0, 8 + _int_value(state.modifiers.get("hand_size_delta")))
 
 
 def _select_blind_created_deck_cards(pre_state: GameState, post_state: GameState) -> tuple[Card, ...]:
@@ -515,6 +740,219 @@ def _removed_joker_names(before: tuple[Joker, ...], after: tuple[Joker, ...]) ->
     return tuple(removed)
 
 
+def _buy_surface_injections(pre_state: GameState, post_state: GameState, action: Action) -> dict[str, tuple[object, ...]]:
+    bought = _buy_action_item(pre_state, action)
+    if _item_label(bought) not in {"Overstock", "Overstock Plus"}:
+        return {}
+    return {"next_shop_cards": _modifier_items(post_state.modifiers, "shop_cards")}
+
+
+def _play_stochastic_outcomes_from_post_state(pre_state: GameState, post_state: GameState) -> dict[str, object]:
+    outcomes: dict[str, object] = {"removed_jokers": _removed_joker_names(pre_state.jokers, post_state.jokers)}
+    if any(joker.name == "Business Card" for joker in pre_state.jokers):
+        money_delta = post_state.money - pre_state.money
+        if money_delta > 0:
+            outcomes["business_card_triggers"] = money_delta // 2
+    crimson_disabled_index = _crimson_heart_disabled_joker_index_from_post_state(pre_state, post_state)
+    if crimson_disabled_index is not None:
+        outcomes["crimson_heart_disabled_joker_index"] = crimson_disabled_index
+    return outcomes
+
+
+def _crimson_heart_disabled_joker_index_from_post_state(pre_state: GameState, post_state: GameState) -> int | None:
+    if pre_state.blind != "Crimson Heart" or _truthy(pre_state.modifiers.get("boss_disabled")):
+        return None
+    if post_state.phase not in {GamePhase.SELECTING_HAND, GamePhase.PLAYING_BLIND}:
+        return None
+    for index, joker in enumerate(post_state.jokers):
+        if _joker_is_disabled(joker):
+            return index
+    return None
+
+
+def _infer_misprint_mult(
+    pre_state: GameState,
+    post_state: GameState,
+    action: Action,
+    drawn_cards: tuple[Card, ...],
+    created_consumables: tuple[str, ...],
+    stochastic_outcomes: dict[str, object],
+) -> int | None:
+    if "misprint_mult" in stochastic_outcomes:
+        return None
+    if not any(joker.name == "Misprint" for joker in pre_state.jokers):
+        return None
+
+    for mult in range(24):
+        candidate_outcomes = {**stochastic_outcomes, "misprint_mult": mult}
+        try:
+            candidate = simulate_play(
+                pre_state,
+                action,
+                drawn_cards,
+                created_consumables=created_consumables,
+                stochastic_outcomes=candidate_outcomes,
+            )
+        except ValueError:
+            continue
+        if candidate.current_score == post_state.current_score and candidate.phase == post_state.phase:
+            return mult
+    return None
+
+
+def _hook_discarded_cards_from_post_state(
+    pre_state: GameState,
+    held_cards: tuple[Card, ...],
+    post_state: GameState,
+    action: Action,
+    *,
+    created_consumables: tuple[str, ...],
+    stochastic_outcomes: dict[str, object],
+) -> tuple[Card, ...]:
+    if pre_state.blind != "The Hook" or _truthy(pre_state.modifiers.get("boss_disabled")):
+        return ()
+    if post_state.phase not in {GamePhase.SELECTING_HAND, GamePhase.PLAYING_BLIND}:
+        return ()
+
+    remaining_actual = _card_counter(post_state.hand)
+    discarded: list[Card] = []
+    for card in held_cards:
+        key = _card_key(card)
+        if remaining_actual[key] > 0:
+            remaining_actual[key] -= 1
+        else:
+            discarded.append(card)
+    visible_discarded = tuple(discarded[: min(2, len(held_cards))])
+    expected_count = _hook_discard_count_from_post_sizes(pre_state, post_state, action, held_cards)
+    if expected_count <= len(visible_discarded):
+        return visible_discarded
+
+    visible_counter = _card_counter(visible_discarded)
+    deck_delta = pre_state.deck_size - post_state.deck_size
+    best_candidate: tuple[Card, ...] | None = None
+    for indexes in combinations(range(len(held_cards)), expected_count):
+        candidate = tuple(held_cards[index] for index in indexes)
+        if not _card_counter_contains(_card_counter(candidate), visible_counter):
+            continue
+        held_after_hook = _without_card_instances(held_cards, candidate)
+        drawn_cards = _drawn_cards_from_post_state(held_after_hook, post_state.hand)
+        if deck_delta >= 0 and len(drawn_cards) != deck_delta:
+            continue
+        outcomes = {**stochastic_outcomes, "hook_discarded_cards": candidate}
+        try:
+            simulated = simulate_play(
+                pre_state,
+                action,
+                drawn_cards,
+                created_consumables=created_consumables,
+                stochastic_outcomes=outcomes,
+            )
+        except ValueError:
+            continue
+        if (
+            simulated.phase == post_state.phase
+            and simulated.current_score == post_state.current_score
+            and simulated.deck_size == post_state.deck_size
+            and simulated.hands_remaining == post_state.hands_remaining
+            and simulated.discards_remaining == post_state.discards_remaining
+            and _card_counter(simulated.hand) == _card_counter(post_state.hand)
+        ):
+            return candidate
+        best_candidate = best_candidate or candidate
+    return best_candidate or visible_discarded
+
+
+def _hook_discard_count_from_post_sizes(
+    pre_state: GameState,
+    post_state: GameState,
+    action: Action,
+    held_cards: tuple[Card, ...],
+) -> int:
+    deck_delta = pre_state.deck_size - post_state.deck_size
+    if deck_delta < 0:
+        return min(2, len(held_cards))
+    selected_count = len(action.card_indices)
+    inferred = len(pre_state.hand) - selected_count + deck_delta - len(post_state.hand)
+    return max(0, min(2, len(held_cards), inferred))
+
+
+def _card_counter_contains(candidate: Counter[tuple[object, ...]], required: Counter[tuple[object, ...]]) -> bool:
+    return all(candidate[key] >= count for key, count in required.items())
+
+
+def _hook_discarded_cards_from_score(
+    pre_state: GameState,
+    post_state: GameState,
+    action: Action,
+    held_cards: tuple[Card, ...],
+    *,
+    created_consumables: tuple[str, ...],
+    stochastic_outcomes: dict[str, object],
+) -> tuple[Card, ...]:
+    if pre_state.blind != "The Hook" or _truthy(pre_state.modifiers.get("boss_disabled")):
+        return ()
+    count = min(2, len(held_cards))
+    if count <= 0 or post_state.phase not in {GamePhase.ROUND_EVAL, GamePhase.RUN_OVER}:
+        return ()
+
+    best_candidate: tuple[Card, ...] = ()
+    best_error: int | None = None
+    for indexes in combinations(range(len(held_cards)), count):
+        candidate = tuple(held_cards[index] for index in indexes)
+        outcomes = {**stochastic_outcomes, "hook_discarded_cards": candidate}
+        try:
+            simulated = simulate_play(
+                pre_state,
+                action,
+                (),
+                created_consumables=created_consumables,
+                stochastic_outcomes=outcomes,
+            )
+        except ValueError:
+            continue
+        if simulated.current_score == post_state.current_score and simulated.phase == post_state.phase:
+            return candidate
+        error = abs(simulated.current_score - post_state.current_score)
+        if best_error is None or error < best_error:
+            best_candidate = candidate
+            best_error = error
+    return best_candidate
+
+
+def _without_card_instances(cards: tuple[Card, ...], removed_cards: tuple[Card, ...]) -> tuple[Card, ...]:
+    if not removed_cards:
+        return cards
+    remaining_removals = _card_counter(removed_cards)
+    kept: list[Card] = []
+    for card in cards:
+        key = _card_key(card)
+        if remaining_removals[key] > 0:
+            remaining_removals[key] -= 1
+        else:
+            kept.append(card)
+    return tuple(kept)
+
+
+def _truthy(value: object) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() not in {"", "0", "false", "no", "none", "nil"}
+    return bool(value)
+
+
+def _buy_action_item(pre_state: GameState, action: Action) -> object:
+    kind = str(action.metadata.get("kind") or action.target_id or "card")
+    item_key = "voucher_cards" if kind == "voucher" else "shop_cards"
+    items = _modifier_items(pre_state.modifiers, item_key)
+    raw_index = action.metadata.get("index", action.amount)
+    try:
+        index = int(raw_index)
+    except (TypeError, ValueError):
+        return None
+    if 0 <= index < len(items):
+        return items[index]
+    return None
+
+
 def _joker_to_item(joker: Joker) -> dict[str, object]:
     item: dict[str, object] = {"name": joker.name}
     if joker.edition is not None:
@@ -545,9 +983,9 @@ def _effective_ability_joker_indices(jokers: tuple[Joker, ...]) -> tuple[int, ..
         joker = jokers[index]
         if index in seen:
             return index
-        if joker.name == "Blueprint" and index + 1 < len(jokers):
+        if joker.name == "Blueprint" and index + 1 < len(jokers) and is_blueprint_compatible(jokers[index + 1]):
             return resolve(index + 1, seen | {index})
-        if joker.name == "Brainstorm" and index != 0:
+        if joker.name == "Brainstorm" and index != 0 and is_blueprint_compatible(jokers[0]):
             return resolve(0, seen | {index})
         return index
 
@@ -686,8 +1124,6 @@ def _state_mismatch_details(
 def _should_compare_visible_hand(action_type: ActionType, actual: GameState) -> bool:
     if action_type != ActionType.PLAY_HAND:
         return True
-    if actual.blind == "The Hook":
-        return False
     return actual.phase in {GamePhase.SELECTING_HAND, GamePhase.PLAYING_BLIND}
 
 
@@ -704,7 +1140,14 @@ def _should_compare_inventory(action_type: ActionType) -> bool:
     }
 
 
-def _known_gap_reason(state: GameState) -> str | None:
+def _known_gap_reason(
+    state: GameState,
+    *,
+    action: Action | None = None,
+    mismatch_details: Iterable[object] = (),
+) -> str | None:
+    if _crimson_heart_hidden_card_metadata_gap(state, action, mismatch_details):
+        return "Crimson Heart score depends on hidden card metadata missing from older replay logs"
     if state.blind in KNOWN_GAP_BLINDS:
         return KNOWN_GAP_BLINDS[state.blind]
     for joker in state.jokers:
@@ -712,6 +1155,18 @@ def _known_gap_reason(state: GameState) -> str | None:
         if reason:
             return reason
     return None
+
+
+def _crimson_heart_hidden_card_metadata_gap(
+    state: GameState,
+    action: Action | None,
+    mismatch_details: Iterable[object],
+) -> bool:
+    if state.blind != "Crimson Heart" or action is None or action.action_type != ActionType.PLAY_HAND:
+        return False
+    if not any(getattr(detail, "field", None) == "current_score" for detail in mismatch_details):
+        return False
+    return True
 
 
 def _joker_names_from_row(row: dict[str, object]) -> set[str]:
@@ -936,8 +1391,10 @@ def _state_from_detail(
     voucher_cards = _list_of_dicts(detail.get("voucher_shop"))
     booster_packs = _list_of_dicts(detail.get("booster_packs"))
     pack_cards = _list_of_dicts(detail.get("pack"))
+    round_detail = _mapping(detail.get("round"))
     modifiers = {
         **_mapping(detail.get("modifiers")),
+        **_round_detail_modifiers(round_detail),
         "hands": _mapping(detail.get("hands")),
         "joker_cards": tuple(_list_of_dicts(joker_details)),
         "shop_cards": shop_cards,
@@ -972,7 +1429,7 @@ def _state_from_detail(
         known_deck=tuple(_card_from_detail(card) for card in _list_of_dicts(detail.get("known_deck"))),
         jokers=tuple(_joker_from_detail(joker) for joker in _list_of_dicts(joker_details)),
         consumables=_item_labels_from_value(detail.get("consumables")),
-        vouchers=_item_labels_from_value(detail.get("owned_vouchers", detail.get("redeemed_vouchers", ()))),
+        vouchers=_owned_vouchers_from_detail(detail),
         shop=tuple(_item_label(item) for item in shop_cards),
         pack=tuple(_item_label(item) for item in pack_cards),
         hand_levels={str(key): _int_value(value) for key, value in _mapping(hand_levels).items()},
@@ -991,6 +1448,58 @@ def _action_from_row(row: dict[str, object]) -> Action | None:
         return Action.from_mapping(action)
     except (KeyError, ValueError, TypeError):
         return None
+
+
+def _round_detail_modifiers(round_detail: dict[str, object]) -> dict[str, object]:
+    if not round_detail:
+        return {}
+    modifiers: dict[str, object] = {"round": dict(round_detail)}
+    if "dollars" in round_detail:
+        modifiers["current_round_dollars"] = round_detail["dollars"]
+        modifiers["cash_out_money_delta"] = round_detail["dollars"]
+    if "reroll_cost" in round_detail:
+        modifiers["reroll_cost"] = round_detail["reroll_cost"]
+        modifiers["current_reroll_cost"] = round_detail["reroll_cost"]
+    for key in (
+        "blind_reward",
+        "blind_score",
+        "blind_on_deck",
+        "blind_states",
+        "money_per_hand",
+        "money_per_discard",
+        "no_extra_hand_money",
+        "no_interest",
+        "no_blind_reward",
+        "interest_amount",
+        "interest_cap",
+    ):
+        if key in round_detail:
+            modifiers[key] = round_detail[key]
+    return modifiers
+
+
+def _owned_vouchers_from_detail(detail: dict[str, object]) -> tuple[str, ...]:
+    for key in ("owned_vouchers", "redeemed_vouchers"):
+        labels = _voucher_labels_from_value(detail.get(key))
+        if labels:
+            return labels
+    return _voucher_labels_from_used_vouchers(detail.get("used_vouchers"))
+
+
+def _voucher_labels_from_used_vouchers(value: object) -> tuple[str, ...]:
+    if isinstance(value, dict):
+        return tuple(_voucher_key_to_name(str(key)) for key in sorted(value))
+    return _voucher_labels_from_value(value)
+
+
+def _voucher_labels_from_value(value: object) -> tuple[str, ...]:
+    if not isinstance(value, list | tuple):
+        return ()
+    return tuple(_voucher_key_to_name(_item_label(item)) for item in value if isinstance(item, str | dict))
+
+
+def _voucher_key_to_name(value: str) -> str:
+    return VOUCHER_KEY_TO_NAME.get(value, value)
 
 
 def _score_audit_from_row(row: dict[str, object]) -> dict[str, object] | None:
@@ -1032,6 +1541,20 @@ def _drawn_cards_from_post_state(held_cards: tuple[Card, ...], actual_hand: tupl
         else:
             drawn.append(card)
     return tuple(drawn)
+
+
+def _with_observed_cash_out_delta(pre_state: GameState, post_state: GameState) -> GameState:
+    delta = post_state.money - pre_state.money
+    round_detail = pre_state.modifiers.get("round")
+    updated_round = dict(round_detail) if isinstance(round_detail, dict) else {}
+    updated_round["dollars"] = delta
+    modifiers = {
+        **pre_state.modifiers,
+        "round": updated_round,
+        "current_round_dollars": delta,
+        "cash_out_money_delta": delta,
+    }
+    return replace(pre_state, modifiers=modifiers)
 
 
 def _card_counter(cards: tuple[Card, ...]) -> Counter[tuple[object, ...]]:

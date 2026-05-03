@@ -66,6 +66,81 @@ class BalatroBotSchemaTests(unittest.TestCase):
         self.assertIn("shop_cards", state.modifiers)
         self.assertTrue(any(action.action_type == ActionType.PLAY_HAND for action in state.legal_actions))
 
+    def test_parse_round_eval_cash_out_oracle_fields(self) -> None:
+        state = GameState.from_mapping(
+            {
+                "state": "ROUND_EVAL",
+                "ante_num": 2,
+                "money": 19,
+                "round": {
+                    "hands_left": 2,
+                    "discards_left": 4,
+                    "chips": 1516,
+                    "dollars": 8,
+                    "blind_name": "Big Blind",
+                    "blind_type": "Big",
+                    "blind_reward": 4,
+                    "blind_score": 1200,
+                    "interest_amount": 1,
+                    "interest_cap": 25,
+                    "blind_states": {"Small": "Defeated", "Big": "Defeated", "Boss": "Upcoming"},
+                },
+                "blinds": {"small": {"status": "SELECT", "name": "Small Blind", "score": 800}},
+            }
+        )
+
+        self.assertEqual(state.phase, GamePhase.ROUND_EVAL)
+        self.assertEqual(state.current_score, 1516)
+        self.assertEqual(state.blind, "Big Blind")
+        self.assertEqual(state.required_score, 1200)
+        self.assertEqual(state.modifiers["cash_out_money_delta"], 8)
+        self.assertEqual(state.modifiers["current_blind"]["type"], "BIG")
+        self.assertEqual(state.modifiers["blind_states"]["Big"], "Defeated")
+
+    def test_parse_active_round_live_blind_oracle_fields(self) -> None:
+        state = GameState.from_mapping(
+            {
+                "state": "SELECTING_HAND",
+                "ante_num": 2,
+                "money": 4,
+                "round": {
+                    "hands_left": 4,
+                    "discards_left": 3,
+                    "chips": 0,
+                    "blind_name": "The Flint",
+                    "blind_type": "Boss",
+                    "blind_reward": 5,
+                    "blind_score": 999999,
+                },
+                "blinds": {"small": {"status": "CURRENT", "name": "Small Blind", "score": 300}},
+            }
+        )
+
+        self.assertEqual(state.phase, GamePhase.SELECTING_HAND)
+        self.assertEqual(state.blind, "The Flint")
+        self.assertEqual(state.required_score, 999999)
+        self.assertEqual(state.modifiers["current_blind"]["type"], "BOSS")
+
+    def test_parse_shop_vouchers_separately_from_owned_vouchers(self) -> None:
+        state = GameState.from_mapping(
+            {
+                "state": "SHOP",
+                "money": 12,
+                "used_vouchers": {"v_seed_money": ""},
+                "vouchers": {"cards": [{"label": "Crystal Ball", "set": "VOUCHER", "cost": {"buy": 10}}]},
+            }
+        )
+
+        self.assertEqual(state.vouchers, ("Seed Money",))
+        self.assertEqual(state.modifiers["owned_vouchers"], ("Seed Money",))
+        self.assertEqual(state.modifiers["voucher_cards"][0]["label"], "Crystal Ball")
+        voucher_buys = [
+            action
+            for action in state.legal_actions
+            if action.action_type == ActionType.BUY and action.target_id == "voucher"
+        ]
+        self.assertEqual(tuple(action.amount for action in voucher_buys), (0,))
+
     def test_ante_nine_state_is_standard_run_win_boundary(self) -> None:
         state = GameState.from_mapping(
             {
@@ -98,6 +173,24 @@ class BalatroBotSchemaTests(unittest.TestCase):
 
         self.assertTrue(state.run_over)
         self.assertTrue(state.won)
+        self.assertEqual(state.ante, 8)
+        self.assertEqual(state.legal_actions, ())
+
+    def test_ante_nine_run_over_loss_is_not_standard_run_win_boundary(self) -> None:
+        state = GameState.from_mapping(
+            {
+                "state": "GAME_OVER",
+                "ante_num": 9,
+                "money": 28,
+                "won": False,
+                "run_over": True,
+                "round": {"chips": 79511, "hands_left": 0, "discards_left": 0},
+                "blinds": {"current": {"name": "Amber Acorn", "score": 100000}},
+            }
+        )
+
+        self.assertTrue(state.run_over)
+        self.assertFalse(state.won)
         self.assertEqual(state.ante, 8)
         self.assertEqual(state.legal_actions, ())
 

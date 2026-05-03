@@ -36,7 +36,7 @@
         "current_score": 100,
         "hands_remaining": 2,
         "deck_size": 8,
-        "hand": ["2C", "3D", "QS", "QC"],
+        "hand": ["QS", "QC", "3D", "2C"],
         "run_over": false
       }
     },

@@ -2075,6 +2075,18 @@ class BasicStrategyBotTests(unittest.TestCase):
         self.assertEqual(action.card_indices, (4,))
         self.assertIn("Trading Card", action.metadata["reason"])
 
+    def test_mail_in_rebate_rank_parser_ignores_payout_dollars(self) -> None:
+        state = GameState(
+            jokers=(
+                Joker(
+                    "Mail-In Rebate",
+                    metadata={"value": {"effect": "Earn $5 for each discarded 8, rank changes every round"}},
+                ),
+            )
+        )
+
+        self.assertEqual(strategy._mail_in_rebate_rank(state), "8")
+
     def test_dna_opens_with_safe_single_card_copy(self) -> None:
         state = GameState(
             ante=2,

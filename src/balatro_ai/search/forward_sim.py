@@ -14,6 +14,7 @@ from typing import Iterable
 from balatro_ai.api.actions import Action, ActionType
 from balatro_ai.api.state import Card, GamePhase, GameState, Joker
 from balatro_ai.rules.hand_evaluator import HandType, debuffed_suits_for_blind, evaluate_played_cards
+from balatro_ai.rules.joker_compat import is_blueprint_compatible
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,8 +36,14 @@ class StochasticPlayOutcomes:
     reserved_parking_triggers: int = 0
     misprint_mult: int = 0
     space_joker_triggers: int = 0
+    lucky_card_mult_triggers: int = 0
+    lucky_card_money_triggers: int = 0
     lucky_card_triggers: int = 0
     matador_triggered: bool | None = None
+    removed_jokers: tuple[str, ...] = ()
+    hook_discarded_cards: tuple[Card, ...] = ()
+    shattered_glass_cards: tuple[Card, ...] = ()
+    crimson_heart_disabled_joker_index: int | None = None
 
 
 PLANET_TO_HAND = {
@@ -52,6 +59,93 @@ PLANET_TO_HAND = {
     "Planet X": HandType.FIVE_OF_A_KIND,
     "Ceres": HandType.FLUSH_HOUSE,
     "Eris": HandType.FLUSH_FIVE,
+}
+
+TAROT_NAMES = frozenset(
+    {
+        "The Fool",
+        "The Magician",
+        "The High Priestess",
+        "The Empress",
+        "The Emperor",
+        "The Hierophant",
+        "The Lovers",
+        "The Chariot",
+        "Justice",
+        "The Hermit",
+        "The Wheel of Fortune",
+        "Strength",
+        "The Hanged Man",
+        "Death",
+        "Temperance",
+        "The Devil",
+        "The Tower",
+        "The Star",
+        "The Moon",
+        "The Sun",
+        "Judgement",
+        "The World",
+    }
+)
+SPECTRAL_NAMES = frozenset(
+    {
+        "Familiar",
+        "Grim",
+        "Incantation",
+        "Talisman",
+        "Aura",
+        "Wraith",
+        "Sigil",
+        "Ouija",
+        "Ectoplasm",
+        "Immolate",
+        "Ankh",
+        "Deja Vu",
+        "Hex",
+        "Trance",
+        "Medium",
+        "Cryptid",
+        "The Soul",
+        "Black Hole",
+    }
+)
+TAROT_ENHANCEMENTS = {
+    "The Magician": "LUCKY",
+    "The Empress": "MULT",
+    "The Hierophant": "BONUS",
+    "The Lovers": "WILD",
+    "The Chariot": "STEEL",
+    "Justice": "GLASS",
+    "The Devil": "GOLD",
+    "The Tower": "STONE",
+}
+TAROT_SUIT_CONVERSIONS = {
+    "The Star": "D",
+    "The Moon": "C",
+    "The Sun": "H",
+    "The World": "S",
+}
+SPECTRAL_SEALS = {
+    "Talisman": "Gold",
+    "Deja Vu": "Red",
+    "Trance": "Blue",
+    "Medium": "Purple",
+}
+STRENGTH_RANKS = {
+    "2": "3",
+    "3": "4",
+    "4": "5",
+    "5": "6",
+    "6": "7",
+    "7": "8",
+    "8": "9",
+    "9": "10",
+    "10": "J",
+    "T": "J",
+    "J": "Q",
+    "Q": "K",
+    "K": "A",
+    "A": "2",
 }
 
 
@@ -73,28 +167,31 @@ def simulate_play(
 
     outcome_map = _play_outcome_mapping(stochastic_outcomes)
     blind_name = _effective_blind_name(state)
+    hook_discarded_cards = _outcome_cards(outcome_map, "hook_discarded_cards")
+    held_cards_after_hook = _without_card_instances(held_cards, hook_discarded_cards)
+    state_jokers = _jokers_with_dynamic_state_values(state)
+    hook_jokers = _jokers_after_discard(state_jokers, hook_discarded_cards) if hook_discarded_cards else state_jokers
+    hook_money_delta = _discard_money_delta(state, hook_discarded_cards) if hook_discarded_cards else 0
     evaluation = evaluate_played_cards(
         selected_cards,
         state.hand_levels,
         debuffed_suits=debuffed_suits_for_blind(blind_name),
         blind_name=blind_name,
-        jokers=state.jokers,
+        jokers=hook_jokers,
         discards_remaining=state.discards_remaining,
         hands_remaining=state.hands_remaining,
-        held_cards=held_cards,
+        held_cards=held_cards_after_hook,
         deck_size=state.deck_size,
-        money=state.money,
+        money=state.money + hook_money_delta,
         played_hand_types_this_round=_played_hand_types_this_round(state),
         played_hand_counts=_played_hand_counts(state),
         stochastic_outcomes=outcome_map,
     )
-    draw = tuple(drawn_cards)
-    draw_result = _draw_from_deck(state, draw)
     next_score = state.current_score + evaluation.score
     next_hands = max(0, state.hands_remaining - 1)
-    next_money = state.money + evaluation.money_delta
+    next_money = state.money + hook_money_delta + evaluation.money_delta
     next_jokers = _jokers_after_play(
-        state.jokers,
+        hook_jokers,
         selected_cards,
         evaluation,
         hands_remaining=state.hands_remaining,
@@ -103,6 +200,9 @@ def simulate_play(
     next_hand_levels = _hand_levels_after_play(state.hand_levels, evaluation, stochastic_outcomes=outcome_map)
     mutated_played_cards = _played_cards_after_play(state, selected_cards, evaluation)
     dna_cards = _dna_cards_after_play(state, selected_cards, evaluation)
+    shattered_glass_cards = _outcome_cards(outcome_map, "shattered_glass_cards")
+    if shattered_glass_cards:
+        _validate_shattered_glass_cards(mutated_played_cards, shattered_glass_cards)
     sixth_sense_triggered = _sixth_sense_triggers(state, selected_cards)
     consumable_creations = _play_consumable_creation_requests(
         state,
@@ -116,42 +216,70 @@ def simulate_play(
         expected=_creation_request_total(consumable_creations),
         injected=len(created_consumable_labels),
     )
-    kept_played_cards = () if sixth_sense_triggered else mutated_played_cards
+    kept_played_cards = () if sixth_sense_triggered else _without_card_instances(mutated_played_cards, shattered_glass_cards)
+    destroyed_played_cards = mutated_played_cards if sixth_sense_triggered else shattered_glass_cards
+    if destroyed_played_cards:
+        next_jokers = _jokers_after_playing_cards_destroyed(next_jokers, destroyed_played_cards, glass_shattered=shattered_glass_cards)
     next_modifiers = _with_played_hand_type(state.modifiers, evaluation.hand_type)
     next_modifiers = _with_played_hand_level(next_modifiers, evaluation.hand_type, _outcome_int(outcome_map, "space_joker_triggers"))
     next_modifiers = _with_played_pile(next_modifiers, kept_played_cards)
-    if sixth_sense_triggered:
-        next_modifiers = _with_destroyed_cards(next_modifiers, mutated_played_cards)
+    if hook_discarded_cards:
+        next_modifiers = _with_discard_pile(next_modifiers, hook_discarded_cards)
+    if destroyed_played_cards:
+        next_modifiers = _with_destroyed_cards(next_modifiers, destroyed_played_cards)
     next_modifiers = _with_creation_counts(next_modifiers, consumable_creations, created=len(created_consumable_labels))
     next_phase = state.phase
     run_over = state.run_over
     if state.required_score > 0 and next_score >= state.required_score:
         next_phase = GamePhase.ROUND_EVAL
-        next_money += _held_end_of_round_money_delta(held_cards, state.jokers)
+        next_money += _held_end_of_round_money_delta(held_cards_after_hook, next_jokers)
     elif next_hands <= 0:
         if _mr_bones_saves(state, next_score):
             next_phase = GamePhase.ROUND_EVAL
-            next_money += _held_end_of_round_money_delta(held_cards, state.jokers)
+            next_money += _held_end_of_round_money_delta(held_cards_after_hook, next_jokers)
             next_jokers = _jokers_after_mr_bones_save(next_jokers)
         else:
             next_phase = GamePhase.RUN_OVER
             run_over = True
-    return replace(
+    draw = () if next_phase == GamePhase.ROUND_EVAL else tuple(drawn_cards)
+    draw_result = _draw_from_deck(state, draw)
+    next_hand = _sort_hand_cards(held_cards_after_hook + dna_cards + draw)
+    next_known_deck = draw_result.known_deck
+    next_deck_size = draw_result.deck_size
+    if next_phase == GamePhase.ROUND_EVAL:
+        next_deck_size, next_known_deck = _round_eval_deck_after_play(
+            state,
+            draw_result,
+            returning_hand_cards=held_cards_after_hook + dna_cards + kept_played_cards + hook_discarded_cards + draw,
+        )
+        next_hand = ()
+        next_modifiers = _without_round_card_zones(next_modifiers)
+    if next_phase in {GamePhase.ROUND_EVAL, GamePhase.RUN_OVER}:
+        next_jokers = _jokers_after_played_round_ends(next_jokers)
+        next_jokers = _jokers_after_stochastic_removals(next_jokers, _outcome_names(outcome_map, "removed_jokers"))
+        if next_phase == GamePhase.ROUND_EVAL:
+            gift_card_gain = _gift_card_sell_value_gain(next_jokers)
+            next_jokers = _jokers_after_gift_card_round_end(next_jokers, gift_card_gain=gift_card_gain)
+            next_modifiers = _modifiers_after_gift_card_round_end(next_modifiers, state, gift_card_gain=gift_card_gain)
+    else:
+        next_jokers = _jokers_after_crimson_heart_draw(state, next_jokers, outcome_map, next_phase=next_phase)
+    next_state = replace(
         state,
         phase=next_phase,
         current_score=next_score,
         money=next_money,
         hands_remaining=next_hands,
-        deck_size=draw_result.deck_size,
+        deck_size=next_deck_size,
         hand_levels=next_hand_levels,
-        hand=held_cards + dna_cards + draw,
-        known_deck=draw_result.known_deck,
+        hand=next_hand,
+        known_deck=next_known_deck,
         jokers=next_jokers,
         consumables=state.consumables + created_consumable_labels,
         modifiers=next_modifiers,
         legal_actions=(),
         run_over=run_over,
     )
+    return _state_with_dynamic_joker_values(next_state)
 
 
 def simulate_discard(state: GameState, action: Action, drawn_cards: Iterable[Card] = ()) -> GameState:
@@ -165,30 +293,40 @@ def simulate_discard(state: GameState, action: Action, drawn_cards: Iterable[Car
 
     draw = tuple(drawn_cards)
     draw_result = _draw_from_deck(state, draw)
-    next_jokers = _jokers_after_discard(state.jokers, selected_cards)
+    next_jokers = _jokers_after_discard(_jokers_with_dynamic_state_values(state), selected_cards)
     next_hand_levels = _hand_levels_after_discard(state, selected_cards)
     next_money = state.money + _discard_money_delta(state, selected_cards)
     discarded_pile_cards = _discarded_cards_after_discard(state, selected_cards)
     destroyed_cards = _destroyed_cards_after_discard(state, selected_cards)
+    if destroyed_cards:
+        next_jokers = _jokers_after_playing_cards_destroyed(next_jokers, destroyed_cards, glass_shattered=())
     next_modifiers = _with_discard_used(state.modifiers)
     next_modifiers = _with_discard_pile(next_modifiers, discarded_pile_cards)
     if destroyed_cards:
         next_modifiers = _with_destroyed_cards(next_modifiers, destroyed_cards)
-    return replace(
+    next_state = replace(
         state,
         discards_remaining=max(0, state.discards_remaining - 1),
         money=next_money,
         deck_size=draw_result.deck_size,
-        hand=held_cards + draw,
+        hand=_sort_hand_cards(held_cards + draw),
         known_deck=draw_result.known_deck,
         jokers=next_jokers,
         hand_levels=next_hand_levels,
         modifiers=next_modifiers,
         legal_actions=(),
     )
+    return _state_with_dynamic_joker_values(next_state)
 
 
-def simulate_buy(state: GameState, action: Action) -> GameState:
+def simulate_buy(
+    state: GameState,
+    action: Action,
+    *,
+    next_shop_cards: Iterable[object] | None = None,
+    next_voucher_cards: Iterable[object] | None = None,
+    next_booster_packs: Iterable[object] | None = None,
+) -> GameState:
     """Apply a deterministic shop buy transition."""
 
     if action.action_type != ActionType.BUY:
@@ -214,23 +352,53 @@ def simulate_buy(state: GameState, action: Action) -> GameState:
             f"Cannot buy {_item_label(item)} with full consumable slots: "
             f"{len(state.consumables)}/{_consumable_slot_limit(state)}"
         )
+    if _item_is_joker(item) and _joker_item_uses_normal_slot(item) and _normal_joker_open_slots(state) <= 0:
+        raise ValueError(
+            f"Cannot buy {_item_label(item)} with full joker slots: "
+            f"{_normal_joker_slots_used(state)}/{_normal_joker_slot_limit(state)}"
+        )
 
     next_modifiers = _with_modifier_items(state.modifiers, item_key, _without_index(items, index))
     acquired = _state_after_acquiring_item(replace(state, modifiers=next_modifiers), item, force_voucher=kind == "voucher")
-    return replace(
+    if kind == "voucher":
+        acquired = _state_after_voucher_purchase_effects(acquired, item)
+    final_modifiers = acquired.modifiers
+    if next_shop_cards is not None:
+        final_modifiers = _with_modifier_items(final_modifiers, "shop_cards", tuple(next_shop_cards))
+    if next_voucher_cards is not None:
+        final_modifiers = _with_modifier_items(final_modifiers, "voucher_cards", tuple(next_voucher_cards))
+    if next_booster_packs is not None:
+        final_modifiers = _with_modifier_items(final_modifiers, "booster_packs", tuple(next_booster_packs))
+    next_state = replace(
         acquired,
         money=state.money - cost,
-        shop=tuple(_item_label(item) for item in _modifier_items(next_modifiers, "shop_cards")),
+        modifiers=final_modifiers,
+        shop=tuple(_item_label(item) for item in _modifier_items(final_modifiers, "shop_cards")),
         legal_actions=(),
     )
+    return _state_with_dynamic_joker_values(next_state)
 
 
-def simulate_sell(state: GameState, action: Action) -> GameState:
-    """Apply a deterministic joker sell transition."""
+def simulate_sell(state: GameState, action: Action, *, created_joker: object | None = None) -> GameState:
+    """Apply a deterministic sell transition for jokers or consumables."""
 
     if action.action_type != ActionType.SELL:
         raise ValueError(f"simulate_sell requires sell, got {action.action_type.value}")
     kind = _action_kind(action, default="joker")
+    if kind == "consumable":
+        index = _action_index(action)
+        if index is None or not 0 <= index < len(state.consumables):
+            raise ValueError(f"Sell action index is outside consumables: {action.amount}")
+        sold = state.consumables[index]
+        remaining = tuple(name for consumable_index, name in enumerate(state.consumables) if consumable_index != index)
+        next_state = replace(
+            state,
+            money=state.money + _consumable_sell_value(state, sold),
+            consumables=remaining,
+            modifiers=_modifiers_after_consumable_removed(state.modifiers, previous_count=len(state.consumables)),
+            legal_actions=(),
+        )
+        return _state_with_dynamic_joker_values(next_state)
     if kind != "joker":
         raise ValueError(f"Unsupported sell kind: {kind}")
     index = _action_index(action)
@@ -238,15 +406,68 @@ def simulate_sell(state: GameState, action: Action) -> GameState:
         raise ValueError(f"Sell action index is outside jokers: {action.amount}")
     sold = state.jokers[index]
     remaining = tuple(joker for joker_index, joker in enumerate(state.jokers) if joker_index != index)
+    if created_joker is not None:
+        if sold.name != "Invisible Joker":
+            raise ValueError(f"Only Invisible Joker can inject a created joker on sell, got {sold.name}")
+        if not _invisible_joker_ready(sold):
+            raise ValueError("Invisible Joker is not ready to create a duplicate")
+        remaining = remaining + (_joker_from_item(created_joker),)
     next_modifiers = _modifiers_after_joker_removed(state.modifiers, sold)
     next_modifiers = _modifiers_after_sell_trigger(state, next_modifiers, sold)
-    return replace(
+    next_state = replace(
         state,
         money=state.money + (sold.sell_value or 0),
         jokers=_jokers_after_sell(remaining),
         modifiers=next_modifiers,
         legal_actions=(),
     )
+    return _state_with_dynamic_joker_values(next_state)
+
+
+def simulate_use_consumable(
+    state: GameState,
+    action: Action,
+    *,
+    created_consumables: Iterable[object] = (),
+    created_jokers: Iterable[object] = (),
+    created_hand_cards: Iterable[Card] = (),
+    destroyed_hand_card_indices: Iterable[int] = (),
+    aura_edition: str | None = None,
+    wheel_of_fortune_joker_index: int | None = None,
+    wheel_of_fortune_edition: str | None = None,
+    sigil_suit: str | None = None,
+    ouija_rank: str | None = None,
+    spectral_joker_index: int | None = None,
+) -> GameState:
+    """Use a stored consumable without inventing stochastic outcomes."""
+
+    if action.action_type != ActionType.USE_CONSUMABLE:
+        raise ValueError(f"simulate_use_consumable requires use_consumable, got {action.action_type.value}")
+    kind = _action_kind(action, default="consumable")
+    if kind != "consumable":
+        raise ValueError(f"Unsupported consumable-use kind: {kind}")
+    index = _action_index(action)
+    if index is None or not 0 <= index < len(state.consumables):
+        raise ValueError(f"Consumable action index is outside consumables: {action.amount}")
+    name = state.consumables[index]
+    remaining = tuple(item for item_index, item in enumerate(state.consumables) if item_index != index)
+    used_state = replace(state, consumables=remaining)
+    next_state = _state_after_consumable_used(
+        used_state,
+        name,
+        card_indices=action.card_indices,
+        created_consumables=created_consumables,
+        created_jokers=created_jokers,
+        created_hand_cards=created_hand_cards,
+        destroyed_hand_card_indices=destroyed_hand_card_indices,
+        aura_edition=aura_edition,
+        wheel_of_fortune_joker_index=wheel_of_fortune_joker_index,
+        wheel_of_fortune_edition=wheel_of_fortune_edition,
+        sigil_suit=sigil_suit,
+        ouija_rank=ouija_rank,
+        spectral_joker_index=spectral_joker_index,
+    )
+    return _state_with_dynamic_joker_values(replace(next_state, legal_actions=()))
 
 
 def simulate_reroll(state: GameState, action: Action, new_shop_cards: Iterable[object]) -> GameState:
@@ -259,7 +480,7 @@ def simulate_reroll(state: GameState, action: Action, new_shop_cards: Iterable[o
         raise ValueError(f"Cannot reroll for ${cost} with ${state.money}")
     shop_cards = tuple(new_shop_cards)
     next_modifiers = _with_modifier_items(next_modifiers, "shop_cards", shop_cards)
-    return replace(
+    next_state = replace(
         state,
         money=state.money - cost,
         shop=tuple(_item_label(item) for item in shop_cards),
@@ -267,6 +488,7 @@ def simulate_reroll(state: GameState, action: Action, new_shop_cards: Iterable[o
         modifiers=next_modifiers,
         legal_actions=(),
     )
+    return _state_with_dynamic_joker_values(next_state)
 
 
 def simulate_open_pack(
@@ -275,6 +497,7 @@ def simulate_open_pack(
     pack_contents: Iterable[object],
     *,
     created_consumables: Iterable[object] = (),
+    drawn_cards: Iterable[Card] = (),
 ) -> GameState:
     """Open a booster, using caller-injected pack contents."""
 
@@ -290,6 +513,8 @@ def simulate_open_pack(
         raise ValueError(f"Cannot open {_item_label(pack)} for ${cost} with ${state.money}")
     contents = tuple(pack_contents)
     hallucination_cards = _created_labels(created_consumables)
+    draw = tuple(drawn_cards)
+    draw_result = _draw_from_deck(state, draw)
     _validate_injected_count_at_most(
         label="Hallucination",
         expected=_hallucination_creation_count(state),
@@ -299,15 +524,19 @@ def simulate_open_pack(
     next_modifiers = _with_modifier_items(next_modifiers, "pack_cards", contents)
     next_modifiers = _with_created_tarot_count(next_modifiers, len(hallucination_cards))
     next_modifiers = _increment_modifier_by(next_modifiers, "created_consumable_count", len(hallucination_cards))
-    return replace(
+    next_state = replace(
         state,
         phase=GamePhase.BOOSTER_OPENED,
         money=state.money - cost,
+        deck_size=draw_result.deck_size,
+        hand=_sort_hand_cards(draw),
+        known_deck=draw_result.known_deck,
         pack=tuple(_item_label(item) for item in contents),
         consumables=state.consumables + hallucination_cards,
         modifiers=next_modifiers,
         legal_actions=(),
     )
+    return _state_with_dynamic_joker_values(next_state)
 
 
 def simulate_choose_pack_card(
@@ -315,19 +544,38 @@ def simulate_choose_pack_card(
     action: Action,
     *,
     remaining_pack_cards: Iterable[object] | None = None,
+    return_hand_to_deck: bool = True,
+    created_consumables: Iterable[object] = (),
+    created_jokers: Iterable[object] = (),
+    created_hand_cards: Iterable[Card] = (),
+    destroyed_hand_card_indices: Iterable[int] = (),
+    aura_edition: str | None = None,
+    wheel_of_fortune_joker_index: int | None = None,
+    wheel_of_fortune_edition: str | None = None,
+    sigil_suit: str | None = None,
+    ouija_rank: str | None = None,
+    spectral_joker_index: int | None = None,
 ) -> GameState:
     """Choose or skip a card from an opened booster."""
 
     if action.action_type != ActionType.CHOOSE_PACK_CARD:
         raise ValueError(f"simulate_choose_pack_card requires choose_pack_card, got {action.action_type.value}")
     if action.target_id == "skip" or _action_kind(action, default="card") == "skip":
-        return replace(
+        returned_deck_size, returned_known_deck = (
+            _deck_after_returning_hand(state) if return_hand_to_deck else (state.deck_size, state.known_deck)
+        )
+        next_state = replace(
             state,
             phase=GamePhase.SHOP,
+            hand=() if return_hand_to_deck else state.hand,
+            deck_size=returned_deck_size,
+            known_deck=returned_known_deck,
+            jokers=_jokers_after_pack_skip(state.jokers),
             pack=(),
             modifiers=_with_modifier_items(state.modifiers, "pack_cards", ()),
             legal_actions=(),
         )
+        return _state_with_dynamic_joker_values(next_state)
 
     pack_cards = _modifier_items(state.modifiers, "pack_cards")
     index = _action_index(action)
@@ -342,16 +590,34 @@ def simulate_choose_pack_card(
     next_pack_cards = tuple(remaining_pack_cards) if remaining_pack_cards is not None else ()
     next_phase = GamePhase.BOOSTER_OPENED if remaining_pack_cards is not None else GamePhase.SHOP
     next_modifiers = _with_modifier_items(state.modifiers, "pack_cards", next_pack_cards)
-    acquired = _state_after_pack_choice(
-        replace(
-            state,
-            phase=next_phase,
-            pack=tuple(_item_label(item) for item in next_pack_cards),
-            modifiers=next_modifiers,
-        ),
-        item,
+    base_state = replace(
+        state,
+        phase=next_phase,
+        pack=tuple(_item_label(item) for item in next_pack_cards),
+        modifiers=next_modifiers,
     )
-    return replace(acquired, legal_actions=())
+    if not _item_is_consumable(item) and next_phase == GamePhase.SHOP and return_hand_to_deck:
+        next_deck_size, next_known_deck = _deck_after_returning_hand(state)
+        base_state = replace(base_state, hand=(), deck_size=next_deck_size, known_deck=next_known_deck)
+    acquired = _state_after_pack_choice(
+        base_state,
+        item,
+        card_indices=action.card_indices,
+        created_consumables=created_consumables,
+        created_jokers=created_jokers,
+        created_hand_cards=created_hand_cards,
+        destroyed_hand_card_indices=destroyed_hand_card_indices,
+        aura_edition=aura_edition,
+        wheel_of_fortune_joker_index=wheel_of_fortune_joker_index,
+        wheel_of_fortune_edition=wheel_of_fortune_edition,
+        sigil_suit=sigil_suit,
+        ouija_rank=ouija_rank,
+        spectral_joker_index=spectral_joker_index,
+    )
+    if _item_is_consumable(item) and next_phase == GamePhase.SHOP and return_hand_to_deck:
+        returned_deck_size, returned_known_deck = _deck_after_returning_hand(acquired)
+        acquired = replace(acquired, hand=(), deck_size=returned_deck_size, known_deck=returned_known_deck)
+    return _state_with_dynamic_joker_values(replace(acquired, legal_actions=()))
 
 
 def simulate_end_shop(state: GameState, *, created_consumables: Iterable[object] = ()) -> GameState:
@@ -364,21 +630,25 @@ def simulate_end_shop(state: GameState, *, created_consumables: Iterable[object]
         injected=len(created_consumable_labels),
     )
     next_modifiers = _without_shop_surface(state.modifiers)
+    next_hands, next_discards, next_modifiers = _round_counts_after_shop_exit(state, next_modifiers)
     if created_consumable_labels:
         next_modifiers = _increment_modifier_by(
             next_modifiers,
             "created_negative_consumable_count",
             len(created_consumable_labels),
         )
-    return replace(
+    next_state = replace(
         state,
         phase=GamePhase.BLIND_SELECT,
         shop=(),
         pack=(),
         consumables=state.consumables + created_consumable_labels,
+        hands_remaining=next_hands,
+        discards_remaining=next_discards,
         modifiers=next_modifiers,
         legal_actions=(),
     )
+    return _state_with_dynamic_joker_values(next_state)
 
 
 def simulate_cash_out(
@@ -396,18 +666,16 @@ def simulate_cash_out(
     booster_packs = tuple(next_booster_packs)
     known_deck = state.known_deck + returning_cards if state.known_deck else ()
     remaining_deck_count = max(state.deck_size, len(state.known_deck)) if state.known_deck else state.deck_size
-    gift_card_gain = _gift_card_sell_value_gain(state.jokers)
     next_jokers = _jokers_after_cash_out(state, next_to_do_targets=tuple(next_to_do_targets))
     next_jokers = _jokers_after_stochastic_removals(next_jokers, tuple(removed_jokers))
-    next_jokers = _jokers_after_gift_card_cash_out(next_jokers, gift_card_gain=gift_card_gain)
     next_modifiers = _without_round_card_zones(state.modifiers)
     next_modifiers = _with_modifier_items(next_modifiers, "shop_cards", shop_cards)
     next_modifiers = _with_modifier_items(next_modifiers, "voucher_cards", voucher_cards)
     next_modifiers = _with_modifier_items(next_modifiers, "booster_packs", booster_packs)
     next_modifiers = _with_modifier_items(next_modifiers, "pack_cards", ())
     next_modifiers = _modifiers_after_cash_out(state.modifiers, next_modifiers, state.jokers, next_jokers)
-    next_modifiers = _modifiers_after_gift_card_cash_out(next_modifiers, state, gift_card_gain=gift_card_gain)
-    return replace(
+    next_modifiers = _with_applied_round_count_deltas(next_modifiers)
+    next_state = replace(
         state,
         phase=GamePhase.SHOP,
         current_score=0,
@@ -423,6 +691,7 @@ def simulate_cash_out(
         modifiers=next_modifiers,
         legal_actions=(),
     )
+    return _state_with_dynamic_joker_values(next_state)
 
 
 def simulate_select_blind(
@@ -433,6 +702,12 @@ def simulate_select_blind(
     created_deck_cards: Iterable[Card] = (),
     created_consumables: Iterable[object] = (),
     created_jokers: Iterable[object] = (),
+    next_ancient_suit: str | None = None,
+    next_idol_card: Card | None = None,
+    next_castle_suit: str | None = None,
+    next_mail_rank: str | None = None,
+    ceremonial_destroyed_joker_index: int | None = None,
+    madness_destroyed_joker_index: int | None = None,
 ) -> GameState:
     """Start a blind, drawing the opening hand and applying injected first-draw card creation."""
 
@@ -468,8 +743,13 @@ def simulate_select_blind(
     next_modifiers = _increment_modifier_by(next_modifiers, "created_consumable_count", len(cartomancer_cards))
     next_modifiers = _increment_modifier_by(next_modifiers, "created_common_joker_count", len(riff_raff_jokers))
     known_deck = marble_cards + draw_result.known_deck if draw_result.known_deck or marble_cards else ()
-    next_hands = max(0, state.hands_remaining + _int_value(next_modifiers.get("round_hands_delta")))
-    next_discards = max(0, state.discards_remaining + _int_value(next_modifiers.get("round_discards_delta")))
+    deltas_already_applied = _truthy_modifier(next_modifiers.pop("round_count_deltas_applied", False))
+    if deltas_already_applied:
+        next_hands = state.hands_remaining
+        next_discards = state.discards_remaining
+    else:
+        next_hands = max(0, state.hands_remaining + _int_value(next_modifiers.get("round_hands_delta")))
+        next_discards = max(0, state.discards_remaining + _int_value(next_modifiers.get("round_discards_delta")))
     blind_name = _effective_blind_name(state)
     if blind_name == "The Needle":
         next_hands = 1
@@ -481,21 +761,41 @@ def simulate_select_blind(
         next_discards = 0
     if _blind_is_boss(state) and _effective_joker_count(state.jokers, "Chicot"):
         next_modifiers["boss_disabled"] = True
-    return replace(
+    for removed_joker in _blind_select_removed_jokers(
+        state.jokers,
+        ceremonial_destroyed_joker_index=ceremonial_destroyed_joker_index,
+        madness_destroyed_joker_index=madness_destroyed_joker_index,
+        madness_can_destroy=not _blind_is_boss(state),
+    ):
+        next_modifiers = _modifiers_after_joker_removed(next_modifiers, removed_joker)
+    next_jokers = state.jokers
+    next_jokers = _jokers_after_blind_select(
+        state,
+        next_jokers,
+        next_ancient_suit=next_ancient_suit,
+        next_idol_card=next_idol_card,
+        next_castle_suit=next_castle_suit,
+        next_mail_rank=next_mail_rank,
+        ceremonial_destroyed_joker_index=ceremonial_destroyed_joker_index,
+        madness_destroyed_joker_index=madness_destroyed_joker_index,
+    )
+    next_jokers = next_jokers + riff_raff_jokers
+    next_state = replace(
         state,
         phase=GamePhase.SELECTING_HAND,
         current_score=0,
         hands_remaining=next_hands,
         discards_remaining=next_discards,
-        hand=draw + certificate_cards,
+        hand=_sort_hand_cards(draw + certificate_cards),
         known_deck=known_deck,
         deck_size=draw_result.deck_size + len(marble_cards),
-        jokers=state.jokers + riff_raff_jokers,
+        jokers=next_jokers,
         consumables=state.consumables + cartomancer_cards,
         modifiers=next_modifiers,
         legal_actions=(),
         run_over=False,
     )
+    return _state_with_dynamic_joker_values(next_state)
 
 
 def _draw_from_deck(state: GameState, drawn_cards: tuple[Card, ...]) -> _DrawResult:
@@ -520,6 +820,176 @@ def _draw_from_deck(state: GameState, drawn_cards: tuple[Card, ...]) -> _DrawRes
     return _DrawResult(deck_size=max(len(known_deck), state.deck_size - len(drawn_cards)), known_deck=known_deck)
 
 
+def _jokers_after_blind_select(
+    state: GameState,
+    jokers: tuple[Joker, ...],
+    *,
+    next_ancient_suit: str | None,
+    next_idol_card: Card | None,
+    next_castle_suit: str | None,
+    next_mail_rank: str | None,
+    ceremonial_destroyed_joker_index: int | None,
+    madness_destroyed_joker_index: int | None,
+) -> tuple[Joker, ...]:
+    updated = _jokers_with_round_targets(
+        jokers,
+        next_ancient_suit=next_ancient_suit,
+        next_idol_card=next_idol_card,
+        next_castle_suit=next_castle_suit,
+        next_mail_rank=next_mail_rank,
+    )
+    updated = _jokers_after_ceremonial_dagger_blind_select(updated, ceremonial_destroyed_joker_index)
+    if not _blind_is_boss(state):
+        updated = _jokers_after_madness_blind_select(updated, madness_destroyed_joker_index)
+    elif madness_destroyed_joker_index is not None:
+        raise ValueError("Madness does not destroy jokers on boss blinds")
+    return updated
+
+
+def _blind_select_removed_jokers(
+    jokers: tuple[Joker, ...],
+    *,
+    ceremonial_destroyed_joker_index: int | None,
+    madness_destroyed_joker_index: int | None,
+    madness_can_destroy: bool,
+) -> tuple[Joker, ...]:
+    removed: list[Joker] = []
+    remaining = jokers
+    if ceremonial_destroyed_joker_index is not None and 0 <= ceremonial_destroyed_joker_index < len(jokers):
+        removed.append(jokers[ceremonial_destroyed_joker_index])
+        remaining = tuple(joker for index, joker in enumerate(jokers) if index != ceremonial_destroyed_joker_index)
+    if madness_can_destroy and madness_destroyed_joker_index is not None and 0 <= madness_destroyed_joker_index < len(remaining):
+        removed.append(remaining[madness_destroyed_joker_index])
+    return tuple(removed)
+
+
+def _jokers_with_round_targets(
+    jokers: tuple[Joker, ...],
+    *,
+    next_ancient_suit: str | None,
+    next_idol_card: Card | None,
+    next_castle_suit: str | None,
+    next_mail_rank: str | None,
+) -> tuple[Joker, ...]:
+    updated: list[Joker] = []
+    for joker in jokers:
+        if joker.name == "Ancient Joker" and next_ancient_suit:
+            suit = _normalize_suit(next_ancient_suit)
+            updated.append(_with_joker_metadata(joker, {"current_suit": suit, "target_suit": suit}))
+        elif joker.name == "The Idol" and next_idol_card is not None:
+            rank = _normalize_rank(next_idol_card.rank)
+            suit = _normalize_suit(next_idol_card.suit)
+            updated.append(
+                _with_joker_metadata(
+                    joker,
+                    {
+                        "current_rank": rank,
+                        "target_rank": rank,
+                        "current_suit": suit,
+                        "target_suit": suit,
+                    },
+                )
+            )
+        elif joker.name == "Castle" and next_castle_suit:
+            suit = _normalize_suit(next_castle_suit)
+            updated.append(_with_joker_metadata(joker, {"current_suit": suit, "target_suit": suit}))
+        elif joker.name == "Mail-In Rebate" and next_mail_rank:
+            rank = _normalize_rank(next_mail_rank)
+            updated.append(_with_joker_metadata(joker, {"current_rank": rank, "target_rank": rank}))
+        else:
+            updated.append(joker)
+    return tuple(updated)
+
+
+def _jokers_after_ceremonial_dagger_blind_select(
+    jokers: tuple[Joker, ...],
+    destroyed_index: int | None,
+) -> tuple[Joker, ...]:
+    if destroyed_index is None:
+        return jokers
+    dagger_index = destroyed_index - 1
+    if dagger_index < 0 or dagger_index >= len(jokers):
+        raise ValueError(f"Ceremonial Dagger destroyed index has no dagger to its left: {destroyed_index}")
+    dagger = jokers[dagger_index]
+    destroyed = jokers[destroyed_index] if 0 <= destroyed_index < len(jokers) else None
+    if dagger.name != "Ceremonial Dagger":
+        raise ValueError("Ceremonial Dagger can only destroy the joker immediately to its right")
+    if destroyed is None:
+        raise ValueError(f"Ceremonial Dagger destroyed index is outside jokers: {destroyed_index}")
+    current = _joker_int(dagger, keys=("current_mult", "mult"), default=0)
+    gained = 2 * (destroyed.sell_value or 0)
+    updated_dagger = _with_joker_metadata(dagger, {"current_mult": current + gained, "mult": current + gained})
+    return tuple(
+        updated_dagger if index == dagger_index else joker
+        for index, joker in enumerate(jokers)
+        if index != destroyed_index
+    )
+
+
+def _jokers_after_madness_blind_select(
+    jokers: tuple[Joker, ...],
+    destroyed_index: int | None,
+) -> tuple[Joker, ...]:
+    madness_indexes = [index for index, joker in enumerate(jokers) if joker.name == "Madness" and not _joker_is_disabled(joker)]
+    if not madness_indexes:
+        if destroyed_index is not None:
+            raise ValueError("Madness destroyed joker was injected but no active Madness exists")
+        return jokers
+
+    updated: list[Joker] = []
+    for index, joker in enumerate(jokers):
+        if index == destroyed_index:
+            continue
+        if joker.name == "Madness" and not _joker_is_disabled(joker):
+            current = _joker_float(joker, keys=("current_xmult", "xmult", "current_x_mult", "x_mult"), default=1.0)
+            gain = _joker_float(joker, keys=("extra", "xmult_gain"), default=0.5)
+            updated.append(_with_joker_metadata(joker, {"current_xmult": current + gain, "xmult": current + gain}))
+        else:
+            updated.append(joker)
+    return tuple(updated)
+
+
+def _round_eval_deck_after_play(
+    state: GameState,
+    draw_result: _DrawResult,
+    *,
+    returning_hand_cards: tuple[Card, ...],
+) -> tuple[int, tuple[Card, ...]]:
+    returning_cards = (
+        returning_hand_cards
+        + _zone_cards(state.modifiers, "played_pile")
+        + _zone_cards(state.modifiers, "discard_pile")
+    )
+    known_deck = draw_result.known_deck + returning_cards if draw_result.known_deck else ()
+    remaining_deck_count = max(draw_result.deck_size, len(draw_result.known_deck)) if draw_result.known_deck else draw_result.deck_size
+    return remaining_deck_count + len(returning_cards), known_deck
+
+
+def _deck_after_returning_hand(state: GameState) -> tuple[int, tuple[Card, ...]]:
+    if not state.hand:
+        return state.deck_size, state.known_deck
+    known_deck = state.known_deck + state.hand if state.known_deck else ()
+    return state.deck_size + len(state.hand), known_deck
+
+
+def _sort_hand_cards(cards: tuple[Card, ...]) -> tuple[Card, ...]:
+    rank_order = {rank: index for index, rank in enumerate(("A", "K", "Q", "J", "T", "9", "8", "7", "6", "5", "4", "3", "2"))}
+    suit_order = {"S": 0, "H": 1, "C": 2, "D": 3}
+    return tuple(
+        sorted(
+            cards,
+            key=lambda card: (
+                rank_order.get(card.rank, len(rank_order)),
+                suit_order.get(card.suit, len(suit_order)),
+                card.enhancement or "",
+                card.seal or "",
+                card.edition or "",
+                card.debuffed,
+            ),
+        )
+    )
+
+
 def _play_outcome_mapping(outcomes: StochasticPlayOutcomes | dict[str, object] | None) -> dict[str, object]:
     if outcomes is None:
         return {}
@@ -530,10 +1000,35 @@ def _play_outcome_mapping(outcomes: StochasticPlayOutcomes | dict[str, object] |
             "reserved_parking_triggers": outcomes.reserved_parking_triggers,
             "misprint_mult": outcomes.misprint_mult,
             "space_joker_triggers": outcomes.space_joker_triggers,
+            "lucky_card_mult_triggers": outcomes.lucky_card_mult_triggers,
+            "lucky_card_money_triggers": outcomes.lucky_card_money_triggers,
             "lucky_card_triggers": outcomes.lucky_card_triggers,
             "matador_triggered": outcomes.matador_triggered,
+            "removed_jokers": outcomes.removed_jokers,
+            "hook_discarded_cards": outcomes.hook_discarded_cards,
+            "shattered_glass_cards": outcomes.shattered_glass_cards,
+            "crimson_heart_disabled_joker_index": outcomes.crimson_heart_disabled_joker_index,
         }
     return dict(outcomes)
+
+
+def _without_card_instances(cards: tuple[Card, ...], removed_cards: tuple[Card, ...]) -> tuple[Card, ...]:
+    if not removed_cards:
+        return cards
+    remaining = list(cards)
+    for removed in removed_cards:
+        index = _find_matching_card_index(remaining, removed)
+        if index is None:
+            raise ValueError(f"Cannot remove {removed.short_name}; it is not in held cards")
+        del remaining[index]
+    return tuple(remaining)
+
+
+def _validate_shattered_glass_cards(played_cards: tuple[Card, ...], shattered_cards: tuple[Card, ...]) -> None:
+    for card in shattered_cards:
+        if _normalized(card.enhancement) not in {"glass", "glass card"}:
+            raise ValueError(f"Only Glass Cards can shatter, got {card.short_name} {card.enhancement!r}")
+    _without_card_instances(played_cards, shattered_cards)
 
 
 def _find_matching_card_index(cards: list[Card], target: Card) -> int | None:
@@ -654,19 +1149,197 @@ def _state_after_acquiring_item(state: GameState, item: object, *, force_voucher
     playing_card = _playing_card_from_item(item)
     if playing_card is not None:
         known_deck = state.known_deck + (playing_card,) if state.known_deck else ()
-        return replace(state, deck_size=state.deck_size + 1, known_deck=known_deck)
+        return _state_with_dynamic_joker_values(
+            replace(
+                state,
+                deck_size=state.deck_size + 1,
+                known_deck=known_deck,
+                jokers=_jokers_after_playing_cards_added(state.jokers, (playing_card,)),
+            )
+        )
     return replace(state, consumables=state.consumables + (_item_label(item),))
 
 
-def _state_after_pack_choice(state: GameState, item: object) -> GameState:
+def _state_after_voucher_purchase_effects(state: GameState, voucher: object) -> GameState:
+    label = _item_label(voucher)
+    updated_state = state
+    hand_delta = _voucher_hand_delta(label)
+    discard_delta = _voucher_discard_delta(label)
+    shop_slot_delta = _voucher_shop_slot_delta(label)
+    if hand_delta or discard_delta or shop_slot_delta:
+        modifiers = dict(updated_state.modifiers)
+        if hand_delta:
+            modifiers["round_hands_delta"] = _int_value(modifiers.get("round_hands_delta")) + hand_delta
+            modifiers["applied_round_hands_delta"] = _int_value(modifiers.get("applied_round_hands_delta")) + hand_delta
+        if discard_delta:
+            modifiers["round_discards_delta"] = _int_value(modifiers.get("round_discards_delta")) + discard_delta
+            modifiers["applied_round_discards_delta"] = _int_value(modifiers.get("applied_round_discards_delta")) + discard_delta
+        if shop_slot_delta:
+            for key in ("shop_joker_max", "shop_slots", "shop_card_slots"):
+                if key in modifiers:
+                    modifiers[key] = max(0, _int_value(modifiers.get(key)) + shop_slot_delta)
+                    break
+        updated_state = replace(
+            updated_state,
+            hands_remaining=max(0, updated_state.hands_remaining + hand_delta),
+            discards_remaining=max(0, updated_state.discards_remaining + discard_delta),
+            modifiers=modifiers,
+        )
+
+    discount_percent = _voucher_discount_percent(label)
+    if discount_percent <= 0:
+        return updated_state
+    modifiers = dict(updated_state.modifiers)
+    modifiers["discount_percent"] = discount_percent
+    for key in ("shop_cards", "voucher_cards", "booster_packs", "pack_cards"):
+        items = _modifier_items(modifiers, key)
+        if items:
+            modifiers = _with_modifier_items(modifiers, key, tuple(_with_discounted_item_cost(item, discount_percent) for item in items))
+    return replace(
+        updated_state,
+        jokers=tuple(_with_discounted_joker_sell_value(joker, discount_percent) for joker in updated_state.jokers),
+        modifiers=modifiers,
+    )
+
+
+def _voucher_discount_percent(label: str) -> int:
+    if label == "Liquidation":
+        return 50
+    if label == "Clearance Sale":
+        return 25
+    return 0
+
+
+def _voucher_hand_delta(label: str) -> int:
+    if label in {"Grabber", "Nacho Tong"}:
+        return 1
+    return 0
+
+
+def _voucher_discard_delta(label: str) -> int:
+    if label in {"Wasteful", "Recyclomancy"}:
+        return 1
+    return 0
+
+
+def _voucher_shop_slot_delta(label: str) -> int:
+    if label in {"Overstock", "Overstock Plus"}:
+        return 1
+    return 0
+
+
+def _with_discounted_item_cost(item: object, discount_percent: int) -> object:
+    if not isinstance(item, dict):
+        return item
+    buy_cost = _item_buy_cost(item)
+    if buy_cost <= 0:
+        return item
+    discounted_buy = _discounted_cost(buy_cost, discount_percent)
+    updated = dict(item)
+    cost = dict(updated.get("cost")) if isinstance(updated.get("cost"), dict) else {}
+    cost["buy"] = discounted_buy
+    cost["sell"] = max(1, discounted_buy // 2)
+    updated["cost"] = cost
+    return updated
+
+
+def _with_discounted_joker_sell_value(joker: Joker, discount_percent: int) -> Joker:
+    extra_value = _joker_extra_value(joker)
+    current_buy_cost = _joker_buy_cost_for_discount(joker, extra_value=extra_value)
+    if current_buy_cost <= 0:
+        return joker
+    discounted_buy = _discounted_cost(current_buy_cost, discount_percent)
+    sell_value = max(1, discounted_buy // 2) + extra_value
+    metadata = dict(joker.metadata)
+    cost = dict(metadata.get("cost")) if isinstance(metadata.get("cost"), dict) else {}
+    cost["buy"] = discounted_buy
+    cost["sell"] = sell_value
+    metadata["cost"] = cost
+    return Joker(joker.name, edition=joker.edition, sell_value=sell_value, metadata=metadata)
+
+
+def _joker_buy_cost_for_discount(joker: Joker, *, extra_value: int) -> int:
+    for source in _metadata_sources(joker.metadata):
+        cost = source.get("cost")
+        if isinstance(cost, dict):
+            buy_cost = _int_value(cost.get("buy", cost.get("cost", 0)))
+            if buy_cost > 0:
+                return buy_cost
+    if joker.sell_value is None:
+        return 0
+    return max(0, (joker.sell_value - extra_value) * 2)
+
+
+def _joker_extra_value(joker: Joker) -> int:
+    value = _joker_numeric_value(joker, keys=("extra_value",))
+    try:
+        return int(value) if value is not None else 0
+    except (TypeError, ValueError):
+        return 0
+
+
+def _discounted_cost(current_cost: int, discount_percent: int) -> int:
+    return max(1, ((current_cost * 2 + 1) * (100 - discount_percent)) // 200)
+
+
+def _state_after_pack_choice(
+    state: GameState,
+    item: object,
+    *,
+    card_indices: Iterable[int] = (),
+    created_consumables: Iterable[object] = (),
+    created_jokers: Iterable[object] = (),
+    created_hand_cards: Iterable[Card] = (),
+    destroyed_hand_card_indices: Iterable[int] = (),
+    aura_edition: str | None = None,
+    wheel_of_fortune_joker_index: int | None = None,
+    wheel_of_fortune_edition: str | None = None,
+    sigil_suit: str | None = None,
+    ouija_rank: str | None = None,
+    spectral_joker_index: int | None = None,
+) -> GameState:
     planet_hand = _planet_hand_type(item)
     if planet_hand is not None:
         return _state_after_planet_used(state, planet_hand)
 
+    tarot_name = _tarot_name(item)
+    if tarot_name is not None:
+        return _state_after_tarot_used(
+            state,
+            tarot_name,
+            card_indices=card_indices,
+            created_consumables=created_consumables,
+            created_jokers=created_jokers,
+            wheel_of_fortune_joker_index=wheel_of_fortune_joker_index,
+            wheel_of_fortune_edition=wheel_of_fortune_edition,
+        )
+
+    spectral_name = _spectral_name(item)
+    if spectral_name is not None:
+        return _state_after_spectral_used(
+            state,
+            spectral_name,
+            card_indices=card_indices,
+            created_jokers=created_jokers,
+            created_hand_cards=created_hand_cards,
+            destroyed_hand_card_indices=destroyed_hand_card_indices,
+            aura_edition=aura_edition,
+            sigil_suit=sigil_suit,
+            ouija_rank=ouija_rank,
+            spectral_joker_index=spectral_joker_index,
+        )
+
     playing_card = _playing_card_from_item(item)
     if playing_card is not None:
         known_deck = state.known_deck + (playing_card,) if state.known_deck else ()
-        return replace(state, deck_size=state.deck_size + 1, known_deck=known_deck)
+        return _state_with_dynamic_joker_values(
+            replace(
+                state,
+                deck_size=state.deck_size + 1,
+                known_deck=known_deck,
+                jokers=_jokers_after_playing_cards_added(state.jokers, (playing_card,)),
+            )
+        )
 
     if _item_is_consumable(item):
         return state
@@ -679,6 +1352,7 @@ def _state_after_planet_used(state: GameState, hand_type: HandType) -> GameState
     updated_levels = dict(state.hand_levels)
     updated_levels[hand_name] = max(1, _int_value(updated_levels.get(hand_name))) + 1
     updated_modifiers = dict(state.modifiers)
+    updated_modifiers = _record_planet_used(updated_modifiers, hand_type)
     hands = updated_modifiers.get("hands")
     if isinstance(hands, dict):
         updated_hands = dict(hands)
@@ -690,7 +1364,599 @@ def _state_after_planet_used(state: GameState, hand_type: HandType) -> GameState
         else:
             updated_hands[hand_name] = {"level": updated_levels[hand_name], "played": 0, "played_this_round": 0}
         updated_modifiers["hands"] = updated_hands
-    return replace(state, hand_levels=updated_levels, modifiers=updated_modifiers)
+    return replace(
+        state,
+        hand_levels=updated_levels,
+        jokers=_jokers_after_planet_used(state.jokers),
+        modifiers=updated_modifiers,
+    )
+
+
+def _state_after_consumable_used(
+    state: GameState,
+    name: str,
+    *,
+    card_indices: Iterable[int] = (),
+    created_consumables: Iterable[object] = (),
+    created_jokers: Iterable[object] = (),
+    created_hand_cards: Iterable[Card] = (),
+    destroyed_hand_card_indices: Iterable[int] = (),
+    aura_edition: str | None = None,
+    wheel_of_fortune_joker_index: int | None = None,
+    wheel_of_fortune_edition: str | None = None,
+    sigil_suit: str | None = None,
+    ouija_rank: str | None = None,
+    spectral_joker_index: int | None = None,
+) -> GameState:
+    planet_hand = PLANET_TO_HAND.get(name)
+    if planet_hand is not None:
+        return _state_after_planet_used(state, planet_hand)
+    if name in TAROT_NAMES:
+        return _state_after_tarot_used(
+            state,
+            name,
+            card_indices=card_indices,
+            created_consumables=created_consumables,
+            created_jokers=created_jokers,
+            wheel_of_fortune_joker_index=wheel_of_fortune_joker_index,
+            wheel_of_fortune_edition=wheel_of_fortune_edition,
+        )
+    if name in SPECTRAL_NAMES:
+        return _state_after_spectral_used(
+            state,
+            name,
+            card_indices=card_indices,
+            created_jokers=created_jokers,
+            created_hand_cards=created_hand_cards,
+            destroyed_hand_card_indices=destroyed_hand_card_indices,
+            aura_edition=aura_edition,
+            sigil_suit=sigil_suit,
+            ouija_rank=ouija_rank,
+            spectral_joker_index=spectral_joker_index,
+        )
+    raise ValueError(f"Unsupported consumable: {name}")
+
+
+def _state_after_tarot_used(
+    state: GameState,
+    tarot_name: str,
+    *,
+    card_indices: Iterable[int] = (),
+    created_consumables: Iterable[object] = (),
+    created_jokers: Iterable[object] = (),
+    wheel_of_fortune_joker_index: int | None = None,
+    wheel_of_fortune_edition: str | None = None,
+) -> GameState:
+    updated_modifiers = _record_tarot_used(state.modifiers, tarot_name)
+    money = state.money
+    jokers = state.jokers
+    hand = state.hand
+    deck_size = state.deck_size
+    known_deck = state.known_deck
+    consumables = state.consumables
+    indices = tuple(card_indices)
+
+    if tarot_name in TAROT_ENHANCEMENTS:
+        _require_selected_indices(state, indices, min_count=1, max_count=2 if tarot_name in {"The Magician", "The Empress", "The Hierophant"} else 1, label=tarot_name)
+        hand = _hand_with_replaced_cards(hand, indices, lambda card: _card_with_enhancement(card, TAROT_ENHANCEMENTS[tarot_name]))
+    elif tarot_name in TAROT_SUIT_CONVERSIONS:
+        _require_selected_indices(state, indices, min_count=1, max_count=3, label=tarot_name)
+        hand = _hand_with_replaced_cards(hand, indices, lambda card: _card_with_suit(card, TAROT_SUIT_CONVERSIONS[tarot_name]))
+    elif tarot_name == "Strength":
+        _require_selected_indices(state, indices, min_count=1, max_count=2, label=tarot_name)
+        hand = _hand_with_replaced_cards(hand, indices, lambda card: _card_with_rank(card, STRENGTH_RANKS[_normalize_rank(card.rank)]))
+    elif tarot_name == "Death":
+        _require_selected_indices(state, indices, min_count=2, max_count=2, label=tarot_name)
+        source_index = max(indices)
+        source = hand[source_index]
+        hand = _hand_with_replacement_map(hand, {index: _copy_card(source) for index in indices if index != source_index})
+    elif tarot_name == "The Hanged Man":
+        _require_selected_indices(state, indices, min_count=1, max_count=2, label=tarot_name)
+        destroyed_cards = _hand_cards_at_indices(state, indices)
+        hand = _hand_without_indices(hand, indices)
+        updated_modifiers = _with_destroyed_cards(updated_modifiers, destroyed_cards)
+        jokers = _jokers_after_playing_cards_destroyed(jokers, destroyed_cards, glass_shattered=())
+    if tarot_name == "The Hermit":
+        money += min(max(0, money), 20)
+    elif tarot_name == "Temperance":
+        money += min(50, sum(max(0, joker.sell_value or 0) for joker in jokers))
+    elif tarot_name == "The Fool":
+        created = _created_labels(created_consumables)
+        _validate_consumable_creations(state, created, max_count=1, label=tarot_name)
+        consumables = consumables + created
+        updated_modifiers = _increment_modifier_by(updated_modifiers, "created_consumable_count", len(created))
+        updated_modifiers = _with_created_tarot_count(updated_modifiers, sum(1 for name in created if name in TAROT_NAMES))
+    elif tarot_name == "The Emperor":
+        created = _created_labels(created_consumables)
+        _validate_consumable_creations(state, created, max_count=2, label=tarot_name)
+        consumables = consumables + created
+        updated_modifiers = _increment_modifier_by(updated_modifiers, "created_consumable_count", len(created))
+        updated_modifiers = _with_created_tarot_count(updated_modifiers, len(created))
+    elif tarot_name == "The High Priestess":
+        created = _created_labels(created_consumables)
+        _validate_consumable_creations(state, created, max_count=2, label=tarot_name)
+        consumables = consumables + created
+        updated_modifiers = _increment_modifier_by(updated_modifiers, "created_consumable_count", len(created))
+    elif tarot_name in {"Judgement"}:
+        created = tuple(_joker_from_item(item) for item in created_jokers)
+        if len(created) > 1:
+            raise ValueError(f"{tarot_name} can create at most 1 joker, got {len(created)}")
+        jokers, updated_modifiers = _jokers_and_modifiers_after_created_jokers(state, jokers, updated_modifiers, created)
+    elif tarot_name == "The Wheel of Fortune":
+        jokers = _jokers_after_wheel_of_fortune(
+            jokers,
+            joker_index=wheel_of_fortune_joker_index,
+            edition=wheel_of_fortune_edition,
+        )
+    return replace(
+        state,
+        money=money,
+        hand=hand,
+        deck_size=deck_size,
+        known_deck=known_deck,
+        jokers=_jokers_after_tarot_used(jokers),
+        consumables=consumables,
+        modifiers=updated_modifiers,
+    )
+
+
+def _state_after_spectral_used(
+    state: GameState,
+    spectral_name: str,
+    *,
+    card_indices: Iterable[int] = (),
+    created_jokers: Iterable[object] = (),
+    created_hand_cards: Iterable[Card] = (),
+    destroyed_hand_card_indices: Iterable[int] = (),
+    aura_edition: str | None = None,
+    sigil_suit: str | None = None,
+    ouija_rank: str | None = None,
+    spectral_joker_index: int | None = None,
+) -> GameState:
+    updated_modifiers = _record_spectral_used(state.modifiers, spectral_name)
+    money = state.money
+    hand = state.hand
+    deck_size = state.deck_size
+    known_deck = state.known_deck
+    jokers = state.jokers
+    indices = tuple(card_indices)
+
+    if spectral_name in SPECTRAL_SEALS:
+        _require_selected_indices(state, indices, min_count=1, max_count=1, label=spectral_name)
+        hand = _hand_with_replaced_cards(hand, indices, lambda card: _card_with_seal(card, SPECTRAL_SEALS[spectral_name]))
+    elif spectral_name == "Aura":
+        _require_selected_indices(state, indices, min_count=1, max_count=1, label=spectral_name)
+        if aura_edition is None:
+            raise ValueError("Aura requires an injected edition")
+        hand = _hand_with_replaced_cards(hand, indices, lambda card: _card_with_edition(card, _normalized_edition(aura_edition)))
+    elif spectral_name == "Cryptid":
+        _require_selected_indices(state, indices, min_count=1, max_count=1, label=spectral_name)
+        source = state.hand[indices[0]]
+        created = (_copy_card(source), _copy_card(source))
+        hand = _sort_hand_cards(hand + created)
+        deck_size += len(created)
+        known_deck = known_deck + created if known_deck else ()
+        jokers = _jokers_after_playing_cards_added(jokers, created)
+    elif spectral_name in {"Familiar", "Grim", "Incantation", "Immolate"}:
+        destroyed_cards = _destroyed_hand_cards_for_consumable(state, destroyed_hand_card_indices)
+        if spectral_name == "Immolate":
+            _validate_injected_count_at_most(label=spectral_name, expected=min(5, len(state.hand)), injected=len(destroyed_cards))
+            money += 20
+        else:
+            _validate_injected_count_at_most(label=spectral_name, expected=min(1, len(state.hand)), injected=len(destroyed_cards))
+        hand = _without_card_instances(hand, destroyed_cards)
+        if destroyed_cards:
+            updated_modifiers = _with_destroyed_cards(updated_modifiers, destroyed_cards)
+            jokers = _jokers_after_playing_cards_destroyed(jokers, destroyed_cards, glass_shattered=())
+        created = tuple(created_hand_cards)
+        hand = _sort_hand_cards(hand + created)
+        deck_size += len(created)
+        known_deck = known_deck + created if known_deck else ()
+        jokers = _jokers_after_playing_cards_added(jokers, created)
+    elif spectral_name == "Sigil":
+        if sigil_suit is None:
+            raise ValueError("Sigil requires an injected suit")
+        hand = tuple(_card_with_suit(card, _normalize_suit(sigil_suit)) for card in hand)
+    elif spectral_name == "Ouija":
+        if ouija_rank is None:
+            raise ValueError("Ouija requires an injected rank")
+        hand = tuple(_card_with_rank(card, _normalize_rank(ouija_rank)) for card in hand)
+        updated_modifiers = _add_hand_size_delta(updated_modifiers, -1)
+    elif spectral_name == "Black Hole":
+        hand_levels = {hand_type.value: max(1, _int_value(state.hand_levels.get(hand_type.value))) + 1 for hand_type in HandType}
+        updated_modifiers = _with_all_hand_levels(updated_modifiers, hand_levels)
+        return replace(state, hand_levels=hand_levels, modifiers=updated_modifiers)
+    elif spectral_name in {"Wraith", "The Soul"}:
+        created = tuple(_joker_from_item(item) for item in created_jokers)
+        if len(created) > 1:
+            raise ValueError(f"{spectral_name} can create at most 1 joker, got {len(created)}")
+        jokers, updated_modifiers = _jokers_and_modifiers_after_created_jokers(state, jokers, updated_modifiers, created)
+        if spectral_name == "Wraith" and created:
+            money = 0
+    elif spectral_name == "Ectoplasm":
+        if spectral_joker_index is None:
+            raise ValueError("Ectoplasm requires an injected joker index")
+        jokers = _jokers_with_single_edition(jokers, spectral_joker_index, "NEGATIVE")
+        updated_modifiers = _add_hand_size_delta(updated_modifiers, -1)
+    elif spectral_name == "Hex":
+        if spectral_joker_index is None:
+            raise ValueError("Hex requires an injected joker index")
+        jokers, updated_modifiers = _jokers_after_hex(state, jokers, updated_modifiers, spectral_joker_index)
+    elif spectral_name == "Ankh":
+        if spectral_joker_index is None:
+            raise ValueError("Ankh requires an injected joker index")
+        jokers, updated_modifiers = _jokers_after_ankh(state, jokers, updated_modifiers, spectral_joker_index)
+
+    return replace(
+        state,
+        money=money,
+        hand=hand,
+        deck_size=deck_size,
+        known_deck=known_deck,
+        jokers=jokers,
+        modifiers=updated_modifiers,
+    )
+
+
+def _record_tarot_used(modifiers: dict[str, object], tarot_name: str) -> dict[str, object]:
+    updated = dict(modifiers)
+    usage = updated.get("tarot_cards_used")
+    used = dict(usage) if isinstance(usage, dict) else {}
+    used[tarot_name] = _int_value(used.get(tarot_name)) + 1
+    updated["tarot_cards_used"] = used
+    updated["tarot_cards_used_total"] = _int_value(updated.get("tarot_cards_used_total")) + 1
+    if tarot_name != "The Fool":
+        updated["last_tarot_planet"] = tarot_name
+        updated["last_tarot_planet_name"] = tarot_name
+    return updated
+
+
+def _record_planet_used(modifiers: dict[str, object], hand_type: HandType) -> dict[str, object]:
+    updated = dict(modifiers)
+    usage = updated.get("planet_cards_used")
+    used = dict(usage) if isinstance(usage, dict) else {}
+    planet_name = _planet_for_hand_type(hand_type)
+    used[planet_name] = _int_value(used.get(planet_name)) + 1
+    updated["planet_cards_used"] = used
+    updated["planet_cards_used_total"] = _int_value(updated.get("planet_cards_used_total")) + 1
+    updated["last_tarot_planet"] = planet_name
+    updated["last_tarot_planet_name"] = planet_name
+    return updated
+
+
+def _record_spectral_used(modifiers: dict[str, object], spectral_name: str) -> dict[str, object]:
+    updated = dict(modifiers)
+    usage = updated.get("spectral_cards_used")
+    used = dict(usage) if isinstance(usage, dict) else {}
+    used[spectral_name] = _int_value(used.get(spectral_name)) + 1
+    updated["spectral_cards_used"] = used
+    updated["spectral_cards_used_total"] = _int_value(updated.get("spectral_cards_used_total")) + 1
+    return updated
+
+
+def _planet_for_hand_type(hand_type: HandType) -> str:
+    for planet, mapped_hand in PLANET_TO_HAND.items():
+        if mapped_hand == hand_type:
+            return planet
+    return hand_type.value
+
+
+def _require_selected_indices(
+    state: GameState,
+    indices: tuple[int, ...],
+    *,
+    min_count: int,
+    max_count: int,
+    label: str,
+) -> None:
+    if len(indices) < min_count or len(indices) > max_count:
+        if min_count == max_count:
+            raise ValueError(f"{label} requires exactly {min_count} selected card(s), got {len(indices)}")
+        raise ValueError(f"{label} requires {min_count}-{max_count} selected card(s), got {len(indices)}")
+    if any(index < 0 or index >= len(state.hand) for index in indices):
+        raise ValueError(f"{label} selected card indices are outside the hand: {indices}")
+
+
+def _hand_cards_at_indices(state: GameState, indices: tuple[int, ...]) -> tuple[Card, ...]:
+    if any(index < 0 or index >= len(state.hand) for index in indices):
+        raise ValueError(f"Selected card indices are outside the hand: {indices}")
+    return tuple(state.hand[index] for index in indices)
+
+
+def _hand_with_replaced_cards(hand: tuple[Card, ...], indices: tuple[int, ...], transform) -> tuple[Card, ...]:
+    selected = set(indices)
+    return tuple(transform(card) if index in selected else card for index, card in enumerate(hand))
+
+
+def _hand_with_replacement_map(hand: tuple[Card, ...], replacements: dict[int, Card]) -> tuple[Card, ...]:
+    return tuple(replacements.get(index, card) for index, card in enumerate(hand))
+
+
+def _hand_without_indices(hand: tuple[Card, ...], indices: tuple[int, ...]) -> tuple[Card, ...]:
+    selected = set(indices)
+    return tuple(card for index, card in enumerate(hand) if index not in selected)
+
+
+def _destroyed_hand_cards_for_consumable(state: GameState, destroyed_hand_card_indices: Iterable[int]) -> tuple[Card, ...]:
+    indices = tuple(destroyed_hand_card_indices)
+    if indices:
+        return _hand_cards_at_indices(state, indices)
+    return ()
+
+
+def _card_with_enhancement(card: Card, enhancement: str) -> Card:
+    metadata = dict(card.metadata)
+    modifier = dict(metadata.get("modifier")) if isinstance(metadata.get("modifier"), dict) else {}
+    modifier["enhancement"] = enhancement
+    metadata["modifier"] = modifier
+    return replace(card, enhancement=enhancement, metadata=metadata)
+
+
+def _card_with_suit(card: Card, suit: str) -> Card:
+    normalized = _normalize_suit(suit)
+    metadata = dict(card.metadata)
+    value = dict(metadata.get("value")) if isinstance(metadata.get("value"), dict) else {}
+    value["suit"] = normalized
+    metadata["value"] = value
+    return replace(card, suit=normalized, metadata=metadata)
+
+
+def _card_with_rank(card: Card, rank: str) -> Card:
+    normalized = _normalize_rank(rank)
+    metadata = dict(card.metadata)
+    value = dict(metadata.get("value")) if isinstance(metadata.get("value"), dict) else {}
+    value["rank"] = normalized
+    metadata["value"] = value
+    return replace(card, rank=normalized, metadata=metadata)
+
+
+def _card_with_seal(card: Card, seal: str) -> Card:
+    metadata = dict(card.metadata)
+    modifier = dict(metadata.get("modifier")) if isinstance(metadata.get("modifier"), dict) else {}
+    modifier["seal"] = seal
+    metadata["modifier"] = modifier
+    return replace(card, seal=seal, metadata=metadata)
+
+
+def _card_with_edition(card: Card, edition: str) -> Card:
+    metadata = dict(card.metadata)
+    modifier = dict(metadata.get("modifier")) if isinstance(metadata.get("modifier"), dict) else {}
+    modifier["edition"] = edition
+    metadata["modifier"] = modifier
+    return replace(card, edition=edition, metadata=metadata)
+
+
+def _validate_consumable_creations(state: GameState, created: tuple[str, ...], *, max_count: int, label: str) -> None:
+    if len(created) > min(max_count, _consumable_open_slots(state)):
+        raise ValueError(f"{label} can create at most {min(max_count, _consumable_open_slots(state))} consumable(s), got {len(created)}")
+
+
+def _jokers_and_modifiers_after_created_jokers(
+    state: GameState,
+    jokers: tuple[Joker, ...],
+    modifiers: dict[str, object],
+    created: tuple[Joker, ...],
+) -> tuple[tuple[Joker, ...], dict[str, object]]:
+    if not created:
+        return jokers, modifiers
+    normal_created = sum(1 for joker in created if _joker_uses_normal_slot(joker))
+    if normal_created > max(0, _normal_joker_slot_limit(state) - sum(1 for joker in jokers if _joker_uses_normal_slot(joker))):
+        raise ValueError(f"Created joker does not fit in joker slots: {normal_created}")
+    updated_modifiers = modifiers
+    for joker in created:
+        updated_modifiers = _modifiers_after_joker_added(updated_modifiers, joker)
+    return jokers + created, updated_modifiers
+
+
+def _jokers_with_single_edition(jokers: tuple[Joker, ...], index: int, edition: str) -> tuple[Joker, ...]:
+    if not 0 <= index < len(jokers):
+        raise ValueError(f"Spectral joker index is outside jokers: {index}")
+    updated = list(jokers)
+    updated[index] = _joker_with_edition(updated[index], edition)
+    return tuple(updated)
+
+
+def _jokers_after_hex(
+    state: GameState,
+    jokers: tuple[Joker, ...],
+    modifiers: dict[str, object],
+    index: int,
+) -> tuple[tuple[Joker, ...], dict[str, object]]:
+    if not 0 <= index < len(jokers):
+        raise ValueError(f"Hex joker index is outside jokers: {index}")
+    updated_modifiers = modifiers
+    kept: list[Joker] = []
+    for joker_index, joker in enumerate(jokers):
+        if joker_index == index:
+            kept.append(_joker_with_edition(joker, "POLYCHROME"))
+        elif _joker_is_eternal(joker):
+            kept.append(joker)
+        else:
+            updated_modifiers = _modifiers_after_joker_removed(updated_modifiers, joker)
+    return tuple(kept), updated_modifiers
+
+
+def _jokers_after_ankh(
+    state: GameState,
+    jokers: tuple[Joker, ...],
+    modifiers: dict[str, object],
+    index: int,
+) -> tuple[tuple[Joker, ...], dict[str, object]]:
+    if not 0 <= index < len(jokers):
+        raise ValueError(f"Ankh joker index is outside jokers: {index}")
+    selected = jokers[index]
+    copied = _copy_joker_for_ankh(selected)
+    updated_modifiers = modifiers
+    kept: list[Joker] = []
+    for joker_index, joker in enumerate(jokers):
+        if joker_index == index or _joker_is_eternal(joker):
+            kept.append(joker)
+        else:
+            updated_modifiers = _modifiers_after_joker_removed(updated_modifiers, joker)
+    kept.append(copied)
+    updated_modifiers = _modifiers_after_joker_added(updated_modifiers, copied)
+    return tuple(kept), updated_modifiers
+
+
+def _copy_joker_for_ankh(joker: Joker) -> Joker:
+    copied = _joker_with_initial_dynamic_values(Joker(joker.name, edition=joker.edition, sell_value=joker.sell_value, metadata=_copy_metadata(joker.metadata)))
+    if copied.edition != "NEGATIVE":
+        return copied
+    metadata = dict(copied.metadata)
+    modifier = dict(metadata.get("modifier")) if isinstance(metadata.get("modifier"), dict) else {}
+    modifier.pop("edition", None)
+    metadata["modifier"] = modifier
+    return Joker(copied.name, edition=None, sell_value=copied.sell_value, metadata=metadata)
+
+
+def _joker_is_eternal(joker: Joker) -> bool:
+    for source in _metadata_sources(joker.metadata):
+        if _truthy_modifier(source.get("eternal")):
+            return True
+        stickers = source.get("stickers")
+        if isinstance(stickers, dict) and _truthy_modifier(stickers.get("eternal")):
+            return True
+        if isinstance(stickers, list | tuple | set) and any(str(sticker).lower() == "eternal" for sticker in stickers):
+            return True
+    return False
+
+
+def _add_hand_size_delta(modifiers: dict[str, object], amount: int) -> dict[str, object]:
+    updated = dict(modifiers)
+    _add_modifier_int(updated, "hand_size_delta", amount)
+    return updated
+
+
+def _with_all_hand_levels(modifiers: dict[str, object], hand_levels: dict[str, int]) -> dict[str, object]:
+    updated = dict(modifiers)
+    raw_hands = updated.get("hands")
+    hands = dict(raw_hands) if isinstance(raw_hands, dict) else {}
+    for hand_name, level in hand_levels.items():
+        current = hands.get(hand_name)
+        entry = dict(current) if isinstance(current, dict) else {}
+        entry["level"] = level
+        hands[hand_name] = entry
+    updated["hands"] = hands
+    return updated
+
+
+def _jokers_after_planet_used(jokers: tuple[Joker, ...]) -> tuple[Joker, ...]:
+    updated: list[Joker] = []
+    for joker in jokers:
+        if joker.name == "Constellation" and not _joker_is_disabled(joker):
+            current = _joker_float(joker, keys=("current_xmult", "xmult", "current_x_mult", "x_mult"), default=1.0)
+            gain = _joker_float(joker, keys=("extra", "xmult_gain"), default=0.1)
+            updated.append(_with_joker_metadata(joker, {"current_xmult": current + gain, "xmult": current + gain}))
+        else:
+            updated.append(joker)
+    return tuple(updated)
+
+
+def _jokers_after_tarot_used(jokers: tuple[Joker, ...]) -> tuple[Joker, ...]:
+    updated: list[Joker] = []
+    for joker in jokers:
+        if joker.name == "Fortune Teller" and not _joker_is_disabled(joker):
+            current = _joker_int(joker, keys=("current_mult", "mult"), default=0)
+            gain = _joker_int(joker, keys=("extra", "mult_gain"), default=1)
+            updated.append(_with_joker_metadata(joker, {"current_mult": current + gain, "mult": current + gain}))
+        else:
+            updated.append(joker)
+    return tuple(updated)
+
+
+def _jokers_after_wheel_of_fortune(
+    jokers: tuple[Joker, ...],
+    *,
+    joker_index: int | None,
+    edition: str | None,
+) -> tuple[Joker, ...]:
+    if joker_index is None:
+        return jokers
+    if edition is None:
+        raise ValueError("Wheel of Fortune hit requires an injected edition")
+    if not 0 <= joker_index < len(jokers):
+        raise ValueError(f"Wheel of Fortune joker index is outside jokers: {joker_index}")
+    joker = jokers[joker_index]
+    if joker.edition:
+        raise ValueError(f"Wheel of Fortune target already has an edition: {joker.name}")
+    updated = list(jokers)
+    updated[joker_index] = _joker_with_edition(joker, edition)
+    return tuple(updated)
+
+
+def _joker_with_edition(joker: Joker, edition: str) -> Joker:
+    normalized = _normalized_edition(edition)
+    metadata = dict(joker.metadata)
+    modifier = dict(metadata.get("modifier")) if isinstance(metadata.get("modifier"), dict) else {}
+    modifier["edition"] = normalized
+    metadata["modifier"] = modifier
+    sell_value = _sell_value_after_adding_edition(joker, normalized)
+    return Joker(joker.name, edition=normalized, sell_value=sell_value, metadata=metadata)
+
+
+def _normalized_edition(edition: str) -> str:
+    value = edition.strip().lower()
+    if value in {"holo", "holographic"}:
+        return "HOLOGRAPHIC"
+    if value in {"poly", "polychrome"}:
+        return "POLYCHROME"
+    if value == "foil":
+        return "FOIL"
+    if value == "negative":
+        return "NEGATIVE"
+    return edition
+
+
+def _sell_value_after_adding_edition(joker: Joker, edition: str) -> int | None:
+    if joker.sell_value is None:
+        return None
+    extra_cost = {"FOIL": 2, "HOLOGRAPHIC": 3, "POLYCHROME": 5, "NEGATIVE": 5}.get(edition, 0)
+    extra_value = _joker_extra_value(joker)
+    current_cost = _joker_buy_cost_for_discount(joker, extra_value=extra_value)
+    if current_cost <= 0:
+        current_cost = max(1, (joker.sell_value - extra_value) * 2)
+    return max(1, (current_cost + extra_cost) // 2) + extra_value
+
+
+def _jokers_after_playing_cards_added(jokers: tuple[Joker, ...], cards: tuple[Card, ...]) -> tuple[Joker, ...]:
+    if not cards:
+        return jokers
+    updated: list[Joker] = []
+    for joker in jokers:
+        if joker.name == "Hologram" and not _joker_is_disabled(joker):
+            current = _joker_float(joker, keys=("current_xmult", "xmult", "current_x_mult", "x_mult"), default=1.0)
+            gain = len(cards) * _joker_float(joker, keys=("extra", "xmult_gain"), default=0.25)
+            updated.append(_with_joker_metadata(joker, {"current_xmult": current + gain, "xmult": current + gain}))
+        else:
+            updated.append(joker)
+    return tuple(updated)
+
+
+def _jokers_after_playing_cards_destroyed(
+    jokers: tuple[Joker, ...],
+    destroyed_cards: tuple[Card, ...],
+    *,
+    glass_shattered: tuple[Card, ...],
+) -> tuple[Joker, ...]:
+    if not destroyed_cards:
+        return jokers
+    face_count = sum(1 for card in destroyed_cards if _is_face_card(card, jokers))
+    shattered_count = len(glass_shattered)
+    updated: list[Joker] = []
+    for joker in jokers:
+        if _joker_is_disabled(joker):
+            updated.append(joker)
+        elif joker.name in {"Caino", "Canio"} and face_count:
+            current = _joker_float(joker, keys=("current_xmult", "caino_xmult", "xmult", "current_x_mult"), default=1.0)
+            gain = face_count * _joker_float(joker, keys=("extra", "xmult_gain"), default=1.0)
+            updated.append(_with_joker_metadata(joker, {"current_xmult": current + gain, "caino_xmult": current + gain}))
+        elif joker.name == "Glass Joker" and shattered_count:
+            current = _joker_float(joker, keys=("current_xmult", "xmult", "current_x_mult", "x_mult"), default=1.0)
+            gain = shattered_count * _joker_float(joker, keys=("extra", "xmult_gain"), default=0.75)
+            updated.append(_with_joker_metadata(joker, {"current_xmult": current + gain, "xmult": current + gain}))
+        else:
+            updated.append(joker)
+    return tuple(updated)
 
 
 def _hand_levels_after_play(
@@ -712,13 +1978,66 @@ def _planet_hand_type(item: object) -> HandType | None:
     return PLANET_TO_HAND.get(_item_label(item))
 
 
+def _tarot_name(item: object) -> str | None:
+    label = _item_label(item)
+    if label in TAROT_NAMES:
+        return label
+    if _item_set(item) == "TAROT":
+        return label
+    key = _item_key(item)
+    if key.startswith("c_") and label in TAROT_NAMES:
+        return label
+    return None
+
+
+def _spectral_name(item: object) -> str | None:
+    label = _item_label(item)
+    if label in SPECTRAL_NAMES:
+        return label
+    if _item_set(item) == "SPECTRAL":
+        return label
+    key = _item_key(item)
+    if key.startswith("c_") and label in SPECTRAL_NAMES:
+        return label
+    return None
+
+
 def _joker_from_item(item: object) -> Joker:
     joker = Joker.from_mapping(item) if isinstance(item, dict | str) else Joker(str(item))
     if joker.sell_value is not None:
-        return joker
+        return _joker_with_initial_dynamic_values(joker)
     buy_cost = _item_buy_cost(item)
     sell_value = max(1, buy_cost // 2) if buy_cost > 0 else None
-    return Joker(joker.name, edition=joker.edition, sell_value=sell_value, metadata=joker.metadata)
+    return _joker_with_initial_dynamic_values(
+        Joker(joker.name, edition=joker.edition, sell_value=sell_value, metadata=joker.metadata)
+    )
+
+
+def _joker_with_initial_dynamic_values(joker: Joker) -> Joker:
+    defaults: dict[str, object]
+    if joker.name == "Ice Cream":
+        defaults = {"current_chips": 100}
+    elif joker.name == "Popcorn":
+        defaults = {"current_mult": 20}
+    elif joker.name == "Ramen":
+        defaults = {"current_xmult": 2.0}
+    elif joker.name == "Loyalty Card":
+        defaults = {"current_remaining": 5}
+    elif joker.name in {"Square Joker", "Runner", "Wee Joker", "Castle"}:
+        defaults = {"current_chips": 0}
+    elif joker.name in {"Green Joker", "Flash Card", "Red Card", "Spare Trousers", "Erosion", "Fortune Teller"}:
+        defaults = {"current_mult": 0}
+    elif joker.name in {"Constellation", "Hologram", "Lucky Cat", "Campfire", "Madness", "Glass Joker"}:
+        defaults = {"current_xmult": 1.0}
+    elif joker.name in {"Caino", "Canio"}:
+        defaults = {"current_xmult": 1.0, "caino_xmult": 1.0}
+    else:
+        return joker
+
+    metadata = dict(joker.metadata)
+    for key, value in defaults.items():
+        metadata.setdefault(key, value)
+    return Joker(joker.name, edition=joker.edition, sell_value=joker.sell_value, metadata=metadata)
 
 
 def _playing_card_from_item(item: object) -> Card | None:
@@ -788,7 +2107,14 @@ def _item_is_joker(item: object) -> bool:
 
 
 def _item_is_consumable(item: object) -> bool:
-    return _item_set(item) in {"TAROT", "PLANET", "SPECTRAL"} or _item_key(item).startswith("c_")
+    label = _item_label(item)
+    return (
+        _item_set(item) in {"TAROT", "PLANET", "SPECTRAL"}
+        or _item_key(item).startswith("c_")
+        or label in TAROT_NAMES
+        or label in SPECTRAL_NAMES
+        or label in PLANET_TO_HAND
+    )
 
 
 def _item_label(item: object) -> str:
@@ -857,11 +2183,15 @@ def _play_consumable_creation_requests(
             requests.append(("spectral", count))
             room -= count
 
+    if room > 0 and _hand_is_straight_flush_family(evaluation.hand_type):
+        count = min(room, _effective_joker_count(state.jokers, "Seance"))
+        if count > 0:
+            requests.append(("spectral", count))
+            room -= count
+
     tarot_count = 0
     if room > 0 and _hand_contains_straight(evaluation.hand_type) and _played_hand_has_ace(played_cards):
         tarot_count += _effective_joker_count(state.jokers, "Superposition")
-    if room > 0 and _hand_is_straight_flush_family(evaluation.hand_type):
-        tarot_count += _effective_joker_count(state.jokers, "Seance")
     if room > 0 and state.money <= 4:
         tarot_count += _effective_joker_count(state.jokers, "Vagabond")
     if room > 0:
@@ -990,6 +2320,33 @@ def _add_modifier_int(modifiers: dict[str, object], key: str, delta: int) -> Non
     modifiers[key] = _int_value(modifiers.get(key)) + delta
 
 
+def _round_counts_after_shop_exit(
+    state: GameState,
+    modifiers: dict[str, object],
+) -> tuple[int, int, dict[str, object]]:
+    current_hands_delta = _int_value(modifiers.get("round_hands_delta"))
+    current_discards_delta = _int_value(modifiers.get("round_discards_delta"))
+    applied_hands_delta = _int_value(modifiers.get("applied_round_hands_delta"))
+    applied_discards_delta = _int_value(modifiers.get("applied_round_discards_delta"))
+    updated = dict(modifiers)
+    updated["applied_round_hands_delta"] = current_hands_delta
+    updated["applied_round_discards_delta"] = current_discards_delta
+    updated["round_count_deltas_applied"] = True
+    return (
+        max(0, state.hands_remaining + current_hands_delta - applied_hands_delta),
+        max(0, state.discards_remaining + current_discards_delta - applied_discards_delta),
+        updated,
+    )
+
+
+def _with_applied_round_count_deltas(modifiers: dict[str, object]) -> dict[str, object]:
+    updated = dict(modifiers)
+    updated["applied_round_hands_delta"] = _int_value(updated.get("round_hands_delta"))
+    updated["applied_round_discards_delta"] = _int_value(updated.get("round_discards_delta"))
+    updated["round_count_deltas_applied"] = True
+    return updated
+
+
 def _modifiers_after_cash_out(
     previous_modifiers: dict[str, object],
     next_modifiers: dict[str, object],
@@ -1031,6 +2388,25 @@ def _modifiers_after_sell_trigger(
     return modifiers
 
 
+def _consumable_sell_value(state: GameState, name: str) -> int:
+    base = 2 if name in SPECTRAL_NAMES else 1
+    bonus_total = _int_value(state.modifiers.get("consumable_sell_value_bonus"))
+    bonus_each = bonus_total // max(1, len(state.consumables)) if bonus_total > 0 else 0
+    return base + bonus_each
+
+
+def _modifiers_after_consumable_removed(modifiers: dict[str, object], *, previous_count: int) -> dict[str, object]:
+    bonus_total = _int_value(modifiers.get("consumable_sell_value_bonus"))
+    if bonus_total <= 0:
+        return modifiers
+    bonus_each = bonus_total // max(1, previous_count)
+    updated = dict(modifiers)
+    updated["consumable_sell_value_bonus"] = max(0, bonus_total - bonus_each)
+    if updated["consumable_sell_value_bonus"] <= 0:
+        updated.pop("consumable_sell_value_bonus", None)
+    return updated
+
+
 def _with_added_tag(modifiers: dict[str, object], tag: str) -> dict[str, object]:
     updated = dict(modifiers)
     raw = updated.get("tags", ())
@@ -1039,7 +2415,7 @@ def _with_added_tag(modifiers: dict[str, object], tag: str) -> dict[str, object]
     return updated
 
 
-def _modifiers_after_gift_card_cash_out(
+def _modifiers_after_gift_card_round_end(
     modifiers: dict[str, object],
     state: GameState,
     *,
@@ -1078,7 +2454,19 @@ def _jokers_after_reroll(jokers: tuple[Joker, ...]) -> tuple[Joker, ...]:
     return tuple(updated)
 
 
-def _jokers_after_gift_card_cash_out(jokers: tuple[Joker, ...], *, gift_card_gain: int) -> tuple[Joker, ...]:
+def _jokers_after_pack_skip(jokers: tuple[Joker, ...]) -> tuple[Joker, ...]:
+    updated: list[Joker] = []
+    for joker in jokers:
+        if joker.name == "Red Card" and not _joker_is_disabled(joker):
+            current = _joker_int(joker, keys=("current_mult", "mult"), default=0)
+            gain = _joker_int(joker, keys=("extra", "mult_gain"), default=3)
+            updated.append(_with_joker_metadata(joker, {"current_mult": current + gain, "mult": current + gain}))
+        else:
+            updated.append(joker)
+    return tuple(updated)
+
+
+def _jokers_after_gift_card_round_end(jokers: tuple[Joker, ...], *, gift_card_gain: int) -> tuple[Joker, ...]:
     if gift_card_gain <= 0:
         return jokers
     return tuple(_with_joker_sell_value_delta(joker, gift_card_gain) for joker in jokers)
@@ -1100,6 +2488,12 @@ def _jokers_after_sell(jokers: tuple[Joker, ...]) -> tuple[Joker, ...]:
     return tuple(updated)
 
 
+def _invisible_joker_ready(joker: Joker) -> bool:
+    rounds = _joker_int(joker, keys=("current_rounds", "invis_rounds", "rounds"), default=0)
+    needed = _joker_int(joker, keys=("extra", "rounds_needed"), default=2)
+    return rounds >= needed
+
+
 def _jokers_after_play(
     jokers: tuple[Joker, ...],
     played_cards: tuple[Card, ...],
@@ -1111,12 +2505,14 @@ def _jokers_after_play(
     updated: list[Joker] = []
     vampire_gains = _vampire_xmult_gains_after_play(jokers, played_cards, evaluation)
     for joker_index, joker in enumerate(jokers):
-        if joker.name == "Ice Cream":
+        if _joker_is_disabled(joker):
+            updated.append(joker)
+        elif joker.name == "Ice Cream":
             current = _joker_int(joker, keys=("current_chips", "chips"), default=100)
             if current - 5 > 0:
                 updated.append(_with_joker_metadata(joker, {"current_chips": current - 5}))
         elif joker.name == "Seltzer":
-            current = _joker_int(joker, keys=("current_remaining", "remaining", "uses", "extra"), default=10)
+            current = _seltzer_remaining(joker)
             if current - 1 > 0:
                 updated.append(_with_joker_metadata(joker, {"current_remaining": current - 1}))
         elif joker.name == "Green Joker":
@@ -1220,7 +2616,9 @@ def _vampire_xmult_gains_after_play(
 def _jokers_after_discard(jokers: tuple[Joker, ...], discarded_cards: tuple[Card, ...]) -> tuple[Joker, ...]:
     updated: list[Joker] = []
     for joker in jokers:
-        if joker.name == "Ramen":
+        if _joker_is_disabled(joker):
+            updated.append(joker)
+        elif joker.name == "Ramen":
             current = _joker_float(joker, keys=("current_xmult", "xmult", "current_x_mult", "x_mult"), default=2.0)
             eaten = False
             for _ in discarded_cards:
@@ -1303,11 +2701,6 @@ def _jokers_after_cash_out(state: GameState, *, next_to_do_targets: tuple[str, .
         elif joker.name == "Invisible Joker":
             current = _joker_int(joker, keys=("current_rounds", "invis_rounds", "rounds"), default=0)
             updated.append(_with_joker_metadata(joker, {"current_rounds": current + 1, "invis_rounds": current + 1}))
-        elif joker.name == "Egg":
-            gain = _joker_int(joker, keys=("extra", "value_gain"), default=3)
-            extra_value = _joker_int(joker, keys=("extra_value",), default=0) + gain
-            sell_value = (joker.sell_value + gain) if joker.sell_value is not None else None
-            updated.append(_with_joker_metadata(joker, {"extra_value": extra_value}, sell_value=sell_value))
         elif joker.name == "Hit the Road":
             current = _joker_float(joker, keys=("current_xmult", "xmult", "current_x_mult", "x_mult"), default=1.0)
             updated.append(_with_joker_metadata(joker, {"current_xmult": 1.0}) if current > 1 else joker)
@@ -1315,6 +2708,33 @@ def _jokers_after_cash_out(state: GameState, *, next_to_do_targets: tuple[str, .
             target = next_to_do_targets[to_do_index]
             to_do_index += 1
             updated.append(_with_joker_metadata(joker, {"target_hand": target, "to_do_poker_hand": target}))
+        else:
+            updated.append(joker)
+    return tuple(updated)
+
+
+def _jokers_after_egg_end_of_round(jokers: tuple[Joker, ...]) -> tuple[Joker, ...]:
+    updated: list[Joker] = []
+    for joker in jokers:
+        if joker.name != "Egg":
+            updated.append(joker)
+            continue
+        gain = _joker_int(joker, keys=("extra", "value_gain"), default=3)
+        extra_value = _joker_int(joker, keys=("extra_value",), default=0) + gain
+        sell_value = (joker.sell_value + gain) if joker.sell_value is not None else None
+        updated.append(_with_joker_metadata(joker, {"extra_value": extra_value}, sell_value=sell_value))
+    return tuple(updated)
+
+
+def _jokers_after_played_round_ends(jokers: tuple[Joker, ...]) -> tuple[Joker, ...]:
+    updated: list[Joker] = []
+    for joker in _jokers_after_egg_end_of_round(jokers):
+        if joker.name == "Popcorn":
+            current = _joker_int(joker, keys=("current_mult", "mult"), default=20)
+            decay = _joker_int(joker, keys=("decay", "mult_decay", "extra"), default=4)
+            next_mult = current - decay
+            if next_mult > 0:
+                updated.append(_with_joker_metadata(joker, {"current_mult": next_mult}))
         else:
             updated.append(joker)
     return tuple(updated)
@@ -1338,7 +2758,7 @@ def _gift_card_sell_value_gain(jokers: tuple[Joker, ...]) -> int:
 
 
 def _hand_levels_after_discard(state: GameState, discarded_cards: tuple[Card, ...]) -> dict[str, int]:
-    if not _has_joker(state.jokers, "Burnt Joker"):
+    if _effective_joker_count(state.jokers, "Burnt Joker") <= 0:
         return state.hand_levels
     blind_name = _effective_blind_name(state)
     if blind_name == "The Hook" or _discard_used_count(state) > 0:
@@ -1366,9 +2786,9 @@ def _discard_money_delta(state: GameState, discarded_cards: tuple[Card, ...]) ->
     delta = 0
     if _discard_used_count(state) == 0 and len(discarded_cards) == 1:
         for joker in state.jokers:
-            if joker.name == "Trading Card":
+            if joker.name == "Trading Card" and not _joker_is_disabled(joker):
                 delta += _joker_int(joker, keys=("dollars", "money", "extra"), default=3)
-    if _has_joker(state.jokers, "Faceless Joker"):
+    if any(joker.name == "Faceless Joker" and not _joker_is_disabled(joker) for joker in state.jokers):
         face_count = sum(1 for card in discarded_cards if _is_face_card(card, state.jokers))
         if face_count >= 3:
             delta += 5
@@ -1385,8 +2805,16 @@ def _held_end_of_round_money_delta(held_cards: tuple[Card, ...], jokers: tuple[J
 
 
 def _cash_out_money_delta(state: GameState) -> int:
+    oracle_delta = _modifier_int_or_none(
+        state.modifiers,
+        ("cash_out_money_delta", "current_round_dollars", "round_eval_dollars", "round_dollars"),
+    )
+    if oracle_delta is not None:
+        return oracle_delta
+
     delta = _blind_reward(state)
-    delta += max(0, state.hands_remaining) * _modifier_int(state.modifiers, ("money_per_hand", "dollars_per_hand"), default=1)
+    if not _truthy_modifier(state.modifiers.get("no_extra_hand_money")):
+        delta += max(0, state.hands_remaining) * _modifier_int(state.modifiers, ("money_per_hand", "dollars_per_hand"), default=1)
 
     money_per_discard = _modifier_int_or_none(state.modifiers, ("money_per_discard", "dollars_per_discard"))
     if money_per_discard is not None and state.discards_remaining > 0:
@@ -1433,6 +2861,12 @@ def _cash_out_base_discards(state: GameState) -> int:
 
 
 def _blind_reward(state: GameState) -> int:
+    no_reward = state.modifiers.get("no_blind_reward")
+    blind_type = _blind_reward_type(state)
+    if isinstance(no_reward, dict) and blind_type and _truthy_modifier(no_reward.get(blind_type)):
+        return 0
+    if isinstance(no_reward, (list, tuple, set)) and blind_type in {str(item) for item in no_reward}:
+        return 0
     for key in ("blind_reward", "blind_dollars", "current_blind_reward"):
         if key in state.modifiers:
             return _int_value(state.modifiers.get(key))
@@ -1455,6 +2889,19 @@ def _blind_reward(state: GameState) -> int:
     if state.blind == "Big Blind":
         return 4
     return 5 if state.blind else 0
+
+
+def _blind_reward_type(state: GameState) -> str | None:
+    current_blind = state.modifiers.get("current_blind")
+    if isinstance(current_blind, dict):
+        blind_type = str(current_blind.get("type", current_blind.get("kind", ""))).title()
+        if blind_type in {"Small", "Big", "Boss"}:
+            return blind_type
+    if state.blind == "Small Blind":
+        return "Small"
+    if state.blind == "Big Blind":
+        return "Big"
+    return "Boss" if state.blind else None
 
 
 def _joker_cash_out_money_delta(state: GameState) -> int:
@@ -1514,6 +2961,56 @@ def _known_full_deck_cards(state: GameState) -> tuple[Card, ...]:
         + _zone_cards(state.modifiers, "played_pile")
         + _zone_cards(state.modifiers, "discard_pile")
     )
+
+
+def _state_with_dynamic_joker_values(state: GameState) -> GameState:
+    return replace(state, jokers=_jokers_with_dynamic_state_values(state))
+
+
+def _jokers_with_dynamic_state_values(state: GameState) -> tuple[Joker, ...]:
+    if not state.jokers:
+        return state.jokers
+
+    full_deck = _known_full_deck_cards(state)
+    visible_out_of_draw_deck = (
+        len(state.hand)
+        + len(_zone_cards(state.modifiers, "played_pile"))
+        + len(_zone_cards(state.modifiers, "discard_pile"))
+    )
+    stone_count = sum(1 for card in full_deck if _normalized(card.enhancement) in {"stone", "stone card"})
+    steel_count = sum(1 for card in full_deck if _normalized(card.enhancement) in {"steel", "steel card"})
+    enhanced_count = sum(1 for card in full_deck if _is_enhanced_playing_card(card))
+    current_deck_size = max(state.deck_size + visible_out_of_draw_deck, len(full_deck))
+    starting_deck_size = max(
+        current_deck_size,
+        _modifier_int(state.modifiers, ("starting_deck_size", "starting_playing_card_count"), default=52),
+    )
+    missing_cards = max(0, starting_deck_size - current_deck_size)
+    stencil_xmult = _normal_joker_slot_limit(state) - len(state.jokers) + sum(
+        1 for joker in state.jokers if joker.name == "Joker Stencil"
+    )
+
+    updated: list[Joker] = []
+    for joker in state.jokers:
+        if joker.name == "Joker Stencil":
+            updated.append(_with_joker_metadata(joker, {"current_xmult": float(stencil_xmult), "xmult": float(stencil_xmult)}))
+        elif joker.name == "Stone Joker":
+            chips = 25 * stone_count
+            updated.append(_with_joker_metadata(joker, {"stone_tally": stone_count, "current_chips": chips}))
+        elif joker.name == "Steel Joker":
+            xmult = 1.0 + (0.2 * steel_count)
+            updated.append(_with_joker_metadata(joker, {"steel_tally": steel_count, "current_xmult": xmult, "xmult": xmult}))
+        elif joker.name == "Driver's License":
+            updated.append(_with_joker_metadata(joker, {"driver_tally": enhanced_count}))
+        elif joker.name == "Erosion":
+            updated.append(_with_joker_metadata(joker, {"current_mult": 4 * missing_cards}))
+        else:
+            updated.append(joker)
+    return tuple(updated)
+
+
+def _is_enhanced_playing_card(card: Card) -> bool:
+    return _normalized(card.enhancement) not in {"", "base", "base card"}
 
 
 def _interest_money_delta(state: GameState) -> int:
@@ -1588,14 +3085,13 @@ def _scored_rank_trigger_count(
         triggers = 1
         if _normalized(card.seal) == "red":
             triggers += 1
-        if _has_joker(jokers, "Hack") and _normalize_rank(rank) in {"2", "3", "4", "5"}:
-            triggers += 1
-        if _has_joker(jokers, "Dusk") and hands_remaining == 1:
-            triggers += 1
-        if _has_joker(jokers, "Seltzer"):
-            triggers += 1
-        if _has_joker(jokers, "Hanging Chad") and index == first_scored_index:
-            triggers += 2
+        if _normalize_rank(rank) in {"2", "3", "4", "5"}:
+            triggers += _effective_joker_count(jokers, "Hack")
+        if hands_remaining == 1:
+            triggers += _effective_joker_count(jokers, "Dusk")
+        triggers += _effective_joker_count(jokers, "Seltzer")
+        if index == first_scored_index:
+            triggers += 2 * _effective_joker_count(jokers, "Hanging Chad")
         total += triggers
     return total
 
@@ -1727,9 +3223,9 @@ def _effective_ability_joker_indices(jokers: tuple[Joker, ...]) -> tuple[int, ..
         joker = jokers[index]
         if index in seen:
             return index
-        if joker.name == "Blueprint" and index + 1 < len(jokers):
+        if joker.name == "Blueprint" and index + 1 < len(jokers) and is_blueprint_compatible(jokers[index + 1]):
             return resolve(index + 1, seen | {index})
-        if joker.name == "Brainstorm" and index != 0:
+        if joker.name == "Brainstorm" and index != 0 and is_blueprint_compatible(jokers[0]):
             return resolve(0, seen | {index})
         return index
 
@@ -1741,6 +3237,73 @@ def _joker_is_disabled(joker: Joker) -> bool:
     if isinstance(state, dict) and state.get("debuff"):
         return True
     return "all abilities are disabled" in _joker_effect_text(joker).lower()
+
+
+def _jokers_after_crimson_heart_draw(
+    state: GameState,
+    jokers: tuple[Joker, ...],
+    outcome_map: dict[str, object],
+    *,
+    next_phase: GamePhase,
+) -> tuple[Joker, ...]:
+    if _effective_blind_name(state) != "Crimson Heart":
+        return jokers
+    if next_phase not in {GamePhase.SELECTING_HAND, GamePhase.PLAYING_BLIND}:
+        return jokers
+    disabled_index = _outcome_int_or_none(outcome_map, "crimson_heart_disabled_joker_index")
+    if disabled_index is None:
+        return jokers
+    return _jokers_with_only_disabled_index(jokers, disabled_index)
+
+
+def _jokers_with_only_disabled_index(jokers: tuple[Joker, ...], disabled_index: int) -> tuple[Joker, ...]:
+    if disabled_index < 0 or disabled_index >= len(jokers):
+        raise ValueError(f"Crimson Heart disabled joker index is outside jokers: {disabled_index}")
+    return tuple(_joker_with_disabled_state(joker, index == disabled_index) for index, joker in enumerate(jokers))
+
+
+def _joker_with_disabled_state(joker: Joker, disabled: bool) -> Joker:
+    metadata = _copy_metadata(joker.metadata)
+    state_value = metadata.get("state")
+    state_data = dict(state_value) if isinstance(state_value, dict) else {}
+    if disabled:
+        state_data["debuff"] = True
+        _set_disabled_effect_text(metadata)
+    else:
+        state_data.pop("debuff", None)
+        _restore_disabled_effect_text(metadata)
+
+    if state_data:
+        metadata["state"] = state_data
+    elif "state" in metadata:
+        metadata["state"] = []
+    return replace(joker, metadata=metadata)
+
+
+def _set_disabled_effect_text(metadata: dict[str, object]) -> None:
+    value = metadata.get("value")
+    if not isinstance(value, dict):
+        return
+    effect = value.get("effect")
+    if isinstance(effect, str) and effect and "all abilities are disabled" not in effect.lower():
+        metadata.setdefault("_crimson_heart_original_effect", effect)
+    value["effect"] = "All abilities are disabled"
+
+
+def _restore_disabled_effect_text(metadata: dict[str, object]) -> None:
+    value = metadata.get("value")
+    if not isinstance(value, dict):
+        metadata.pop("_crimson_heart_original_effect", None)
+        return
+    effect = str(value.get("effect", ""))
+    if "all abilities are disabled" not in effect.lower():
+        metadata.pop("_crimson_heart_original_effect", None)
+        return
+    original = metadata.pop("_crimson_heart_original_effect", None)
+    if isinstance(original, str) and original:
+        value["effect"] = original
+    else:
+        value.pop("effect", None)
 
 
 def _with_joker_metadata(joker: Joker, updates: dict[str, object], *, sell_value: int | None = None) -> Joker:
@@ -1814,6 +3377,18 @@ def _joker_countdown_or_none(joker: Joker, *, keys: tuple[str, ...]) -> int | No
     return int(match.group(1)) if match else None
 
 
+def _seltzer_remaining(joker: Joker) -> int:
+    value = _joker_numeric_value(joker, keys=("current_remaining", "remaining", "uses", "extra"))
+    if value is not None:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            pass
+    effect = _joker_effect_text(joker)
+    match = re.search(r"next\s+([0-9]+)\s+hands?", effect, flags=re.IGNORECASE)
+    return int(match.group(1)) if match else 10
+
+
 def _current_xmult_from_effect(joker: Joker) -> float | None:
     effect = _joker_effect_text(joker)
     match = re.search(r"currently\s+x\s*([0-9]+(?:\.[0-9]+)?)", effect, flags=re.IGNORECASE)
@@ -1877,15 +3452,24 @@ def _blind_is_boss(state: GameState) -> bool:
 
 def _mail_in_rebate_rank(jokers: tuple[Joker, ...]) -> str | None:
     for joker in jokers:
-        if joker.name != "Mail-In Rebate":
+        if joker.name != "Mail-In Rebate" or _joker_is_disabled(joker):
             continue
         for source in _metadata_sources(joker.metadata):
             for key in ("current_rank", "target_rank", "rank"):
                 value = source.get(key)
                 if isinstance(value, str) and value:
                     return _normalize_rank(value)
-        return _rank_from_text(_joker_effect_text(joker))
+        return _mail_in_rebate_rank_from_text(_joker_effect_text(joker))
     return None
+
+
+def _mail_in_rebate_rank_from_text(text: str) -> str | None:
+    match = re.search(
+        r"\bdiscarded\s+(Ace|King|Queen|Jack|Ten|Nine|Eight|Seven|Six|Five|Four|Three|Two|K|Q|J|10|T|[2-9])\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+    return _normalize_rank(match.group(1)) if match else None
 
 
 def _rank_from_text(text: str) -> str | None:
@@ -2202,6 +3786,39 @@ def _outcome_int(outcomes: dict[str, object], key: str, default: int = 0) -> int
         return int(outcomes.get(key, default))
     except (TypeError, ValueError):
         return default
+
+
+def _outcome_int_or_none(outcomes: dict[str, object], key: str) -> int | None:
+    if key not in outcomes or outcomes[key] is None:
+        return None
+    try:
+        return int(outcomes[key])
+    except (TypeError, ValueError):
+        return None
+
+
+def _outcome_names(outcomes: dict[str, object], key: str) -> tuple[str, ...]:
+    raw = outcomes.get(key, ())
+    if isinstance(raw, str):
+        return (raw,)
+    if isinstance(raw, list | tuple | set):
+        return tuple(str(item) for item in raw)
+    return ()
+
+
+def _outcome_cards(outcomes: dict[str, object], key: str) -> tuple[Card, ...]:
+    raw = outcomes.get(key, ())
+    if isinstance(raw, Card):
+        return (raw,)
+    if isinstance(raw, list | tuple | set):
+        cards: list[Card] = []
+        for item in raw:
+            if isinstance(item, Card):
+                cards.append(item)
+            elif isinstance(item, dict):
+                cards.append(Card.from_mapping(item))
+        return tuple(cards)
+    return ()
 
 
 def _float_value(value: object) -> float:

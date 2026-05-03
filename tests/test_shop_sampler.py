@@ -126,6 +126,23 @@ class ShopSamplerTests(unittest.TestCase):
         self.assertEqual(sampler.shop_slot_count(GameState(vouchers=("Overstock",))), 3)
         self.assertEqual(sampler.shop_slot_count(GameState(vouchers=("Overstock", "Overstock Plus"))), 4)
 
+    def test_fill_shop_to_slot_count_preserves_visible_cards_and_fills_empty_slots(self) -> None:
+        data = tiny_shop_data()
+        data["slot_rates"] = {"Joker": 1}
+        data["jokers"] = [
+            {"key": "j_other", "name": "Other Joker", "set": "Joker", "cost": 5, "rarity_name": "common"},
+            {"key": "j_filler_a", "name": "Filler A", "set": "Joker", "cost": 4, "rarity_name": "common"},
+            {"key": "j_filler_b", "name": "Filler B", "set": "Joker", "cost": 4, "rarity_name": "common"},
+        ]
+        sampler = ShopSampler(data)
+        visible = ({"key": "j_other", "name": "Other Joker", "set": "Joker", "cost": {"buy": 5}},)
+
+        filled = sampler.fill_shop_to_slot_count(GameState(vouchers=("Overstock",)), visible, Random(4))
+
+        self.assertEqual(len(filled), 3)
+        self.assertIs(filled[0], visible[0])
+        self.assertEqual([item["name"] for item in filled].count("Other Joker"), 1)
+
     def test_reroll_cost_uses_free_and_visible_costs(self) -> None:
         sampler = ShopSampler(tiny_shop_data())
 

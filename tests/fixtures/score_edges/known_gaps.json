@@ -14,10 +14,10 @@
       "known_gap_reason": "Certificate creates a random sealed card at blind start; exact replay validation needs the generated card identity and deck/hand snapshot."
     },
     {
-      "name": "the_hook_actual_discarded_held_cards_need_oracle",
+      "name": "the_hook_score_only_rows_need_post_hand_oracle",
       "kind": "known_gap",
       "source": "old replay corpus mismatch bucket",
-      "known_gap_reason": "The Hook randomly discards held cards before scoring; exact validation needs the actual discarded held-card list from the bridge."
+      "known_gap_reason": "The Hook is modeled for transition replay when the post-hand state is available; isolated score-only rows still need the actual post-Hook held-card list when held-card effects can change scoring."
     },
     {
       "name": "the_pillar_prior_played_card_debuffs_need_oracle",
@@ -29,7 +29,7 @@
       "name": "cerulean_bell_forced_selection_needs_actual_scored_cards",
       "kind": "known_gap",
       "source": ".data/phase7-score-audit-fresh-10 mismatch bucket",
-      "known_gap_reason": "Cerulean Bell can force-select a card before the bot action is applied; exact validation needs the actual bridge-scored card list, not only requested card indices."
+      "known_gap_reason": "Cerulean Bell is modeled for transition replay by trying the one forced selected card; isolated score-only rows still need the actual forced-card context when the requested card indices are all that was logged."
     }
   ]
 }

@@ -1,0 +1,29 @@
+Stopping existing Balatro/BalatroBot processes...
+Starting bridge on port 12346...
+Bridge 12346 is healthy.
+Bot: basic_strategy_bot
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Seeds: 1
+Seed label: white:primary-score-audit-100:explicit
+First seed: 251045591
+Endpoints: http://127.0.0.1:12346
+Replay mode: off
+Start retries: 1
+Failed seed retries: 1
+Run timeout: off
+[1/1] seed=251045591 won=False ante=7 score=44640 money=86 runtime=462.61s
+
+Bot: basic_strategy_bot
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Runs: 1
+Win rate: 0.0%
+Average ante: 7.00
+Average final score: 44640.0
+Average final money: 86.0
+Average runtime: 462.61 sec/run

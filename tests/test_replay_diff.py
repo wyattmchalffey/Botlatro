@@ -29,6 +29,7 @@ def state_detail(
     voucher_shop: list[dict[str, object]] | None = None,
     booster_packs: list[dict[str, object]] | None = None,
     pack: list[dict[str, object]] | None = None,
+    round_data: dict[str, object] | None = None,
 ) -> dict[str, object]:
     return {
         "phase": phase,
@@ -48,6 +49,7 @@ def state_detail(
         "known_deck": [{"rank": card[:-1], "suit": card[-1], "name": card} for card in (known_deck or [])],
         "pack": pack or [],
         "required_score": required_score,
+        "round": round_data or {},
         "shop": shop or [],
         "voucher_shop": voucher_shop or [],
         "vouchers": vouchers or [],
@@ -214,6 +216,47 @@ class ReplayDiffTests(unittest.TestCase):
                         hands_remaining=4,
                         discards_remaining=4,
                         money=17,
+                        deck_size=52,
+                        hand=[],
+                    ),
+                },
+            ]
+            replay_path.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+
+            summary = diff_replays((replay_path,))
+
+        self.assertEqual(summary.compared_transitions, 1)
+        self.assertEqual(summary.exact_counts["cash_out"], 1)
+        self.assertEqual(summary.field_mismatches, {})
+
+    def test_diff_replays_uses_observed_post_cash_out_delta_when_logged_round_is_stale(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            replay_path = Path(directory) / "run.jsonl"
+            rows = [
+                {
+                    "seed": 1,
+                    "state_detail": state_detail(
+                        phase="round_eval",
+                        current_score=500,
+                        required_score=300,
+                        hands_remaining=2,
+                        discards_remaining=3,
+                        money=10,
+                        deck_size=52,
+                        hand=[],
+                        round_data={"dollars": 3},
+                    ),
+                    "chosen_action": {"type": "cash_out"},
+                },
+                {
+                    "seed": 1,
+                    "state_detail": state_detail(
+                        phase="shop",
+                        current_score=0,
+                        required_score=300,
+                        hands_remaining=4,
+                        discards_remaining=4,
+                        money=19,
                         deck_size=52,
                         hand=[],
                     ),
@@ -470,7 +513,7 @@ class ReplayDiffTests(unittest.TestCase):
         self.assertEqual(summary.exact_counts["play_hand"], 2)
         self.assertEqual(summary.field_mismatches, {})
 
-    def test_diff_replays_ignores_hook_visible_hand_randomness(self) -> None:
+    def test_diff_replays_reconstructs_hook_discarded_held_cards(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             replay_path = Path(directory) / "run.jsonl"
             rows = [
@@ -492,10 +535,187 @@ class ReplayDiffTests(unittest.TestCase):
                         current_score=16,
                         required_score=500,
                         hands_remaining=3,
-                        deck_size=7,
+                        deck_size=8,
                         hand=["9S", "8D"],
                     )
                     | {"blind": "The Hook"},
+                    "chosen_action": {"type": "play_hand", "card_indices": [0]},
+                },
+            ]
+            replay_path.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+
+            summary = diff_replays((replay_path,))
+
+        self.assertEqual(summary.compared_transitions, 1)
+        self.assertEqual(summary.exact_counts["play_hand"], 1)
+        self.assertEqual(summary.field_mismatches, {})
+
+    def test_diff_replays_uses_deck_delta_for_ambiguous_hook_discards(self) -> None:
+        green_joker = {
+            "name": "Green Joker",
+            "sell_value": 2,
+            "metadata": {
+                "current_mult": 0,
+                "value": {"effect": "+1 Mult per hand played -1 Mult per discard (Currently +0 Mult)"},
+            },
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            replay_path = Path(directory) / "run.jsonl"
+            rows = [
+                {
+                    "seed": 1,
+                    "state_detail": state_detail(
+                        current_score=0,
+                        required_score=999999,
+                        hands_remaining=4,
+                        deck_size=44,
+                        hand=["AS", "KD", "QC", "JH", "9S"],
+                        jokers=[green_joker],
+                    )
+                    | {"blind": "The Hook"},
+                    "chosen_action": {"type": "play_hand", "card_indices": [0]},
+                },
+                {
+                    "seed": 1,
+                    "state_detail": state_detail(
+                        current_score=32,
+                        required_score=999999,
+                        hands_remaining=3,
+                        deck_size=38,
+                        hand=["AH", "KS", "KD", "QC", "JH", "7S", "5D", "3C"],
+                        jokers=[
+                            {
+                                **green_joker,
+                                "metadata": {
+                                    **green_joker["metadata"],
+                                    "current_mult": 1,
+                                },
+                            }
+                        ],
+                    )
+                    | {"blind": "The Hook"},
+                },
+            ]
+            replay_path.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+
+            summary = diff_replays((replay_path,))
+
+        self.assertEqual(summary.compared_transitions, 1)
+        self.assertEqual(summary.exact_counts["play_hand"], 1)
+        self.assertEqual(summary.field_mismatches, {})
+
+    def test_diff_replays_infers_blind_clearing_hook_discard_from_score(self) -> None:
+        green_joker = {
+            "name": "Green Joker",
+            "sell_value": 2,
+            "metadata": {
+                "current_mult": 5,
+                "value": {"effect": "+1 Mult per hand played -1 Mult per discard (Currently +5 Mult)"},
+            },
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            replay_path = Path(directory) / "run.jsonl"
+            rows = [
+                {
+                    "seed": 1,
+                    "state_detail": state_detail(
+                        current_score=0,
+                        required_score=1,
+                        hands_remaining=4,
+                        deck_size=0,
+                        hand=["AS", "KH", "QD"],
+                        jokers=[green_joker],
+                    )
+                    | {"blind": "The Hook"},
+                    "chosen_action": {"type": "play_hand", "card_indices": [0]},
+                },
+                {
+                    "seed": 1,
+                    "state_detail": state_detail(
+                        phase="round_eval",
+                        current_score=96,
+                        required_score=1,
+                        hands_remaining=3,
+                        deck_size=3,
+                        hand=[],
+                        jokers=[green_joker],
+                    )
+                    | {"blind": "The Hook"},
+                    "chosen_action": {"type": "cash_out"},
+                },
+            ]
+            replay_path.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+
+            summary = diff_replays((replay_path,))
+
+        self.assertEqual(summary.compared_transitions, 1)
+        self.assertEqual(summary.exact_counts["play_hand"], 1)
+        self.assertEqual(summary.field_mismatches, {})
+
+    def test_diff_replays_infers_cerulean_bell_forced_card(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            replay_path = Path(directory) / "run.jsonl"
+            rows = [
+                {
+                    "seed": 1,
+                    "state_detail": state_detail(
+                        current_score=0,
+                        required_score=500,
+                        hands_remaining=4,
+                        deck_size=2,
+                        known_deck=["QD", "JD"],
+                        hand=["AS", "KH", "4S", "2C"],
+                    )
+                    | {"blind": "Cerulean Bell"},
+                    "chosen_action": {"type": "play_hand", "card_indices": [0, 3]},
+                },
+                {
+                    "seed": 1,
+                    "state_detail": state_detail(
+                        current_score=16,
+                        required_score=500,
+                        hands_remaining=3,
+                        deck_size=0,
+                        hand=["KH", "QD", "JD"],
+                    )
+                    | {"blind": "Cerulean Bell"},
+                    "chosen_action": {"type": "play_hand", "card_indices": [0]},
+                },
+            ]
+            replay_path.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+
+            summary = diff_replays((replay_path,))
+
+        self.assertEqual(summary.compared_transitions, 1)
+        self.assertEqual(summary.exact_counts["play_hand"], 1)
+        self.assertEqual(summary.field_mismatches, {})
+
+    def test_diff_replays_infers_misprint_random_mult_from_post_score(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            replay_path = Path(directory) / "run.jsonl"
+            rows = [
+                {
+                    "seed": 1,
+                    "state_detail": state_detail(
+                        current_score=0,
+                        required_score=9999,
+                        hands_remaining=4,
+                        deck_size=0,
+                        hand=["AS"],
+                        jokers=[{"name": "Misprint"}],
+                    ),
+                    "chosen_action": {"type": "play_hand", "card_indices": [0]},
+                },
+                {
+                    "seed": 1,
+                    "state_detail": state_detail(
+                        current_score=176,
+                        required_score=9999,
+                        hands_remaining=3,
+                        deck_size=0,
+                        hand=[],
+                        jokers=[{"name": "Misprint"}],
+                    ),
                     "chosen_action": {"type": "play_hand", "card_indices": [0]},
                 },
             ]

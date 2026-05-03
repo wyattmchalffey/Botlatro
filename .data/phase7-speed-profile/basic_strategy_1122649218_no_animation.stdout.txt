@@ -1,0 +1,1 @@
+Bot=basic_strategy_bot seed=1122649218 stake=white won=False ante=5 score=14140 money=39 runtime=126.05s

@@ -101,6 +101,42 @@ class ShopSampler:
                 used_jokers.update(_item_identifiers(card))
         return tuple(cards)
 
+    def fill_shop_to_slot_count(
+        self,
+        state: GameState,
+        current_shop_cards: Iterable[object],
+        rng: Random | None = None,
+    ) -> tuple[object, ...]:
+        """Fill the visible shop to ``shop_slot_count`` while preserving current cards."""
+
+        rng = rng or Random()
+        current = tuple(current_shop_cards)
+        missing_slots = max(0, self.shop_slot_count(state) - len(current))
+        if missing_slots <= 0:
+            return current
+
+        used_jokers = set(_used_joker_identifiers(state))
+        allow_duplicates = _allow_duplicate_shop_cards(state)
+        if not allow_duplicates:
+            for item in current:
+                if isinstance(item, Mapping) and _is_joker_payload(item):
+                    used_jokers.update(_item_identifiers(item))
+
+        sampled: list[dict[str, Any]] = []
+        for slot_index in range(len(current), len(current) + missing_slots):
+            card_type = self.sample_shop_type(state, rng)
+            card = self.sample_card_of_type(
+                state,
+                card_type,
+                rng,
+                used_jokers=used_jokers,
+                key_append=f"sho{slot_index}",
+            )
+            sampled.append(card)
+            if not allow_duplicates and _is_joker_payload(card):
+                used_jokers.update(_item_identifiers(card))
+        return current + tuple(sampled)
+
     def sample_shop_type(self, state: GameState, rng: Random | None = None) -> str:
         """Sample the type used by create_card_for_shop."""
 
@@ -165,6 +201,30 @@ class ShopSampler:
                 record = _weighted_choice(tuple((record, float(record.get("weight", 1))) for record in records), rng, default=(records[0], 1))[0]
             packs.append(_payload_from_record(record, state))
         return tuple(packs)
+
+    def sample_pack_contents(self, state: GameState, pack: Mapping[str, Any], rng: Random | None = None) -> tuple[dict[str, Any], ...]:
+        """Sample visible cards for one opened booster pack."""
+
+        rng = rng or Random()
+        size = _pack_content_count(pack)
+        if size <= 0:
+            return ()
+        kind = _pack_kind(pack)
+        used_jokers = set(_used_joker_identifiers(state))
+        contents: list[dict[str, Any]] = []
+        for index in range(size):
+            card_type = _pack_card_type(kind, rng)
+            card = self.sample_card_of_type(
+                state,
+                card_type,
+                rng,
+                used_jokers=used_jokers,
+                key_append=f"pack{index}",
+            )
+            contents.append(card)
+            if not _allow_duplicate_shop_cards(state) and _is_joker_payload(card):
+                used_jokers.update(_item_identifiers(card))
+        return tuple(contents)
 
     def reroll_cost(self, state: GameState) -> int:
         """Return the current reroll cost, matching calculate_reroll_cost state."""
@@ -514,6 +574,53 @@ def _discount_percent(state: GameState) -> int:
 
 def _booster_slot_count(data: Mapping[str, Any]) -> int:
     return int(_mapping(data.get("shop_slots")).get("booster_slots", 2))
+
+
+def _pack_content_count(pack: Mapping[str, Any]) -> int:
+    config = _mapping(pack.get("config"))
+    if "extra" in config:
+        return max(0, _int_value(config["extra"]))
+    key = str(pack.get("key", ""))
+    if "jumbo" in key:
+        return 5
+    if "mega" in key:
+        return 5
+    return 3
+
+
+def _pack_kind(pack: Mapping[str, Any]) -> str:
+    kind = str(pack.get("kind", ""))
+    if kind:
+        return kind
+    key = str(pack.get("key", "")).lower()
+    label = str(pack.get("label", pack.get("name", ""))).lower()
+    text = f"{key} {label}"
+    if "arcana" in text:
+        return "Arcana"
+    if "celestial" in text:
+        return "Celestial"
+    if "spectral" in text:
+        return "Spectral"
+    if "buffoon" in text:
+        return "Buffoon"
+    if "standard" in text:
+        return "Standard"
+    return "Standard"
+
+
+def _pack_card_type(kind: str, rng: Random) -> str:
+    normalized = kind.lower()
+    if normalized == "arcana":
+        return "Tarot"
+    if normalized == "celestial":
+        return "Planet"
+    if normalized == "spectral":
+        return "Spectral"
+    if normalized == "buffoon":
+        return "Joker"
+    if normalized == "standard":
+        return "Enhanced" if rng.random() < 0.25 else "Base"
+    return "Base"
 
 
 def _fallback_pool(data: Mapping[str, Any], pool_type: str) -> list[Mapping[str, Any]]:

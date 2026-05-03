@@ -323,7 +323,8 @@ def _reset_with_retries(
 
 def _with_standard_win_boundary(state: GameState) -> GameState:
     if state.ante >= 9:
-        return replace(state, ante=8, run_over=True, won=True, legal_actions=())
+        won = state.won or not state.run_over
+        return replace(state, ante=8, run_over=True, won=won, legal_actions=())
     if state.run_over or state.won:
         return state
     return state

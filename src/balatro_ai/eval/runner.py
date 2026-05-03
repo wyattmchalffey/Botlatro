@@ -42,6 +42,7 @@ class BenchmarkOptions:
     replay_mode: str = "score_audit"
     start_retries: int = 1
     retry_failed_seeds: int = 1
+    park_finished_endpoints: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,6 +125,8 @@ def run_benchmark(
                 with active_endpoints_lock:
                     active_endpoints.discard(endpoint)
             else:
+                if options.park_finished_endpoints:
+                    _park_endpoint(endpoint, options.timeout_seconds)
                 endpoint_queue.put(endpoint)
             return _SeedExecution(result=result, endpoint=endpoint, retired_endpoint=retired_endpoint)
 
@@ -248,6 +251,22 @@ def _endpoint_is_healthy(endpoint: str, timeout_seconds: float) -> bool:
     except (urllib.error.URLError, OSError, TimeoutError, json.JSONDecodeError):
         return False
     return data.get("result", {}).get("status") == "ok"
+
+
+def _park_endpoint(endpoint: str, timeout_seconds: float) -> bool:
+    payload = {"jsonrpc": "2.0", "method": "menu", "id": 1, "params": {}}
+    request = urllib.request.Request(
+        endpoint,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=min(2.0, timeout_seconds)) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, OSError, TimeoutError, json.JSONDecodeError):
+        return False
+    return not data.get("error")
 
 
 def _delete_replay_for_seed(seed: int, options: BenchmarkOptions) -> None:

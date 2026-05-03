@@ -42,6 +42,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="After the main sweep, retry seeds that ended in a bridge/client error this many times.",
     )
     parser.add_argument(
+        "--no-park-finished-endpoints",
+        action="store_true",
+        help="Do not send finished parallel workers back to the Balatro menu between seeds.",
+    )
+    parser.add_argument(
         "--fast-benchmark",
         action="store_true",
         help="Use low-overhead benchmark defaults; currently selects summary replay unless --replay-mode is set.",
@@ -99,6 +104,7 @@ def main(argv: list[str] | None = None) -> int:
             replay_mode=replay_mode,
             start_retries=args.start_retries,
             retry_failed_seeds=args.retry_failed_seeds,
+            park_finished_endpoints=not args.no_park_finished_endpoints,
         ),
         progress=print,
     )

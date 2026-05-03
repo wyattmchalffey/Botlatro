@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from random import Random
 from typing import Any
 
@@ -253,7 +253,12 @@ def _expand_action(
 
 def _simulate_shop_action(state: GameState, action: Action, sampler: ShopSampler, *, rng: Random) -> GameState:
     if action.action_type == ActionType.BUY:
-        return simulate_buy(state, action)
+        bought = simulate_buy(state, action)
+        if not _is_overstock_voucher_buy(state, action):
+            return bought
+        current_shop = _modifier_items(bought.modifiers, "shop_cards")
+        filled_shop = sampler.fill_shop_to_slot_count(bought, current_shop, rng=rng)
+        return _with_shop_cards(bought, filled_shop)
     if action.action_type == ActionType.SELL:
         return simulate_sell(state, action)
     if action.action_type == ActionType.REROLL:
@@ -524,6 +529,23 @@ def _item_label(item: object) -> str:
     if isinstance(item, dict):
         return str(item.get("name") or item.get("label") or item.get("key") or "")
     return str(item)
+
+
+def _with_shop_cards(state: GameState, shop_cards: tuple[object, ...]) -> GameState:
+    modifiers = {**state.modifiers, "shop_cards": shop_cards}
+    return replace(state, modifiers=modifiers, shop=tuple(_item_label(item) for item in shop_cards), legal_actions=())
+
+
+def _is_overstock_voucher_buy(state: GameState, action: Action) -> bool:
+    if action.action_type != ActionType.BUY:
+        return False
+    if str(action.metadata.get("kind", action.target_id or "")) != "voucher":
+        return False
+    index = _action_index(action)
+    voucher_cards = _modifier_items(state.modifiers, "voucher_cards")
+    if index is None or not 0 <= index < len(voucher_cards):
+        return False
+    return _item_label(voucher_cards[index]) in {"Overstock", "Overstock Plus"}
 
 
 def _modifier_items(modifiers: dict[str, object], key: str) -> tuple[object, ...]:

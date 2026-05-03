@@ -87,6 +87,7 @@ def _state_detail(state: GameState) -> dict[str, object]:
         "blind": state.blind,
         "required_score": state.required_score,
         "current_blind": state.modifiers.get("current_blind"),
+        "round": dict(state.modifiers.get("round", {})) if isinstance(state.modifiers.get("round"), dict) else {},
         "current_score": state.current_score,
         "hands_remaining": state.hands_remaining,
         "discards_remaining": state.discards_remaining,
@@ -100,6 +101,7 @@ def _state_detail(state: GameState) -> dict[str, object]:
         "consumables": list(state.consumables),
         "owned_vouchers": list(state.vouchers),
         "vouchers": list(state.vouchers),
+        "used_vouchers": _used_vouchers_detail(state),
         "shop": [_raw_card_detail(item) for item in state.modifiers.get("shop_cards", ())],
         "voucher_shop": [_raw_card_detail(item) for item in state.modifiers.get("voucher_cards", ())],
         "booster_packs": [_raw_card_detail(item) for item in state.modifiers.get("booster_packs", ())],
@@ -142,6 +144,15 @@ def _indexed_detail(items: tuple[dict[str, object], ...], index: int) -> dict[st
     return None
 
 
+def _used_vouchers_detail(state: GameState) -> object:
+    used_vouchers = state.modifiers.get("used_vouchers")
+    if isinstance(used_vouchers, dict):
+        return dict(used_vouchers)
+    if isinstance(used_vouchers, list | tuple):
+        return list(used_vouchers)
+    return list(state.vouchers)
+
+
 def _joker_detail(joker) -> dict[str, object]:
     return {
         "name": joker.name,
@@ -163,6 +174,7 @@ def _card_detail(card) -> dict[str, object]:
         "seal": card.seal,
         "edition": card.edition,
         "debuffed": card.debuffed,
+        "metadata": dict(card.metadata),
     }
 
 

@@ -4439,19 +4439,23 @@ def _mail_in_rebate_rank(state: GameState) -> str | None:
     for joker in state.jokers:
         if joker.name != "Mail-In Rebate":
             continue
-        return _rank_from_text(_joker_effect_text(joker))
+        return _mail_in_rebate_rank_from_text(_joker_effect_text(joker))
     return None
 
 
-def _rank_from_text(text: str) -> str | None:
+def _mail_in_rebate_rank_from_text(text: str) -> str | None:
     match = re.search(
-        r"\b(Ace|King|Queen|Jack|Ten|Nine|Eight|Seven|Six|Five|Four|Three|Two|K|Q|J|10|[2-9])\b",
+        r"\bdiscarded\s+(Ace|King|Queen|Jack|Ten|Nine|Eight|Seven|Six|Five|Four|Three|Two|K|Q|J|10|[2-9])\b",
         text,
         flags=re.IGNORECASE,
     )
     if not match:
         return None
-    value = match.group(1).lower()
+    return _normalize_rank(match.group(1))
+
+
+def _normalize_rank(rank: str) -> str:
+    value = rank.strip().lower()
     return {
         "ace": "A",
         "king": "K",
@@ -4469,7 +4473,19 @@ def _rank_from_text(text: str) -> str | None:
         "k": "K",
         "q": "Q",
         "j": "J",
+        "t": "10",
     }.get(value, value.upper())
+
+
+def _rank_from_text(text: str) -> str | None:
+    match = re.search(
+        r"\b(Ace|King|Queen|Jack|Ten|Nine|Eight|Seven|Six|Five|Four|Three|Two|K|Q|J|10|[2-9])\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return None
+    return _normalize_rank(match.group(1))
 
 
 def _card_long_term_value(state: GameState, card: Card) -> float:

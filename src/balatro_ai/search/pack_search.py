@@ -68,7 +68,7 @@ def pack_action_value(
         raise ValueError(f"pack_action_value requires choose_pack_card, got {action.action_type.value}")
     should_include_item_value = value_fn is None if include_item_value is None else include_item_value
     evaluator = value_fn or (lambda leaf: state_value(leaf))
-    simulated = simulate_choose_pack_card(state, action)
+    simulated = simulate_choose_pack_card(state, action, return_hand_to_deck=False)
     value = evaluator(simulated)
     if should_include_item_value:
         value += _pack_item_value(state, action)

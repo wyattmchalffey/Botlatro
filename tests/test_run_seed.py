@@ -182,6 +182,38 @@ class AnteNineWonButNotRunOverClient:
         )
 
 
+class AnteNineRunOverLossClient:
+    def __init__(self) -> None:
+        self.action = Action(ActionType.NO_OP)
+
+    def start_run(self, seed: int | None = None, stake: str | None = None) -> GameState:
+        return GameState(
+            phase=GamePhase.PLAYING_BLIND,
+            seed=seed,
+            ante=8,
+            blind="Amber Acorn",
+            required_score=100000,
+            current_score=79511,
+            money=28,
+            legal_actions=(self.action,),
+        )
+
+    def get_state(self) -> GameState:
+        return GameState(phase=GamePhase.PLAYING_BLIND, legal_actions=(self.action,))
+
+    def send_action(self, action: Action) -> GameState:
+        return GameState(
+            phase=GamePhase.RUN_OVER,
+            ante=9,
+            blind="Amber Acorn",
+            required_score=100000,
+            current_score=79511,
+            money=28,
+            run_over=True,
+            won=False,
+        )
+
+
 class EndlessClient:
     def __init__(self) -> None:
         self.action = Action(ActionType.NO_OP)
@@ -270,6 +302,18 @@ class RunSeedTests(unittest.TestCase):
         self.assertEqual(result.ante_reached, 8)
         self.assertEqual(result.final_money, 105)
         self.assertIsNone(result.death_reason)
+
+    def test_run_single_seed_does_not_mark_ante_nine_game_over_loss_as_win(self) -> None:
+        result = run_single_seed(
+            bot=RandomBot(seed=123),
+            client=AnteNineRunOverLossClient(),
+            options=RunSeedOptions(seed=123, max_steps=10),
+        )
+
+        self.assertFalse(result.won)
+        self.assertEqual(result.ante_reached, 8)
+        self.assertEqual(result.final_score, 79511)
+        self.assertEqual(result.death_reason, "Amber Acorn")
 
     def test_run_single_seed_marks_wall_clock_timeout_as_retryable_error(self) -> None:
         original_perf_counter = run_seed_module.perf_counter

@@ -165,7 +165,9 @@ class RunnerTests(unittest.TestCase):
 
     def test_run_benchmark_retries_failed_seed_and_replaces_replay(self) -> None:
         original_run_seed = runner._run_seed
+        original_endpoint_is_healthy = runner._endpoint_is_healthy
         original_healthy_endpoints = runner._healthy_endpoints
+        original_park_endpoint = runner._park_endpoint
         calls: list[tuple[int, str]] = []
         attempts: dict[int, int] = {}
 
@@ -205,7 +207,9 @@ class RunnerTests(unittest.TestCase):
 
             try:
                 runner._run_seed = fake_run_seed
+                runner._endpoint_is_healthy = lambda endpoint, timeout: True
                 runner._healthy_endpoints = lambda options: ("http://127.0.0.1:12347",)
+                runner._park_endpoint = lambda endpoint, timeout_seconds: True
                 result = run_benchmark(
                     BenchmarkOptions(
                         bot="random_bot",
@@ -218,7 +222,9 @@ class RunnerTests(unittest.TestCase):
                 )
             finally:
                 runner._run_seed = original_run_seed
+                runner._endpoint_is_healthy = original_endpoint_is_healthy
                 runner._healthy_endpoints = original_healthy_endpoints
+                runner._park_endpoint = original_park_endpoint
 
             self.assertEqual(attempts[1], 2)
             self.assertEqual(calls[-1], (1, "http://127.0.0.1:12347"))
@@ -229,6 +235,7 @@ class RunnerTests(unittest.TestCase):
         original_run_seed = runner._run_seed
         original_endpoint_is_healthy = runner._endpoint_is_healthy
         original_healthy_endpoints = runner._healthy_endpoints
+        original_park_endpoint = runner._park_endpoint
         calls: list[tuple[int, str]] = []
 
         def fake_run_seed(*, seed: int, endpoint: str, options: BenchmarkOptions) -> RunResult:
@@ -260,6 +267,7 @@ class RunnerTests(unittest.TestCase):
             runner._run_seed = fake_run_seed
             runner._endpoint_is_healthy = lambda endpoint, timeout: not endpoint.endswith("12346")
             runner._healthy_endpoints = lambda options: ("http://127.0.0.1:12347",)
+            runner._park_endpoint = lambda endpoint, timeout_seconds: True
             run_benchmark(
                 BenchmarkOptions(
                     bot="random_bot",
@@ -272,8 +280,43 @@ class RunnerTests(unittest.TestCase):
             runner._run_seed = original_run_seed
             runner._endpoint_is_healthy = original_endpoint_is_healthy
             runner._healthy_endpoints = original_healthy_endpoints
+            runner._park_endpoint = original_park_endpoint
 
         self.assertEqual(sum(1 for _, endpoint in calls if endpoint.endswith("12346")), 1)
+
+    def test_run_benchmark_parks_finished_parallel_endpoints(self) -> None:
+        original_run_seed = runner._run_seed
+        original_park_endpoint = runner._park_endpoint
+        parked: list[str] = []
+
+        def fake_run_seed(*, seed: int, endpoint: str, options: BenchmarkOptions) -> RunResult:
+            return RunResult(
+                bot_version=options.bot,
+                seed=seed,
+                stake=options.stake,
+                won=False,
+                ante_reached=2,
+                final_score=100,
+                final_money=5,
+                runtime_seconds=1.0,
+            )
+
+        try:
+            runner._run_seed = fake_run_seed
+            runner._park_endpoint = lambda endpoint, timeout_seconds: bool(parked.append(endpoint)) or True
+            run_benchmark(
+                BenchmarkOptions(
+                    bot="random_bot",
+                    seed_values=(1, 2),
+                    endpoints=("http://127.0.0.1:12346", "http://127.0.0.1:12347"),
+                    retry_failed_seeds=0,
+                )
+            )
+        finally:
+            runner._run_seed = original_run_seed
+            runner._park_endpoint = original_park_endpoint
+
+        self.assertCountEqual(parked, ("http://127.0.0.1:12346", "http://127.0.0.1:12347"))
 
 
 if __name__ == "__main__":

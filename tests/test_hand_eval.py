@@ -521,6 +521,24 @@ class HandEvaluatorTests(unittest.TestCase):
         self.assertEqual(evaluation.effect_xmult, 2.25)
         self.assertEqual(evaluation.score, 568)
 
+    def test_red_seal_retriggers_held_card_effects(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(Joker("Mime"), Joker("Baron")),
+            held_cards=(Card(rank="K", suit="S", enhancement="STEEL", seal="RED"),),
+        )
+
+        self.assertAlmostEqual(evaluation.effect_xmult, 1.5**6)
+        self.assertEqual(evaluation.score, 182)
+
+    def test_copied_sock_and_buskin_adds_another_face_retrigger(self) -> None:
+        evaluation = evaluate_played_cards(
+            (Card("K", "S", seal="RED"), Card("Q", "H"), Card("J", "D")),
+            jokers=(Joker("Sock and Buskin"), Joker("Sock and Buskin"), Joker("Photograph")),
+        )
+
+        self.assertEqual(evaluation.score, 720)
+
     def test_blackboard_and_blue_joker_are_applied(self) -> None:
         evaluation = evaluate_played_cards(
             cards(["AS", "AD"]),
@@ -577,6 +595,25 @@ class HandEvaluatorTests(unittest.TestCase):
         self.assertEqual(evaluation.mult, 6)
         self.assertEqual(evaluation.score, 192)
 
+    def test_score_floor_tolerates_decimal_xmult_float_edges(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["QH", "QD"]),
+            jokers=(
+                Joker(
+                    "Square Joker",
+                    edition="FOIL",
+                    metadata={"value": {"effect": "This Joker gains +4 Chips if played hand has exactly 4 cards (Currently 20 Chips)"}},
+                ),
+                Joker("Raised Fist"),
+                joker_with_effect("Constellation", "This Joker gains X0.1 Mult every time a Planet card is used (Currently X1.2 Mult)"),
+                Joker("Blackboard"),
+                Joker("Droll Joker"),
+            ),
+            held_cards=cards(["AS", "KC", "JS", "TS", "8C", "7C"]),
+        )
+
+        self.assertEqual(evaluation.score, 5760)
+
     def test_ride_the_bus_and_runner_use_current_values(self) -> None:
         bus = evaluate_played_cards(
             cards(["9S"]),
@@ -629,6 +666,16 @@ class HandEvaluatorTests(unittest.TestCase):
         self.assertEqual(shortcut.hand_type, HandType.STRAIGHT)
         self.assertEqual(shortcut.score, 248)
 
+    def test_four_fingers_scores_all_five_cards_when_five_card_straight_flush_exists(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["AH", "KH", "QH", "JH", "TH"]),
+            jokers=(Joker("Four Fingers"),),
+        )
+
+        self.assertEqual(evaluation.hand_type, HandType.STRAIGHT_FLUSH)
+        self.assertEqual(evaluation.scoring_indices, (0, 1, 2, 3, 4))
+        self.assertEqual(evaluation.score, 1208)
+
     def test_splash_scores_all_played_cards(self) -> None:
         evaluation = evaluate_played_cards(
             cards(["AS", "AD", "7H"]),
@@ -672,6 +719,21 @@ class HandEvaluatorTests(unittest.TestCase):
         self.assertEqual(blueprint.score, 144)
         self.assertEqual(brainstorm.mult, 9)
         self.assertEqual(brainstorm.score, 144)
+
+    def test_copy_jokers_do_not_copy_incompatible_targets(self) -> None:
+        blueprint = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(Joker("Blueprint"), Joker("Credit Card"), Joker("Joker")),
+        )
+        brainstorm = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(Joker("Credit Card"), Joker("Brainstorm"), Joker("Joker")),
+        )
+
+        self.assertEqual(blueprint.mult, 5)
+        self.assertEqual(blueprint.score, 80)
+        self.assertEqual(brainstorm.mult, 5)
+        self.assertEqual(brainstorm.score, 80)
 
     def test_retrigger_jokers_repeat_card_and_when_scored_effects(self) -> None:
         hack = evaluate_played_cards(
@@ -1179,8 +1241,17 @@ class HandEvaluatorTests(unittest.TestCase):
         )
 
         self.assertEqual(misprint.score, 176)
-        self.assertEqual(bloodstone.score, 32)
+        self.assertEqual(bloodstone.score, 24)
         self.assertEqual(space.score, 52)
+
+    def test_lucky_cat_uses_same_hand_lucky_card_trigger(self) -> None:
+        result = evaluate_played_cards(
+            (Card("A", "S", enhancement="LUCKY"),),
+            jokers=(Joker("Lucky Cat", metadata={"current_xmult": 1.0}),),
+            stochastic_outcomes={"lucky_card_mult_triggers": 1, "lucky_card_triggers": 1},
+        )
+
+        self.assertEqual(result.score, 420)
 
     def test_scoring_time_money_outcomes_feed_money_scaled_jokers(self) -> None:
         business_card = evaluate_played_cards(
