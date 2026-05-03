@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass, field, replace
 from itertools import permutations
-from math import ceil
+from math import ceil, comb
 import re
 from typing import Any
 
@@ -128,8 +128,9 @@ class _BlindContext:
 
 
 DISCARD_DETAIL_LIMIT = 28
+LATE_DISCARD_DETAIL_LIMIT = 12
 MAX_JOKER_REARRANGE_COUNT = 6
-JOKER_REARRANGE_EXHAUSTIVE_COUNT = 5
+JOKER_REARRANGE_EXHAUSTIVE_COUNT = 4
 JOKER_REARRANGE_MIN_GAIN = 1
 SHOP_VALUE_TOLERANCE = 0.25
 SHOP_TARGET_SAFETY_BASE = 1.15
@@ -2899,7 +2900,39 @@ def _joker_rearrange_action(state: GameState, context: _BlindContext | None = No
 
 def _best_play_score_for_joker_order(state: GameState, jokers: tuple[Joker, ...], context: _BlindContext) -> int:
     ordered_state = replace(state, jokers=jokers)
+    if _can_use_direct_best_play_score(ordered_state, context):
+        try:
+            evaluation = best_play_from_hand(
+                ordered_state.hand,
+                ordered_state.hand_levels,
+                debuffed_suits=debuffed_suits_for_blind(ordered_state.blind),
+                blind_name=ordered_state.blind,
+                jokers=jokers,
+                discards_remaining=ordered_state.discards_remaining,
+                hands_remaining=ordered_state.hands_remaining,
+                deck_size=ordered_state.deck_size,
+                money=ordered_state.money,
+                played_hand_types_this_round=context.played_hand_types,
+                played_hand_counts=_played_hand_counts(ordered_state),
+            )
+            return evaluation.score
+        except ValueError:
+            return 0
     return max((candidate.score for candidate in _play_candidates(ordered_state, context)), default=0)
+
+
+def _can_use_direct_best_play_score(state: GameState, context: _BlindContext) -> bool:
+    if context.played_hand_types and state.blind in {"The Eye", "The Mouth"}:
+        return False
+    legal_play_count = sum(1 for action in state.legal_actions if action.action_type == ActionType.PLAY_HAND and action.card_indices)
+    return legal_play_count == _full_play_action_count(len(state.hand))
+
+
+def _full_play_action_count(card_count: int) -> int:
+    total = 0
+    for size in range(1, min(5, card_count) + 1):
+        total += comb(card_count, size)
+    return total
 
 
 def _joker_rearrange_candidate_orders(jokers: tuple[Joker, ...]) -> tuple[tuple[int, ...], ...]:
@@ -3642,7 +3675,14 @@ def _best_discard_action(
         current_best_play = _best_play_action(state, context)
         current_best_score = _score_play_action(state, current_best_play, context) if current_best_play is not None else 0
     current_hands_needed = _estimated_hands_needed(remaining_score, current_best_score or 0)
-    detailed_actions = _prefilter_discard_actions(state, discard_actions, keep_scores, protected, preferred)
+    detailed_actions = _prefilter_discard_actions(
+        state,
+        discard_actions,
+        keep_scores,
+        protected,
+        preferred,
+        limit=_discard_detail_limit(state),
+    )
 
     def discard_score(action: Action) -> tuple[float, float, int, int]:
         protected_penalty = sum(1 for index in action.card_indices if index in protected) * 1000
@@ -3735,8 +3775,10 @@ def _prefilter_discard_actions(
     keep_scores: tuple[float, ...],
     protected: set[int],
     preferred: HandType | None,
+    *,
+    limit: int = DISCARD_DETAIL_LIMIT,
 ) -> list[Action]:
-    if len(discard_actions) <= DISCARD_DETAIL_LIMIT:
+    if len(discard_actions) <= limit:
         return discard_actions
 
     def cheap_score(action: Action) -> tuple[float, int]:
@@ -3748,7 +3790,13 @@ def _prefilter_discard_actions(
             len(action.card_indices),
         )
 
-    return sorted(discard_actions, key=cheap_score, reverse=True)[:DISCARD_DETAIL_LIMIT]
+    return sorted(discard_actions, key=cheap_score, reverse=True)[:limit]
+
+
+def _discard_detail_limit(state: GameState) -> int:
+    if state.ante >= 3:
+        return LATE_DISCARD_DETAIL_LIMIT
+    return DISCARD_DETAIL_LIMIT
 
 
 def _estimated_hands_needed(remaining_score: int, score: int | float) -> int:

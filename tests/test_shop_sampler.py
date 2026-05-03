@@ -119,6 +119,16 @@ class ShopSamplerTests(unittest.TestCase):
         self.assertEqual(first["name"], "Overstock")
         self.assertEqual(second["name"], "Overstock Plus")
 
+    def test_voucher_requirements_understand_all_source_voucher_names(self) -> None:
+        data = tiny_shop_data()
+        data["vouchers"] = [
+            {"key": "v_omen_globe", "name": "Omen Globe", "set": "Voucher", "cost": 10, "requires": ["v_crystal_ball"]},
+        ]
+        sampler = ShopSampler(data)
+
+        self.assertIsNone(sampler.sample_voucher(GameState(), Random(1)))
+        self.assertEqual(sampler.sample_voucher(GameState(vouchers=("Crystal Ball",)), Random(1))["name"], "Omen Globe")
+
     def test_shop_slot_count_honors_overstock_vouchers(self) -> None:
         sampler = ShopSampler(tiny_shop_data())
 
@@ -220,6 +230,37 @@ class ShopSamplerTests(unittest.TestCase):
         edition_extra = {"FOIL": 2, "HOLOGRAPHIC": 3, "POLYCHROME": 5, "NEGATIVE": 5}[card["edition"]]
         expected = max(1, int(((base + 2 + edition_extra + 0.5) * 75) // 100))
         self.assertEqual(card["cost"]["buy"], expected)
+
+    def test_omen_globe_can_put_spectral_cards_in_arcana_packs(self) -> None:
+        data = tiny_shop_data()
+        data["boosters"] = [{"key": "p_arcana_normal_1", "name": "Arcana Pack", "set": "Booster", "kind": "Arcana", "config": {"extra": 1}}]
+        sampler = ShopSampler(data)
+
+        contents = sampler.sample_pack_contents(GameState(vouchers=("Omen Globe",)), data["boosters"][0], Random(2))
+
+        self.assertEqual(contents[0]["set"], "SPECTRAL")
+
+    def test_telescope_forces_first_celestial_card_to_most_played_hand_planet(self) -> None:
+        data = tiny_shop_data()
+        data["boosters"] = [{"key": "p_celestial_normal_1", "name": "Celestial Pack", "set": "Booster", "kind": "Celestial", "config": {"extra": 2}}]
+        data["planets"] = [
+            {"key": "c_pluto", "name": "Pluto", "set": "Planet", "cost": 3, "config": {"hand_type": "High Card"}},
+            {"key": "c_jupiter", "name": "Jupiter", "set": "Planet", "cost": 3, "config": {"hand_type": "Flush"}},
+        ]
+        state = GameState(
+            vouchers=("Telescope",),
+            modifiers={
+                "hands": {
+                    "High Card": {"played": 1, "order": 12},
+                    "Flush": {"played": 3, "order": 7},
+                }
+            },
+        )
+        sampler = ShopSampler(data)
+
+        contents = sampler.sample_pack_contents(state, data["boosters"][0], Random(1))
+
+        self.assertEqual(contents[0]["name"], "Jupiter")
 
 
 if __name__ == "__main__":

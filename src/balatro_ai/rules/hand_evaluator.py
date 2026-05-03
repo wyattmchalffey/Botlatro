@@ -365,6 +365,8 @@ def _is_straight(cards: tuple[Card, ...], *, shortcut: bool = False) -> bool:
         return False
     if len(values) == 5 and values == [2, 3, 4, 5, 14]:
         return True
+    if len(values) == 4 and values == [2, 3, 4, 14]:
+        return True
     if shortcut:
         return all(1 <= right - left <= 2 for left, right in zip(values, values[1:]))
     return values == list(range(values[0], values[0] + len(values)))
@@ -398,7 +400,7 @@ def _scoring_indices(cards: tuple[Card, ...], hand_type: HandType, jokers: tuple
         )
     if hand_type == HandType.STRAIGHT_FLUSH:
         return _with_stone_indices(
-            _five_or_four_fingers_indices(cards, jokers, _straight_flush_indices),
+            _five_or_four_fingers_straight_flush_indices(cards, jokers),
             stone_indices,
             len(cards),
         )
@@ -445,6 +447,25 @@ def _five_or_four_fingers_indices(
     if five_card_indices or not _has_joker(jokers, "Four Fingers"):
         return five_card_indices
     return finder(cards, 4, jokers)
+
+
+def _five_or_four_fingers_straight_flush_indices(
+    cards: tuple[Card, ...],
+    jokers: tuple[Joker, ...],
+) -> tuple[int, ...]:
+    five_card_indices = _straight_flush_union_indices(cards, 5, jokers)
+    if five_card_indices or not _has_joker(jokers, "Four Fingers"):
+        return five_card_indices
+    return _straight_flush_union_indices(cards, 4, jokers)
+
+
+def _straight_flush_union_indices(cards: tuple[Card, ...], size: int, jokers: tuple[Joker, ...]) -> tuple[int, ...]:
+    flush = _flush_indices(cards, size, jokers)
+    straight = _straight_indices(cards, size, jokers)
+    if not flush or not straight:
+        return ()
+    selected = set(flush) | set(straight)
+    return tuple(index for index in range(len(cards)) if index in selected)
 
 
 def _with_stone_indices(
@@ -778,6 +799,8 @@ def _sum_triggers_for_cards(
 
 
 def _is_face_card(card: Card, jokers: tuple[Joker, ...]) -> bool:
+    if card.debuffed:
+        return False
     if _is_stone_card(card):
         return False
     return card.rank in {"J", "Q", "K"} or _has_joker(jokers, "Pareidolia")
@@ -972,7 +995,10 @@ def _effect_adjustments(
         elif name == "Abstract Joker":
             add_mult(3 * len(jokers))
         elif name == "Swashbuckler":
-            add_mult(sum(other.sell_value or 0 for other in jokers if other is not physical_joker))
+            if physical_joker is ability_joker:
+                add_mult(sum(other.sell_value or 0 for other in jokers if other is not physical_joker))
+            else:
+                add_mult(_joker_current_plus(ability_joker, suffix="mult"))
         elif name == "Supernova":
             add_mult(_joker_current_plus(ability_joker, suffix="mult") or _supernova_current_mult(hand_type, played_counts))
         elif name == "Bootstraps":
@@ -1156,6 +1182,11 @@ def _base_card(card: Card) -> Card:
         modifier = dict(modifier)
         modifier["enhancement"] = ""
         metadata["modifier"] = modifier
+    value = metadata.get("value")
+    if isinstance(value, dict):
+        value = dict(value)
+        value["effect"] = f"+{RANK_VALUES.get(card.rank, 0)} chips"
+        metadata["value"] = value
     return replace(card, enhancement=None, metadata=metadata)
 
 

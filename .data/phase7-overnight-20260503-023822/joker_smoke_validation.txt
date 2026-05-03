@@ -1,0 +1,19 @@
+Local simulator replay validation
+Files scanned: 1
+Malformed rows: 0
+Skipped rows: 0
+Transitions checked: 185
+Post-transition exact: 185/185 (100.0%)
+Comparable divergences: 0
+buy: post exact 2/2 (100.0%)
+cash_out: post exact 12/12 (100.0%)
+choose_pack_card: post exact 5/5 (100.0%)
+discard: post exact 9/9 (100.0%)
+end_shop: post exact 1/1 (100.0%)
+play_hand: post exact 143/143 (100.0%)
+reroll: post exact 1/1 (100.0%)
+select_blind: post exact 9/9 (100.0%)
+sell: post exact 3/3 (100.0%)
+Stage field mismatches: {}
+Action field mismatches: {}
+Known gap reasons: {}

@@ -1,0 +1,188 @@
+[2026-05-03 02:49:14] Phase 7 overnight job starting.
+[2026-05-03 02:49:14] Stopping stale Balatro/BalatroBot bridge processes, if any.
+[2026-05-03 02:49:16] Preparing tiny-startup Balatro copy in C:\Users\Wyatt\Desktop\Botlatro\.balatro-headless.
+[2026-05-03 02:49:16] Using Balatro exe: C:\Users\Wyatt\Desktop\Botlatro\.balatro-headless\Balatro.exe
+[2026-05-03 02:49:16] Starting bridge on port 12346.
+[2026-05-03 02:49:23] Bridge 12346 is healthy (1/8).
+[2026-05-03 02:49:24] Starting bridge on port 12347.
+[2026-05-03 02:49:30] Bridge 12347 is healthy (2/8).
+[2026-05-03 02:49:31] Starting bridge on port 12348.
+[2026-05-03 02:49:37] Bridge 12348 is healthy (3/8).
+[2026-05-03 02:49:38] Starting bridge on port 12349.
+[2026-05-03 02:49:45] Bridge 12349 is healthy (4/8).
+[2026-05-03 02:49:46] Starting bridge on port 12350.
+[2026-05-03 02:49:53] Bridge 12350 is healthy (5/8).
+[2026-05-03 02:49:54] Starting bridge on port 12351.
+[2026-05-03 02:50:01] Bridge 12351 is healthy (6/8).
+[2026-05-03 02:50:02] Starting bridge on port 12352.
+[2026-05-03 02:50:10] Bridge 12352 is healthy (7/8).
+[2026-05-03 02:50:11] Starting bridge on port 12353.
+[2026-05-03 02:50:20] Bridge 12353 is healthy (8/8).
+[2026-05-03 02:50:21] Healthy endpoints: http://127.0.0.1:12346, http://127.0.0.1:12347, http://127.0.0.1:12348, http://127.0.0.1:12349, http://127.0.0.1:12350, http://127.0.0.1:12351, http://127.0.0.1:12352, http://127.0.0.1:12353
+[2026-05-03 02:50:21] Starting 128-seed detailed bridge corpus with 8 worker(s).
+[2026-05-03 02:50:21] Bot: basic_strategy_bot
+[2026-05-03 02:50:21] Stake: white
+[2026-05-03 02:50:21] Deck: RED
+[2026-05-03 02:50:21] Profile: P1
+[2026-05-03 02:50:21] Unlocks: all
+[2026-05-03 02:50:21] Seeds: 128
+[2026-05-03 02:50:21] Seed label: white:phase7-overnight-20260503-023822
+[2026-05-03 02:50:21] First seed: 756860903
+[2026-05-03 02:50:21] Endpoints: http://127.0.0.1:12346, http://127.0.0.1:12347, http://127.0.0.1:12348, http://127.0.0.1:12349, http://127.0.0.1:12350, http://127.0.0.1:12351, http://127.0.0.1:12352, http://127.0.0.1:12353
+[2026-05-03 02:50:21] Replay mode: score_audit
+[2026-05-03 02:50:21] Start retries: 1
+[2026-05-03 02:50:21] Failed seed retries: 2
+[2026-05-03 02:50:21] Run timeout: 1800.0s
+[2026-05-03 02:53:44] [1/128] seed=1269747657 won=False ante=3 score=1716 money=4 runtime=202.59s
+[2026-05-03 02:55:30] [2/128] seed=210703471 won=False ante=7 score=43264 money=125 runtime=308.19s
+[2026-05-03 02:56:22] [3/128] seed=1839893272 won=False ante=5 score=39559 money=45 runtime=360.39s
+[2026-05-03 02:56:30] [4/128] seed=382186794 won=False ante=5 score=8878 money=37 runtime=367.88s
+[2026-05-03 02:56:35] [5/128] seed=756860903 won=False ante=4 score=4380 money=4 runtime=372.64s
+[2026-05-03 02:56:54] [6/128] seed=184763578 won=False ante=5 score=15999 money=43 runtime=392.35s
+[2026-05-03 02:57:11] [7/128] seed=997688210 won=False ante=7 score=60614 money=110 runtime=409.96s
+[2026-05-03 02:57:13] [8/128] seed=1266215518 won=False ante=5 score=21708 money=96 runtime=411.39s
+[2026-05-03 02:59:39] [9/128] seed=2138955617 won=False ante=5 score=19236 money=77 runtime=181.49s
+[2026-05-03 03:01:05] [10/128] seed=18254983 won=False ante=2 score=1288 money=26 runtime=249.97s
+[2026-05-03 03:02:31] [11/128] seed=1368717051 won=False ante=5 score=29886 money=72 runtime=317.94s
+[2026-05-03 03:02:39] [12/128] seed=689356853 won=False ante=1 score=532 money=1 runtime=92.09s
+[2026-05-03 03:02:57] [13/128] seed=1289741553 won=True ante=8 score=86400 money=7 runtime=550.60s
+[2026-05-03 03:03:07] [14/128] seed=777388564 won=False ante=5 score=11554 money=37 runtime=454.57s
+[2026-05-03 03:04:09] [15/128] seed=1350067239 won=False ante=2 score=924 money=18 runtime=97.04s
+[2026-05-03 03:04:19] [16/128] seed=1059018310 won=False ante=5 score=15458 money=53 runtime=467.99s
+[2026-05-03 03:04:19] [17/128] seed=182679358 won=False ante=6 score=34976 money=90 runtime=425.61s
+[2026-05-03 03:05:08] [18/128] seed=982466210 won=True ante=8 score=105238 money=145 runtime=523.84s
+[2026-05-03 03:05:41] [19/128] seed=1326751329 won=False ante=6 score=26617 money=49 runtime=361.02s
+[2026-05-03 03:06:53] [20/128] seed=476727843 won=False ante=0 score=0 money=0 runtime=103.49s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'BAD_REQUEST'}, 'code': -32001, 'message': "Card 'c_moon' requires 1-3 tar
+[2026-05-03 03:07:48] [21/128] seed=63656374 won=False ante=6 score=10486 money=41 runtime=290.31s
+[2026-05-03 03:08:46] [22/128] seed=2035252529 won=False ante=2 score=656 money=11 runtime=183.26s
+[2026-05-03 03:09:53] [23/128] seed=870681525 won=False ante=6 score=8268 money=20 runtime=432.35s
+[2026-05-03 03:10:26] [24/128] seed=1836785218 won=False ante=4 score=3952 money=70 runtime=156.32s
+[2026-05-03 03:10:29] [25/128] seed=368134063 won=False ante=5 score=11119 money=43 runtime=368.05s
+[2026-05-03 03:11:54] [26/128] seed=1800943163 won=True ante=8 score=108433 money=42 runtime=453.84s
+[2026-05-03 03:12:02] [27/128] seed=1499964569 won=False ante=2 score=539 money=3 runtime=194.15s
+[2026-05-03 03:14:10] [28/128] seed=999116551 won=False ante=1 score=490 money=2 runtime=133.25s
+[2026-05-03 03:14:24] [29/128] seed=584834980 won=False ante=5 score=8862 money=40 runtime=237.52s
+[2026-05-03 03:14:24] [30/128] seed=251899614 won=False ante=5 score=14180 money=59 runtime=450.80s
+[2026-05-03 03:16:35] [31/128] seed=955656330 won=False ante=6 score=22360 money=29 runtime=364.09s
+[2026-05-03 03:16:45] [32/128] seed=2136780723 won=False ante=5 score=16172 money=48 runtime=281.29s
+[2026-05-03 03:17:05] [33/128] seed=518435230 won=False ante=4 score=7129 money=0 runtime=429.81s
+[2026-05-03 03:19:06] [34/128] seed=621261600 won=False ante=5 score=12284 money=26 runtime=294.69s
+[2026-05-03 03:19:43] [35/128] seed=823641471 won=False ante=1 score=574 money=4 runtime=156.55s
+[2026-05-03 03:19:59] [36/128] seed=126127878 won=True ante=8 score=111572 money=131 runtime=333.79s
+[2026-05-03 03:21:26] [37/128] seed=541198673 won=False ante=4 score=7272 money=2 runtime=420.89s
+[2026-05-03 03:22:17] [38/128] seed=85964158 won=False ante=3 score=5898 money=9 runtime=330.24s
+[2026-05-03 03:24:10] [39/128] seed=1810471699 won=False ante=6 score=27040 money=123 runtime=1198.95s
+[2026-05-03 03:24:16] [40/128] seed=1964597023 won=True ante=8 score=124414 money=164 runtime=1266.93s
+[2026-05-03 03:25:21] [41/128] seed=123391388 won=False ante=2 score=714 money=10 runtime=233.24s
+[2026-05-03 03:26:02] [42/128] seed=513171653 won=False ante=8 score=23872 money=26 runtime=377.75s
+[2026-05-03 03:26:04] [43/128] seed=1044840541 won=False ante=4 score=5700 money=11 runtime=416.65s
+[2026-05-03 03:26:16] [44/128] seed=1611190319 won=False ante=1 score=252 money=4 runtime=52.13s
+[2026-05-03 03:26:40] [45/128] seed=1017486054 won=False ante=3 score=3632 money=33 runtime=398.92s
+[2026-05-03 03:27:20] [46/128] seed=516315682 won=False ante=5 score=14493 money=7 runtime=643.56s
+[2026-05-03 03:27:42] [47/128] seed=1944279589 won=False ante=4 score=6078 money=76 runtime=323.44s
+[2026-05-03 03:28:09] [48/128] seed=927533436 won=False ante=3 score=2241 money=35 runtime=237.13s
+[2026-05-03 03:29:32] [49/128] seed=77354638 won=False ante=5 score=7066 money=49 runtime=314.00s
+[2026-05-03 03:31:31] [50/128] seed=1697638262 won=False ante=6 score=14851 money=48 runtime=313.50s
+[2026-05-03 03:32:37] [51/128] seed=948702947 won=False ante=7 score=59426 money=24 runtime=354.27s
+[2026-05-03 03:33:03] [52/128] seed=1769843000 won=False ante=6 score=22469 money=85 runtime=417.94s
+[2026-05-03 03:34:34] [53/128] seed=530873895 won=False ante=5 score=15777 money=89 runtime=300.47s
+[2026-05-03 03:34:52] [54/128] seed=1579208576 won=False ante=2 score=530 money=0 runtime=200.01s
+[2026-05-03 03:34:52] [55/128] seed=982349421 won=False ante=6 score=27470 money=22 runtime=428.91s
+[2026-05-03 03:34:53] [56/128] seed=1965011482 won=False ante=6 score=41599 money=64 runtime=451.68s
+[2026-05-03 03:35:28] [57/128] seed=932597253 won=False ante=7 score=46156 money=32 runtime=565.56s
+[2026-05-03 03:36:40] [58/128] seed=123194512 won=False ante=5 score=11659 money=38 runtime=508.57s
+[2026-05-03 03:38:11] [59/128] seed=1838449148 won=False ante=4 score=4409 money=64 runtime=216.04s
+[2026-05-03 03:39:34] [60/128] seed=295633522 won=False ante=3 score=336 money=4 runtime=278.92s
+[2026-05-03 03:39:42] [61/128] seed=1695917299 won=False ante=3 score=3180 money=90 runtime=180.67s
+[2026-05-03 03:40:10] [62/128] seed=447483846 won=False ante=7 score=12320 money=139 runtime=316.73s
+[2026-05-03 03:40:25] [63/128] seed=96182373 won=False ante=6 score=25952 money=64 runtime=467.24s
+[2026-05-03 03:40:39] [64/128] seed=1343777569 won=False ante=2 score=1086 money=3 runtime=308.66s
+[2026-05-03 03:41:03] [65/128] seed=1933009033 won=False ante=3 score=1393 money=5 runtime=370.22s
+[2026-05-03 03:42:34] [66/128] seed=1806159750 won=False ante=1 score=400 money=1 runtime=90.16s
+[2026-05-03 03:42:54] [67/128] seed=2119531946 won=False ante=2 score=812 money=3 runtime=282.04s
+[2026-05-03 03:43:12] [68/128] seed=705914893 won=False ante=7 score=34936 money=74 runtime=207.70s
+[2026-05-03 03:43:46] [69/128] seed=1875867153 won=False ante=2 score=1376 money=12 runtime=214.98s
+[2026-05-03 03:45:51] [70/128] seed=717675802 won=False ante=5 score=10238 money=7 runtime=375.00s
+[2026-05-03 03:45:53] [71/128] seed=223314236 won=True ante=8 score=108256 money=46 runtime=768.69s
+[2026-05-03 03:46:11] [72/128] seed=788655049 won=False ante=8 score=71508 money=87 runtime=343.94s
+[2026-05-03 03:47:07] [73/128] seed=1033408443 won=False ante=6 score=29351 money=43 runtime=387.33s
+[2026-05-03 03:49:14] [74/128] seed=2137760467 won=False ante=2 score=1047 money=8 runtime=199.58s
+[2026-05-03 03:49:56] [75/128] seed=646504551 won=False ante=4 score=680 money=18 runtime=440.21s
+[2026-05-03 03:50:25] [76/128] seed=1805952432 won=False ante=4 score=9206 money=0 runtime=252.99s
+[2026-05-03 03:51:08] [77/128] seed=1867247840 won=False ante=4 score=17108 money=37 runtime=238.20s
+[2026-05-03 03:54:07] [78/128] seed=968384127 won=False ante=7 score=38585 money=34 runtime=671.21s
+[2026-05-03 03:55:21] [79/128] seed=1958626244 won=False ante=4 score=5022 money=11 runtime=365.98s
+[2026-05-03 03:55:48] [80/128] seed=827118628 won=False ante=5 score=15794 money=18 runtime=719.51s
+[2026-05-03 03:55:54] [81/128] seed=714110843 won=False ante=6 score=18996 money=12 runtime=760.59s
+[2026-05-03 03:57:01] [82/128] seed=1303542485 won=False ante=6 score=36732 money=75 runtime=423.54s
+[2026-05-03 03:57:47] [83/128] seed=1975587304 won=False ante=3 score=1648 money=0 runtime=397.20s
+[2026-05-03 03:57:50] [84/128] seed=1057479986 won=False ante=2 score=1796 money=9 runtime=120.96s
+[2026-05-03 03:58:08] [85/128] seed=125190235 won=False ante=7 score=64030 money=91 runtime=461.63s
+[2026-05-03 04:01:01] [86/128] seed=1244479556 won=False ante=5 score=972 money=26 runtime=305.88s
+[2026-05-03 04:01:24] [87/128] seed=132493728 won=False ante=2 score=1116 money=25 runtime=362.14s
+[2026-05-03 04:01:30] [88/128] seed=404649703 won=False ante=5 score=9736 money=25 runtime=442.35s
+[2026-05-03 04:03:34] [89/128] seed=1204712477 won=False ante=4 score=6168 money=8 runtime=391.75s
+[2026-05-03 04:04:08] [90/128] seed=1545868523 won=False ante=5 score=15646 money=58 runtime=379.69s
+[2026-05-03 04:06:09] [91/128] seed=1283413261 won=False ante=6 score=36277 money=25 runtime=496.65s
+[2026-05-03 04:06:41] [92/128] seed=221271630 won=False ante=5 score=15994 money=99 runtime=309.64s
+[2026-05-03 04:07:00] [93/128] seed=2051402059 won=False ante=4 score=7986 money=27 runtime=334.81s
+[2026-05-03 04:07:01] [94/128] seed=1556733088 won=False ante=5 score=15631 money=45 runtime=358.54s
+[2026-05-03 04:07:09] [95/128] seed=1634845634 won=False ante=7 score=51707 money=37 runtime=539.29s
+[2026-05-03 04:08:56] [96/128] seed=2066126456 won=False ante=2 score=1200 money=0 runtime=320.60s
+[2026-05-03 04:11:28] [97/128] seed=1510061816 won=False ante=3 score=3669 money=19 runtime=437.42s
+[2026-05-03 04:11:59] [98/128] seed=1233769191 won=False ante=3 score=3384 money=2 runtime=182.26s
+[2026-05-03 04:12:36] [99/128] seed=1679343963 won=False ante=6 score=26247 money=63 runtime=352.10s
+[2026-05-03 04:13:41] [100/128] seed=1796755761 won=False ante=4 score=5016 money=3 runtime=398.24s
+[2026-05-03 04:13:43] [101/128] seed=797846254 won=False ante=5 score=10560 money=14 runtime=401.46s
+[2026-05-03 04:15:54] [102/128] seed=1244924873 won=False ante=8 score=81873 money=127 runtime=1800.78s death=error:RunTimeout: exceeded 1800.0s
+[2026-05-03 04:16:10] [103/128] seed=226368036 won=False ante=6 score=26275 money=32 runtime=539.20s
+[2026-05-03 04:18:05] [104/128] seed=2118702744 won=False ante=5 score=7560 money=78 runtime=714.11s
+[2026-05-03 04:18:10] [105/128] seed=1969860820 won=False ante=6 score=25290 money=0 runtime=368.62s
+[2026-05-03 04:18:19] [106/128] seed=114737953 won=False ante=4 score=6905 money=10 runtime=341.57s
+[2026-05-03 04:19:57] [107/128] seed=1917402769 won=False ante=5 score=6974 money=19 runtime=372.04s
+[2026-05-03 04:21:08] [108/128] seed=884368481 won=False ante=4 score=6080 money=11 runtime=296.95s
+[2026-05-03 04:22:02] [109/128] seed=2014872143 won=False ante=6 score=32313 money=34 runtime=632.37s
+[2026-05-03 04:23:12] [110/128] seed=2105157259 won=False ante=3 score=1260 money=9 runtime=123.95s
+[2026-05-03 04:23:27] [111/128] seed=847818877 won=False ante=4 score=7732 money=36 runtime=452.49s
+[2026-05-03 04:24:02] [112/128] seed=204828891 won=False ante=7 score=22070 money=24 runtime=619.70s
+[2026-05-03 04:24:17] [113/128] seed=1583804157 won=False ante=6 score=38278 money=84 runtime=356.87s
+[2026-05-03 04:25:04] [114/128] seed=129961834 won=False ante=5 score=12390 money=0 runtime=417.82s
+[2026-05-03 04:25:17] [115/128] seed=1896984242 won=False ante=6 score=40859 money=75 runtime=319.98s
+[2026-05-03 04:25:21] [116/128] seed=1181423025 won=False ante=1 score=580 money=9 runtime=63.06s
+[2026-05-03 04:25:27] [117/128] seed=1582191336 won=True ante=8 score=109720 money=43 runtime=436.29s
+[2026-05-03 04:26:43] [118/128] seed=1968303419 won=False ante=6 score=28260 money=106 runtime=193.75s
+[2026-05-03 04:26:56] [119/128] seed=1299532479 won=False ante=6 score=28338 money=48 runtime=292.02s
+[2026-05-03 04:28:18] [120/128] seed=1882405795 won=False ante=5 score=8360 money=64 runtime=191.07s
+[2026-05-03 04:28:26] [121/128] seed=464408402 won=False ante=6 score=12480 money=76 runtime=263.08s
+[2026-05-03 04:28:48] [122/128] seed=1198013830 won=False ante=2 score=256 money=12 runtime=209.70s
+[2026-05-03 04:28:48] [123/128] seed=457942336 won=False ante=2 score=1189 money=0 runtime=199.79s
+[2026-05-03 04:29:44] [124/128] seed=1899534361 won=False ante=4 score=4562 money=26 runtime=180.62s
+[2026-05-03 04:30:19] [125/128] seed=1863211019 won=False ante=6 score=27816 money=26 runtime=426.31s
+[2026-05-03 04:31:29] [126/128] seed=644751388 won=False ante=7 score=17128 money=14 runtime=368.07s
+[2026-05-03 04:31:44] [127/128] seed=1360225089 won=False ante=4 score=5998 money=1 runtime=205.79s
+[2026-05-03 04:32:18] [128/128] seed=1199940554 won=False ante=7 score=31058 money=15 runtime=322.17s
+[2026-05-03 04:32:18] Retry 1: rerunning 2 failed seed(s) on healthy endpoint(s).
+[2026-05-03 04:32:36] [retry 1] seed=476727843 won=False ante=0 score=0 money=0 runtime=17.84s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'INVALID_STATE'}, 'code': -32002, 'message': "Method 'pack' requires one o
+[2026-05-03 04:37:05] [retry 1] seed=1244924873 won=True ante=8 score=113121 money=124 runtime=268.85s
+[2026-05-03 04:37:05] Retry 2: rerunning 1 failed seed(s) on healthy endpoint(s).
+[2026-05-03 04:37:24] [retry 2] seed=476727843 won=False ante=0 score=0 money=0 runtime=18.41s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'INVALID_STATE'}, 'code': -32002, 'message': "Method 'pack' requires one o
+[2026-05-03 04:37:24] 
+[2026-05-03 04:37:24] Bot: basic_strategy_bot
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Runs: 128
+Win rate: 6.2%
+Average ante: 4.72
+Average final score: 20970.9
+Average final money: 38.8
+Average runtime: 360.39 sec/run
+[2026-05-03 04:37:24] Wrote benchmark results to C:\Users\Wyatt\Desktop\Botlatro\.data\phase7-overnight-20260503-023822\benchmark_results.json.
+[2026-05-03 04:37:45] Replay validation complete: 13272/13456 exact, 109 comparable divergences.
+[2026-05-03 04:37:45] Running 185 bridge joker smoke scenario(s) on http://127.0.0.1:12346.
+[2026-05-03 04:40:31] Joker smoke wrote 370 row(s) for 185 scenario(s); failures=0.
+[2026-05-03 04:40:31] Joker smoke validation complete: 185/185 exact, 0 comparable divergences.
+[2026-05-03 04:40:52] Combined validation complete: 13457/13641 exact, 109 comparable divergences.
+[2026-05-03 04:40:52] Phase 7 overnight job finished.
+[2026-05-03 04:40:52] Stopping bridge workers launched by this job.

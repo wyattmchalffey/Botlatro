@@ -90,13 +90,24 @@ class BasicStrategyBotTests(unittest.TestCase):
             Joker("Joker"),
             Joker("Blackboard"),
             Joker("Jolly Joker"),
+        )
+
+        orders = strategy._joker_rearrange_candidate_orders(jokers)
+
+        self.assertEqual(len(orders), 6)
+
+    def test_joker_rearrange_search_uses_bounded_heuristics_for_five_jokers(self) -> None:
+        jokers = (
+            Joker("Joker"),
+            Joker("Blackboard"),
+            Joker("Jolly Joker"),
             Joker("The Duo"),
             Joker("Blue Joker"),
         )
 
         orders = strategy._joker_rearrange_candidate_orders(jokers)
 
-        self.assertEqual(len(orders), 120)
+        self.assertLessEqual(len(orders), 4)
 
     def test_prefers_smallest_hand_that_beats_remaining_score(self) -> None:
         state = GameState(

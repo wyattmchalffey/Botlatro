@@ -48,12 +48,30 @@ VOUCHER_KEYS_BY_NAME = {
     "Glow Up": "v_glow_up",
     "Reroll Surplus": "v_reroll_surplus",
     "Reroll Glut": "v_reroll_glut",
+    "Crystal Ball": "v_crystal_ball",
+    "Omen Globe": "v_omen_globe",
+    "Telescope": "v_telescope",
+    "Observatory": "v_observatory",
+    "Grabber": "v_grabber",
+    "Nacho Tong": "v_nacho_tong",
+    "Wasteful": "v_wasteful",
+    "Recyclomancy": "v_recyclomancy",
     "Tarot Merchant": "v_tarot_merchant",
     "Tarot Tycoon": "v_tarot_tycoon",
     "Planet Merchant": "v_planet_merchant",
     "Planet Tycoon": "v_planet_tycoon",
+    "Seed Money": "v_seed_money",
+    "Money Tree": "v_money_tree",
+    "Blank": "v_blank",
+    "Antimatter": "v_antimatter",
     "Magic Trick": "v_magic_trick",
     "Illusion": "v_illusion",
+    "Hieroglyph": "v_hieroglyph",
+    "Petroglyph": "v_petroglyph",
+    "Director's Cut": "v_directors_cut",
+    "Retcon": "v_retcon",
+    "Paint Brush": "v_paint_brush",
+    "Palette": "v_palette",
 }
 STANDARD_RANKS = ("A", "K", "Q", "J", "10", "9", "8", "7", "6", "5", "4", "3", "2")
 STANDARD_SUITS = ("S", "H", "D", "C")
@@ -174,6 +192,38 @@ class ShopSampler:
         record = rng.choice(records)
         return _payload_from_record(record, state, key_append=key_append)
 
+    def sample_joker_by_rarity(
+        self,
+        state: GameState,
+        rarity: str,
+        rng: Random | None = None,
+        *,
+        edition: str | None = None,
+        used_jokers: set[str] | None = None,
+        key_append: str = "",
+    ) -> dict[str, Any]:
+        """Sample one joker from a specific rarity pool for tag effects."""
+
+        rng = rng or Random()
+        normalized_rarity = rarity.strip().lower()
+        if used_jokers is None:
+            used_jokers = set(_used_joker_identifiers(state))
+        records = [
+            record
+            for record in self._pool_records("Joker", state)
+            if str(record.get("rarity_name", "")).lower() == normalized_rarity
+            and (_allow_duplicate_shop_cards(state) or not used_jokers.intersection(_item_identifiers(record)))
+        ]
+        if not records:
+            records = [
+                record
+                for record in self._pool_records("Joker", state)
+                if _allow_duplicate_shop_cards(state) or not used_jokers.intersection(_item_identifiers(record))
+            ]
+        if not records:
+            records = _fallback_pool(self.data, "Joker")
+        return _payload_from_record(rng.choice(records), state, edition=edition, key_append=key_append)
+
     def sample_voucher(self, state: GameState, rng: Random | None = None) -> dict[str, Any] | None:
         """Sample the fixed voucher slot for a fresh shop."""
 
@@ -182,6 +232,32 @@ class ShopSampler:
         if not records:
             return None
         return _payload_from_record(rng.choice(records), state)
+
+    def sample_booster_of_kind(
+        self,
+        state: GameState,
+        kind: str,
+        rng: Random | None = None,
+        *,
+        prefer_mega: bool = False,
+    ) -> dict[str, Any] | None:
+        """Sample a booster pack matching the requested source kind."""
+
+        rng = rng or Random()
+        normalized_kind = kind.strip().lower()
+        records = [
+            record
+            for record in self._pool_records("Booster", state)
+            if str(record.get("kind", "")).lower() == normalized_kind
+        ]
+        if prefer_mega:
+            mega_records = [record for record in records if "mega" in str(record.get("key", "")).lower()]
+            if mega_records:
+                records = mega_records
+        if not records:
+            return None
+        record = _weighted_choice(tuple((record, float(record.get("weight", 1))) for record in records), rng, default=(records[0], 1))[0]
+        return _payload_from_record(record, state)
 
     def sample_boosters(self, state: GameState, n_slots: int | None = None, rng: Random | None = None) -> tuple[dict[str, Any], ...]:
         """Sample booster packs for a fresh shop."""
@@ -213,14 +289,7 @@ class ShopSampler:
         used_jokers = set(_used_joker_identifiers(state))
         contents: list[dict[str, Any]] = []
         for index in range(size):
-            card_type = _pack_card_type(kind, rng)
-            card = self.sample_card_of_type(
-                state,
-                card_type,
-                rng,
-                used_jokers=used_jokers,
-                key_append=f"pack{index}",
-            )
+            card = self._sample_pack_card(state, kind, rng, index=index, used_jokers=used_jokers)
             contents.append(card)
             if not _allow_duplicate_shop_cards(state) and _is_joker_payload(card):
                 used_jokers.update(_item_identifiers(card))
@@ -308,6 +377,26 @@ class ShopSampler:
             records = _fallback_pool(self.data, "Joker")
         return rng.choice(records)
 
+    def _sample_pack_card(
+        self,
+        state: GameState,
+        kind: str,
+        rng: Random,
+        *,
+        index: int,
+        used_jokers: set[str],
+    ) -> dict[str, Any]:
+        normalized_kind = kind.lower()
+        key_append = f"pack{index}"
+        if normalized_kind == "arcana" and _has_voucher(state, "Omen Globe") and rng.random() > 0.8:
+            return self.sample_card_of_type(state, "Spectral", rng, used_jokers=used_jokers, key_append=key_append)
+        if normalized_kind == "celestial" and index == 0 and _has_voucher(state, "Telescope"):
+            forced_planet = _most_played_planet_record(self.data, state)
+            if forced_planet is not None:
+                return _payload_from_record(forced_planet, state, key_append=key_append)
+        card_type = _pack_card_type(kind, rng)
+        return self.sample_card_of_type(state, card_type, rng, used_jokers=used_jokers, key_append=key_append)
+
     def _pool_records(self, pool_type: str, state: GameState) -> list[Mapping[str, Any]]:
         if pool_type in SHOP_TYPE_TO_DATA_KEY:
             raw = self.data.get(SHOP_TYPE_TO_DATA_KEY[pool_type], ())
@@ -384,14 +473,14 @@ def _shop_type_rates(data: Mapping[str, Any], state: GameState) -> dict[str, flo
 
     if "tarot_rate" not in state.modifiers:
         if _has_voucher(state, "Tarot Tycoon"):
-            rates["Tarot"] = 128.0
+            rates["Tarot"] = 32.0
         elif _has_voucher(state, "Tarot Merchant"):
-            rates["Tarot"] = 38.4
+            rates["Tarot"] = 9.6
     if "planet_rate" not in state.modifiers:
         if _has_voucher(state, "Planet Tycoon"):
-            rates["Planet"] = 128.0
+            rates["Planet"] = 32.0
         elif _has_voucher(state, "Planet Merchant"):
-            rates["Planet"] = 38.4
+            rates["Planet"] = 9.6
     if "playing_card_rate" not in state.modifiers and (_has_voucher(state, "Magic Trick") or _has_voucher(state, "Illusion")):
         rates["Base"] = 4.0
     if "spectral_rate" in state.modifiers and _is_number(state.modifiers["spectral_rate"]):
@@ -621,6 +710,41 @@ def _pack_card_type(kind: str, rng: Random) -> str:
     if normalized == "standard":
         return "Enhanced" if rng.random() < 0.25 else "Base"
     return "Base"
+
+
+def _most_played_planet_record(data: Mapping[str, Any], state: GameState) -> Mapping[str, Any] | None:
+    hands = _mapping(state.modifiers.get("hands"))
+    if not hands:
+        return None
+    best_hand = ""
+    best_played = 0
+    best_order = 0
+    for hand_name, raw in hands.items():
+        hand = _mapping(raw)
+        played = _int_value(hand.get("played"))
+        if played <= best_played:
+            continue
+        best_hand = str(hand_name)
+        best_played = played
+        best_order = _int_value(hand.get("order"))
+    if not best_hand:
+        return None
+    if best_order:
+        ordered_hands = sorted(
+            (
+                (_int_value(_mapping(raw).get("order")), str(name), _int_value(_mapping(raw).get("played")))
+                for name, raw in hands.items()
+            ),
+            key=lambda item: item[0],
+        )
+        for _order, hand_name, played in ordered_hands:
+            if played == best_played:
+                best_hand = hand_name
+                break
+    for record in data.get("planets", ()):
+        if isinstance(record, Mapping) and str(_mapping(record.get("config")).get("hand_type")) == best_hand:
+            return record
+    return None
 
 
 def _fallback_pool(data: Mapping[str, Any], pool_type: str) -> list[Mapping[str, Any]]:

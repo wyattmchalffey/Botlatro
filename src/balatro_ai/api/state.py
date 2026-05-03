@@ -560,13 +560,20 @@ def _derive_legal_actions(
         current_blind = _mapping_or_empty(state.modifiers.get("current_blind"))
         if current_blind.get("type") != "BOSS":
             actions.append(Action(ActionType.SKIP_BLIND))
+        if _boss_reroll_available(state):
+            actions.append(Action(ActionType.REROLL, target_id="boss", metadata={"kind": "boss"}))
     elif state.phase in {GamePhase.SELECTING_HAND, GamePhase.PLAYING_BLIND}:
         max_cards = min(5, len(state.hand))
+        forced_selection = _forced_selection_indices(state)
         for size in range(1, max_cards + 1):
             for indexes in combinations(range(len(state.hand)), size):
+                if forced_selection and not forced_selection.issubset(indexes):
+                    continue
                 actions.append(Action(ActionType.PLAY_HAND, card_indices=indexes))
                 if state.discards_remaining > 0:
                     actions.append(Action(ActionType.DISCARD, card_indices=indexes))
+        if state.blind == "Verdant Leaf" and not _truthy(state.modifiers.get("boss_disabled")):
+            actions.extend(_joker_sell_actions(state))
         actions.extend(_consumable_sell_actions(state))
         actions.extend(_consumable_use_actions(state, allow_hand_targets=True))
     elif state.phase == GamePhase.ROUND_EVAL:
@@ -660,6 +667,13 @@ def _consumable_sell_actions(state: GameState) -> tuple[Action, ...]:
     )
 
 
+def _joker_sell_actions(state: GameState) -> tuple[Action, ...]:
+    return tuple(
+        Action(ActionType.SELL, target_id="joker", amount=index, metadata={"kind": "joker", "index": index})
+        for index in range(len(state.jokers))
+    )
+
+
 def _consumable_use_actions(state: GameState, *, allow_hand_targets: bool) -> tuple[Action, ...]:
     actions: list[Action] = []
     for index, name in enumerate(state.consumables):
@@ -701,6 +715,20 @@ def _consumable_target_index_sets(
         return ()
     indexes = range(len(state.hand))
     return tuple(combo for size in range(min_count, max_count + 1) for combo in combinations(indexes, size))
+
+
+def _forced_selection_indices(state: GameState) -> set[int]:
+    return {index for index, card in enumerate(state.hand) if _card_is_forced_selection(card)}
+
+
+def _card_is_forced_selection(card: Card) -> bool:
+    if card.metadata.get("forced_selection"):
+        return True
+    ability = _mapping_or_empty(card.metadata.get("ability"))
+    if ability.get("forced_selection"):
+        return True
+    state = _mapping_or_empty(card.metadata.get("state"))
+    return bool(state.get("forced_selection"))
 
 
 def _shop_card_can_be_bought(state: GameState, card: Any) -> bool:
@@ -850,3 +878,28 @@ def _reroll_cost(state: GameState) -> int:
         except (TypeError, ValueError):
             continue
     return 5
+
+
+def _boss_reroll_available(state: GameState) -> bool:
+    cost = _boss_reroll_cost(state)
+    if state.money < cost:
+        return False
+    if "Retcon" in state.vouchers or _truthy(state.modifiers.get("boss_rerolls_unlimited")):
+        return True
+    if "Director's Cut" not in state.vouchers:
+        return False
+    return not _truthy(state.modifiers.get("boss_rerolled"))
+
+
+def _boss_reroll_cost(state: GameState) -> int:
+    raw = state.modifiers.get("boss_reroll_cost", 10)
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return 10
+
+
+def _truthy(raw: Any) -> bool:
+    if isinstance(raw, str):
+        return raw.lower() in {"1", "true", "yes", "y"}
+    return bool(raw)

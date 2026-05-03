@@ -1,0 +1,54 @@
+{
+  "endpoints": [
+    "http://127.0.0.1:12346",
+    "http://127.0.0.1:12347",
+    "http://127.0.0.1:12348",
+    "http://127.0.0.1:12349",
+    "http://127.0.0.1:12350",
+    "http://127.0.0.1:12351",
+    "http://127.0.0.1:12352",
+    "http://127.0.0.1:12353"
+  ],
+  "game_speed": 64,
+  "log_root": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.logs\\phase7-overnight-20260503-023822",
+  "replay_dir": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays",
+  "run_root": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822",
+  "seed_count": 128,
+  "stage": "finished",
+  "target_workers": 8,
+  "updated_at": "2026-05-03 04:40:52",
+  "worker_pids": [
+    {
+      "pid": 14596,
+      "port": 12346
+    },
+    {
+      "pid": 22496,
+      "port": 12347
+    },
+    {
+      "pid": 2836,
+      "port": 12348
+    },
+    {
+      "pid": 23444,
+      "port": 12349
+    },
+    {
+      "pid": 18448,
+      "port": 12350
+    },
+    {
+      "pid": 9576,
+      "port": 12351
+    },
+    {
+      "pid": 13672,
+      "port": 12352
+    },
+    {
+      "pid": 21032,
+      "port": 12353
+    }
+  ]
+}

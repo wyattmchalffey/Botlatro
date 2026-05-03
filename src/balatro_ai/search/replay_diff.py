@@ -355,6 +355,14 @@ def _diff_rows(path: Path, rows: tuple[dict[str, object], ...]) -> tuple[list[Tr
 
 
 def _simulate_transition(pre_state: GameState, post_state: GameState, action: Action) -> GameState:
+    if action.action_type in {
+        ActionType.BUY,
+        ActionType.SELL,
+        ActionType.REROLL,
+        ActionType.OPEN_PACK,
+        ActionType.END_SHOP,
+    }:
+        pre_state = _with_deferred_shop_latency_applied(pre_state)
     if action.action_type == ActionType.PLAY_HAND:
         if pre_state.blind == "Cerulean Bell" and not _truthy(pre_state.modifiers.get("boss_disabled")):
             best_simulated: GameState | None = None
@@ -378,7 +386,7 @@ def _simulate_transition(pre_state: GameState, post_state: GameState, action: Ac
         drawn_cards = _drawn_cards_from_post_state(held_cards, post_state.hand)
         return simulate_discard(pre_state, action, drawn_cards)
     if action.action_type == ActionType.CASH_OUT:
-        return simulate_cash_out(
+        simulated = simulate_cash_out(
             _with_observed_cash_out_delta(pre_state, post_state),
             next_shop_cards=_modifier_items(post_state.modifiers, "shop_cards"),
             next_voucher_cards=_modifier_items(post_state.modifiers, "voucher_cards"),
@@ -386,6 +394,7 @@ def _simulate_transition(pre_state: GameState, post_state: GameState, action: Ac
             next_to_do_targets=_to_do_list_cash_out_targets(post_state),
             removed_jokers=_removed_joker_names(pre_state.jokers, post_state.jokers),
         )
+        return _with_deferred_cash_out_latency(simulated, post_state)
     if action.action_type == ActionType.SELECT_BLIND:
         certificate_cards = _select_blind_created_hand_cards(pre_state, post_state)
         drawn_cards = _without_card_instances(post_state.hand, certificate_cards)
@@ -405,7 +414,8 @@ def _simulate_transition(pre_state: GameState, post_state: GameState, action: Ac
             **_buy_surface_injections(pre_state, post_state, action),
         )
     if action.action_type == ActionType.SELL:
-        return simulate_sell(pre_state, action)
+        simulated = simulate_sell(pre_state, action)
+        return _with_deferred_discard_delta_latency(simulated, pre_state, post_state)
     if action.action_type == ActionType.USE_CONSUMABLE:
         return simulate_use_consumable(
             pre_state,
@@ -418,6 +428,8 @@ def _simulate_transition(pre_state: GameState, post_state: GameState, action: Ac
             _with_inferred_reroll_cost(pre_state, post_state),
             action,
             new_shop_cards=_modifier_items(post_state.modifiers, "shop_cards"),
+            new_voucher_cards=_modifier_items(post_state.modifiers, "voucher_cards"),
+            new_booster_packs=_modifier_items(post_state.modifiers, "booster_packs"),
         )
     if action.action_type == ActionType.OPEN_PACK:
         return simulate_open_pack(
@@ -494,6 +506,16 @@ def _simulate_play_transition(pre_state: GameState, post_state: GameState, actio
     )
     if reserved_parking_triggers is not None:
         stochastic_outcomes["reserved_parking_triggers"] = reserved_parking_triggers
+    stochastic_outcomes.update(
+        _infer_lucky_card_outcomes(
+            pre_state,
+            post_state,
+            action,
+            drawn_cards,
+            created_consumables,
+            stochastic_outcomes,
+        )
+    )
     simulated = simulate_play(
         pre_state,
         action,
@@ -502,6 +524,49 @@ def _simulate_play_transition(pre_state: GameState, post_state: GameState, actio
         stochastic_outcomes=stochastic_outcomes,
     )
     return _with_observed_final_win_flag(simulated, pre_state, post_state)
+
+
+def _infer_lucky_card_outcomes(
+    pre_state: GameState,
+    post_state: GameState,
+    action: Action,
+    drawn_cards: tuple[Card, ...],
+    created_consumables: tuple[str, ...],
+    stochastic_outcomes: dict[str, object],
+) -> dict[str, int]:
+    if "lucky_card_mult_triggers" in stochastic_outcomes or "lucky_card_money_triggers" in stochastic_outcomes:
+        return {}
+    selected_cards = tuple(card for index, card in enumerate(pre_state.hand) if index in set(action.card_indices))
+    lucky_candidates = sum(1 for card in selected_cards if str(card.enhancement or "").lower() in {"lucky", "lucky card"})
+    if lucky_candidates <= 0:
+        return {}
+    for mult_triggers in range(lucky_candidates + 1):
+        for money_triggers in range(lucky_candidates + 1):
+            if mult_triggers == 0 and money_triggers == 0:
+                continue
+            candidate_outcomes = {
+                **stochastic_outcomes,
+                "lucky_card_mult_triggers": mult_triggers,
+                "lucky_card_money_triggers": money_triggers,
+                "lucky_card_triggers": max(mult_triggers, money_triggers),
+            }
+            try:
+                simulated = simulate_play(
+                    pre_state,
+                    action,
+                    drawn_cards,
+                    created_consumables=created_consumables,
+                    stochastic_outcomes=candidate_outcomes,
+                )
+            except ValueError:
+                continue
+            if simulated.current_score == post_state.current_score and simulated.money == post_state.money:
+                return {
+                    "lucky_card_mult_triggers": mult_triggers,
+                    "lucky_card_money_triggers": money_triggers,
+                    "lucky_card_triggers": max(mult_triggers, money_triggers),
+                }
+    return {}
 
 
 def _action_stochastic_outcomes(action: Action) -> dict[str, object]:
@@ -1555,6 +1620,44 @@ def _with_observed_cash_out_delta(pre_state: GameState, post_state: GameState) -
         "cash_out_money_delta": delta,
     }
     return replace(pre_state, modifiers=modifiers)
+
+
+def _with_deferred_cash_out_latency(simulated: GameState, post_state: GameState) -> GameState:
+    if post_state.phase != GamePhase.SHOP or post_state.current_score <= 0:
+        return simulated
+    delta = _int_value(post_state.modifiers.get("cash_out_money_delta", post_state.modifiers.get("current_round_dollars")))
+    modifiers = dict(simulated.modifiers)
+    modifiers["deferred_cash_out_money_delta"] = delta
+    return replace(simulated, current_score=post_state.current_score, modifiers=modifiers)
+
+def _with_deferred_shop_latency_applied(state: GameState) -> GameState:
+    modifiers = dict(state.modifiers)
+    money_delta = _int_value(modifiers.pop("deferred_cash_out_money_delta", 0))
+    discard_delta = _int_value(modifiers.pop("deferred_visible_discards_delta", 0))
+    if money_delta == 0 and discard_delta == 0:
+        return state
+    return replace(
+        state,
+        current_score=0 if money_delta else state.current_score,
+        money=state.money + money_delta,
+        discards_remaining=max(0, state.discards_remaining + discard_delta),
+        modifiers=modifiers,
+    )
+
+
+def _with_deferred_discard_delta_latency(
+    simulated: GameState,
+    pre_state: GameState,
+    post_state: GameState,
+) -> GameState:
+    if simulated.discards_remaining == post_state.discards_remaining:
+        return simulated
+    if post_state.discards_remaining != pre_state.discards_remaining:
+        return simulated
+    delta = simulated.discards_remaining - post_state.discards_remaining
+    modifiers = dict(simulated.modifiers)
+    modifiers["deferred_visible_discards_delta"] = delta
+    return replace(simulated, discards_remaining=post_state.discards_remaining, modifiers=modifiers)
 
 
 def _card_counter(cards: tuple[Card, ...]) -> Counter[tuple[object, ...]]:

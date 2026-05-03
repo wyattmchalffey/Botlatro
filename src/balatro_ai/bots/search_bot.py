@@ -29,7 +29,7 @@ class SearchBot:
     def __post_init__(self) -> None:
         self._fallback = BasicStrategyBot(seed=self.seed)
         if self.discard_config is None:
-            self.discard_config = DiscardSearchConfig(draw_samples=1, leaf_samples=1, seed=self.seed or 0, max_actions=16)
+            self.discard_config = DiscardSearchConfig(draw_samples=1, leaf_samples=1, seed=self.seed or 0, max_actions=8)
         if self.pack_config is None:
             self.pack_config = PackSearchConfig(leaf_samples=2, seed=self.seed or 0)
         if self.enable_shop_search and self.shop_config is None:

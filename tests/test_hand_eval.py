@@ -43,6 +43,25 @@ class HandEvaluatorTests(unittest.TestCase):
             with self.subTest(hand=hand):
                 self.assertEqual(evaluate_played_cards(cards(hand)).hand_type, expected_type)
 
+    def test_four_fingers_straight_flush_scores_union_of_flush_and_straight_cards(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["JC", "5C", "4H", "3C", "2C"]),
+            jokers=(Joker("Walkie Talkie"), Joker("Four Fingers")),
+        )
+
+        self.assertEqual(evaluation.hand_type, HandType.STRAIGHT_FLUSH)
+        self.assertEqual(evaluation.scoring_indices, (0, 1, 2, 3, 4))
+        self.assertEqual(evaluation.score, 1608)
+
+    def test_four_fingers_allows_ace_low_four_card_straight_flush(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["AC", "JC", "4C", "3C", "2C"]),
+            jokers=(Joker("Four Fingers"),),
+        )
+
+        self.assertEqual(evaluation.hand_type, HandType.STRAIGHT_FLUSH)
+        self.assertEqual(evaluation.scoring_indices, (0, 1, 2, 3, 4))
+
     def test_score_includes_base_level_and_scored_cards(self) -> None:
         evaluation = evaluate_played_cards(cards(["AS", "AD"]), {"Pair": 2})
 
@@ -254,6 +273,27 @@ class HandEvaluatorTests(unittest.TestCase):
         self.assertAlmostEqual(evaluation.effect_xmult, 1.7)
         self.assertEqual(evaluation.score, 108)
 
+    def test_vampire_stripped_card_ignores_stale_visible_bonus_text_on_retriggers(self) -> None:
+        bonus_jack = Card(
+            rank="J",
+            suit="H",
+            enhancement="BONUS",
+            metadata={
+                "modifier": {"enhancement": "BONUS"},
+                "value": {"effect": "+10 chips +30 extra chips"},
+            },
+        )
+
+        evaluation = evaluate_played_cards(
+            (bonus_jack,),
+            jokers=(Joker("Vampire"), Joker("Hanging Chad")),
+        )
+
+        self.assertEqual(evaluation.card_chips, 10)
+        self.assertEqual(evaluation.effect_chips, 20)
+        self.assertAlmostEqual(evaluation.effect_xmult, 1.1)
+        self.assertEqual(evaluation.score, 38)
+
     def test_permanent_card_chip_metadata_is_applied(self) -> None:
         evaluation = evaluate_played_cards(
             (
@@ -401,6 +441,28 @@ class HandEvaluatorTests(unittest.TestCase):
         self.assertEqual(evaluation.chips, 90)
         self.assertEqual(evaluation.mult, 13)
         self.assertEqual(evaluation.score, 1170)
+
+    def test_brainstorm_copies_swashbuckler_visible_current_mult(self) -> None:
+        evaluation = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(
+                Joker(
+                    "Swashbuckler",
+                    sell_value=2,
+                    metadata={
+                        "value": {
+                            "effect": "Adds the sell value of all other owned Jokers to Mult (Currently +13 Mult)"
+                        }
+                    },
+                ),
+                Joker("Credit Card", sell_value=5),
+                Joker("Egg", sell_value=3),
+                Joker("Brainstorm", sell_value=5),
+            ),
+        )
+
+        self.assertEqual(evaluation.mult, 27)
+        self.assertEqual(evaluation.score, 432)
 
     def test_the_flint_halves_base_chips_and_mult(self) -> None:
         evaluation = evaluate_played_cards(

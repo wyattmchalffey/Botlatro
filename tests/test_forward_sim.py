@@ -55,7 +55,7 @@ class ForwardSimTests(unittest.TestCase):
         state = GameState(
             phase=GamePhase.SELECTING_HAND,
             blind="Small Blind",
-            required_score=50,
+            required_score=1,
             current_score=0,
             hands_remaining=4,
             discards_remaining=3,
@@ -167,6 +167,43 @@ class ForwardSimTests(unittest.TestCase):
         self.assertEqual(next_state.jokers[1].metadata["state"]["debuff"], True)
         self.assertEqual(next_state.jokers[1].metadata["value"]["effect"], "All abilities are disabled")
 
+    def test_simulate_play_marks_played_cards_this_ante_for_pillar(self) -> None:
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            blind="Small Blind",
+            required_score=10_000,
+            hands_remaining=4,
+            deck_size=0,
+            hand=(Card("A", "S"),),
+            modifiers={"hand_size": 1},
+        )
+
+        next_state = simulate_play(state, Action(ActionType.PLAY_HAND, card_indices=(0,)))
+
+        self.assertTrue(next_state.modifiers["played_pile"][0].metadata["played_this_ante"])
+
+    def test_simulate_play_ox_resets_money_when_most_played_hand_is_played(self) -> None:
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            blind="The Ox",
+            required_score=10_000,
+            hands_remaining=4,
+            money=20,
+            deck_size=0,
+            hand=(Card("A", "S"),),
+            modifiers={
+                "current_blind": {"name": "The Ox", "type": "BOSS"},
+                "hands": {
+                    "High Card": {"played": 4, "order": 12},
+                    "Pair": {"played": 1, "order": 11},
+                },
+            },
+        )
+
+        next_state = simulate_play(state, Action(ActionType.PLAY_HAND, card_indices=(0,)))
+
+        self.assertEqual(next_state.money, 0)
+
     def test_simulate_play_returns_hook_discards_to_deck_when_blind_clears(self) -> None:
         state = GameState(
             phase=GamePhase.SELECTING_HAND,
@@ -193,7 +230,7 @@ class ForwardSimTests(unittest.TestCase):
         state = GameState(
             phase=GamePhase.SELECTING_HAND,
             blind="Small Blind",
-            required_score=50,
+            required_score=1,
             hands_remaining=4,
             hand=(Card("A", "S"), Card("A", "H")),
             jokers=(Joker("Egg", sell_value=2, metadata={"extra_value": 0, "extra": 3}),),
@@ -222,7 +259,7 @@ class ForwardSimTests(unittest.TestCase):
         self.assertEqual(next_state.jokers[0].sell_value, 11)
         self.assertEqual(next_state.jokers[0].metadata["extra_value"], 9)
 
-    def test_simulate_play_removes_expired_popcorn_when_blind_ends(self) -> None:
+    def test_simulate_play_removes_expired_popcorn_when_blind_clears(self) -> None:
         state = GameState(
             phase=GamePhase.SELECTING_HAND,
             blind="Small Blind",
@@ -236,6 +273,43 @@ class ForwardSimTests(unittest.TestCase):
 
         self.assertEqual(next_state.phase, GamePhase.ROUND_EVAL)
         self.assertEqual(next_state.jokers, ())
+
+    def test_simulate_play_keeps_expired_popcorn_on_failed_run_over(self) -> None:
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            blind="Big Blind",
+            required_score=1200,
+            current_score=700,
+            hands_remaining=1,
+            hand=(Card("A", "S"),),
+            jokers=(Joker("Popcorn", sell_value=2, metadata={"current_mult": 4, "extra": 4}),),
+        )
+
+        next_state = simulate_play(state, Action(ActionType.PLAY_HAND, card_indices=(0,)))
+
+        self.assertEqual(next_state.phase, GamePhase.RUN_OVER)
+        self.assertEqual(tuple(joker.name for joker in next_state.jokers), ("Popcorn",))
+        self.assertEqual(next_state.jokers[0].metadata["current_mult"], 4)
+
+    def test_simulate_play_allows_blue_seal_planet_creation_at_round_end(self) -> None:
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            blind="Small Blind",
+            required_score=1,
+            hands_remaining=4,
+            consumables=("Venus",),
+            hand=(Card("A", "S"), Card("9", "S", seal="Blue")),
+        )
+
+        next_state = simulate_play(
+            state,
+            Action(ActionType.PLAY_HAND, card_indices=(0,)),
+            created_consumables=("Pluto",),
+        )
+
+        self.assertEqual(next_state.phase, GamePhase.ROUND_EVAL)
+        self.assertEqual(next_state.consumables, ("Venus", "Pluto"))
+        self.assertEqual(next_state.modifiers["created_planet_count"], 1)
 
     def test_simulate_play_removes_injected_extinct_joker_when_blind_clears(self) -> None:
         state = GameState(
@@ -1115,6 +1189,116 @@ class ForwardSimTests(unittest.TestCase):
         self.assertEqual(next_state.modifiers["applied_round_discards_delta"], 1)
         self.assertEqual(after_shop.discards_remaining, 5)
 
+    def test_simulate_buy_applies_remaining_source_voucher_effects(self) -> None:
+        base_state = GameState(
+            phase=GamePhase.SHOP,
+            ante=4,
+            money=100,
+            hands_remaining=4,
+            discards_remaining=4,
+            modifiers={
+                "hand_size": 8,
+                "joker_slot_limit": 5,
+                "consumable_slot_limit": 2,
+                "reroll_cost": 5,
+                "current_reroll_cost": 5,
+                "round_reset_reroll_cost": 5,
+            },
+        )
+
+        cases = {
+            "Crystal Ball": ("consumable_slot_limit", 3),
+            "Antimatter": ("joker_slot_limit", 6),
+            "Paint Brush": ("hand_size", 9),
+            "Tarot Merchant": ("tarot_rate", 9.6),
+            "Tarot Tycoon": ("tarot_rate", 32.0),
+            "Planet Merchant": ("planet_rate", 9.6),
+            "Planet Tycoon": ("planet_rate", 32.0),
+            "Hone": ("edition_rate", 2.0),
+            "Glow Up": ("edition_rate", 4.0),
+            "Magic Trick": ("playing_card_rate", 4.0),
+            "Seed Money": ("interest_cap", 50),
+            "Money Tree": ("interest_cap", 100),
+            "Director's Cut": ("boss_reroll_cost", 10),
+            "Retcon": ("boss_rerolls_unlimited", True),
+        }
+        for voucher_name, (modifier_key, expected_value) in cases.items():
+            with self.subTest(voucher=voucher_name):
+                state = replace(
+                    base_state,
+                    modifiers={
+                        **base_state.modifiers,
+                        "voucher_cards": ({"name": voucher_name, "set": "VOUCHER", "cost": {"buy": 10}},),
+                    },
+                )
+                next_state = simulate_buy(
+                    state,
+                    Action(ActionType.BUY, target_id="voucher", amount=0, metadata={"kind": "voucher", "index": 0}),
+                )
+
+                self.assertEqual(next_state.money, 90)
+                self.assertEqual(next_state.modifiers[modifier_key], expected_value)
+
+        reroll_state = replace(
+            base_state,
+            modifiers={
+                **base_state.modifiers,
+                "voucher_cards": ({"name": "Reroll Surplus", "set": "VOUCHER", "cost": {"buy": 10}},),
+            },
+        )
+        after_reroll = simulate_buy(
+            reroll_state,
+            Action(ActionType.BUY, target_id="voucher", amount=0, metadata={"kind": "voucher", "index": 0}),
+        )
+        self.assertEqual(after_reroll.modifiers["reroll_cost"], 3)
+        self.assertEqual(after_reroll.modifiers["round_reset_reroll_cost"], 3)
+
+        hieroglyph_state = replace(
+            base_state,
+            modifiers={
+                **base_state.modifiers,
+                "voucher_cards": ({"name": "Hieroglyph", "set": "VOUCHER", "cost": {"buy": 10}},),
+            },
+        )
+        after_hieroglyph = simulate_buy(
+            hieroglyph_state,
+            Action(ActionType.BUY, target_id="voucher", amount=0, metadata={"kind": "voucher", "index": 0}),
+        )
+        self.assertEqual(after_hieroglyph.ante, 3)
+        self.assertEqual(after_hieroglyph.hands_remaining, 3)
+
+        petroglyph_state = replace(
+            base_state,
+            modifiers={
+                **base_state.modifiers,
+                "voucher_cards": ({"name": "Petroglyph", "set": "VOUCHER", "cost": {"buy": 10}},),
+            },
+        )
+        after_petroglyph = simulate_buy(
+            petroglyph_state,
+            Action(ActionType.BUY, target_id="voucher", amount=0, metadata={"kind": "voucher", "index": 0}),
+        )
+        self.assertEqual(after_petroglyph.ante, 3)
+        self.assertEqual(after_petroglyph.discards_remaining, 3)
+
+    def test_observatory_scores_held_matching_planet_cards(self) -> None:
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            blind="Small Blind",
+            required_score=1_000,
+            hands_remaining=4,
+            deck_size=0,
+            hand=(Card("A", "S"),),
+            consumables=("Pluto",),
+            vouchers=("Observatory",),
+            hand_levels={"High Card": 1},
+            modifiers={"hand_size": 1},
+        )
+
+        next_state = simulate_play(state, Action(ActionType.PLAY_HAND, card_indices=(0,)))
+
+        self.assertEqual(next_state.current_score, 24)
+
     def test_simulate_buy_can_inject_overstock_shop_surface(self) -> None:
         state = GameState(
             phase=GamePhase.SHOP,
@@ -1280,6 +1464,92 @@ class ForwardSimTests(unittest.TestCase):
         self.assertEqual(next_state.jokers[0].metadata["current_chips"], 100)
         self.assertEqual(next_state.jokers[1].metadata["current_mult"], 20)
         self.assertEqual(next_state.jokers[2].metadata["current_xmult"], 2.0)
+
+    def test_simulate_buy_applies_skipped_edition_tag_to_first_base_shop_joker(self) -> None:
+        state = GameState(
+            phase=GamePhase.SHOP,
+            money=17,
+            modifiers={
+                "current_blind": {"tag_name": "Polychrome Tag", "status": "SKIPPED"},
+                "shop_cards": ({"label": "Ice Cream", "set": "JOKER", "cost": {"buy": 5, "sell": 2}},),
+            },
+        )
+
+        next_state = simulate_buy(
+            state,
+            Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),
+        )
+
+        self.assertEqual(next_state.money, 17)
+        self.assertEqual(next_state.jokers[0].name, "Ice Cream")
+        self.assertEqual(next_state.jokers[0].edition, "POLYCHROME")
+        self.assertEqual(next_state.jokers[0].sell_value, 5)
+        self.assertTrue(next_state.modifiers["shop_edition_tag_consumed"])
+
+    def test_simulate_buy_ignores_defeated_blind_display_edition_tag(self) -> None:
+        state = GameState(
+            phase=GamePhase.SHOP,
+            money=17,
+            modifiers={
+                "current_blind": {"tag_name": "Polychrome Tag", "status": "DEFEATED"},
+                "shop_cards": ({"label": "Blue Joker", "set": "JOKER", "cost": {"buy": 5, "sell": 2}},),
+            },
+        )
+
+        next_state = simulate_buy(
+            state,
+            Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),
+        )
+
+        self.assertEqual(next_state.money, 12)
+        self.assertIsNone(next_state.jokers[0].edition)
+        self.assertEqual(next_state.jokers[0].sell_value, 2)
+
+    def test_simulate_buy_applies_skipped_edition_tag_to_first_eligible_shop_joker_not_selected_joker(self) -> None:
+        state = GameState(
+            phase=GamePhase.SHOP,
+            money=17,
+            modifiers={
+                "current_blind": {"tag_name": "Foil Tag", "status": "SKIPPED"},
+                "shop_cards": (
+                    {"label": "Greedy Joker", "set": "JOKER", "cost": {"buy": 5, "sell": 2}},
+                    {"label": "Droll Joker", "set": "JOKER", "cost": {"buy": 4, "sell": 2}},
+                ),
+            },
+        )
+
+        next_state = simulate_buy(
+            state,
+            Action(ActionType.BUY, target_id="card", amount=1, metadata={"kind": "card", "index": 1}),
+        )
+
+        self.assertEqual(next_state.money, 13)
+        self.assertEqual(next_state.jokers[0].name, "Droll Joker")
+        self.assertIsNone(next_state.jokers[0].edition)
+        self.assertEqual(next_state.shop, ("Greedy Joker",))
+        self.assertEqual(next_state.modifiers["shop_cards"][0]["edition"], "FOIL")
+        self.assertEqual(next_state.modifiers["shop_cards"][0]["cost"]["buy"], 0)
+
+    def test_simulate_buy_negative_tag_joker_ignores_full_normal_slots(self) -> None:
+        state = GameState(
+            phase=GamePhase.SHOP,
+            money=5,
+            jokers=(Joker("Joker"), Joker("Joker"), Joker("Joker"), Joker("Joker"), Joker("Joker")),
+            modifiers={
+                "current_blind": {"tag_name": "Negative Tag", "status": "SKIPPED"},
+                "shop_cards": ({"label": "Popcorn", "set": "JOKER", "cost": {"buy": 5, "sell": 2}},),
+            },
+        )
+
+        next_state = simulate_buy(
+            state,
+            Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),
+        )
+
+        self.assertEqual(next_state.money, 5)
+        self.assertEqual(len(next_state.jokers), 6)
+        self.assertEqual(next_state.jokers[-1].name, "Popcorn")
+        self.assertEqual(next_state.jokers[-1].edition, "NEGATIVE")
 
     def test_simulate_buy_astronomer_makes_planets_free(self) -> None:
         state = GameState(
@@ -1782,9 +2052,9 @@ class ForwardSimTests(unittest.TestCase):
         next_state = simulate_end_shop(state)
         blind_state = simulate_select_blind(next_state)
 
-        self.assertEqual(next_state.hands_remaining, 3)
+        self.assertEqual(next_state.hands_remaining, 4)
         self.assertEqual(next_state.discards_remaining, 5)
-        self.assertEqual(next_state.modifiers["applied_round_hands_delta"], -1)
+        self.assertEqual(next_state.modifiers["applied_round_hands_delta"], 0)
         self.assertEqual(next_state.modifiers["applied_round_discards_delta"], 1)
         self.assertEqual(blind_state.hands_remaining, 3)
         self.assertEqual(blind_state.discards_remaining, 5)
@@ -1983,6 +2253,27 @@ class ForwardSimTests(unittest.TestCase):
         self.assertEqual(by_name["Steel Joker"]["current_xmult"], 1.2)
         self.assertEqual(by_name["Driver's License"]["driver_tally"], 3)
         self.assertEqual(by_name["Erosion"]["current_mult"], 4)
+
+    def test_joker_stencil_dynamic_value_ignores_negative_jokers_for_slot_usage(self) -> None:
+        state = GameState(
+            phase=GamePhase.BLIND_SELECT,
+            blind="Small Blind",
+            deck_size=0,
+            hands_remaining=4,
+            discards_remaining=4,
+            jokers=(
+                Joker("Joker Stencil"),
+                Joker("Joker"),
+                Joker("Joker"),
+                Joker("Joker"),
+                Joker("Devious Joker", edition="NEGATIVE"),
+            ),
+            modifiers={"joker_slot_limit": 5},
+        )
+
+        next_state = simulate_select_blind(state)
+
+        self.assertEqual(next_state.jokers[0].metadata["current_xmult"], 2.0)
 
     def test_dynamic_erosion_counts_hidden_draw_deck_not_just_visible_hand(self) -> None:
         state = GameState(

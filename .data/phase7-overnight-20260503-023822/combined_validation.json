@@ -1,0 +1,3010 @@
+{
+  "action_counts": {
+    "buy": 1071,
+    "cash_out": 1641,
+    "choose_pack_card": 610,
+    "discard": 1598,
+    "end_shop": 1630,
+    "open_pack": 583,
+    "play_hand": 3781,
+    "rearrange": 134,
+    "reroll": 455,
+    "select_blind": 1765,
+    "sell": 356,
+    "skip_blind": 17
+  },
+  "action_field_mismatches": {
+    "buy.discards_remaining": 4,
+    "buy.joker_multiset": 1,
+    "buy.money": 1,
+    "buy.required_score": 4,
+    "cash_out.current_score": 5,
+    "cash_out.hands_remaining": 26,
+    "choose_pack_card.phase": 2,
+    "discard.money": 1,
+    "end_shop.ante": 4,
+    "end_shop.hands_remaining": 2,
+    "end_shop.money": 4,
+    "end_shop.required_score": 4,
+    "play_hand.current_score": 116,
+    "play_hand.deck_size": 2,
+    "play_hand.hand_multiset": 2,
+    "play_hand.joker_multiset": 2,
+    "play_hand.money": 1,
+    "play_hand.phase": 13,
+    "play_hand.run_over": 1,
+    "play_hand.transition_error": 3,
+    "play_hand.won": 1,
+    "reroll.current_score": 1,
+    "reroll.money": 1,
+    "reroll.shop_surface": 1,
+    "select_blind.discards_remaining": 1,
+    "select_blind.hands_remaining": 2,
+    "select_blind.money": 2,
+    "skip_blind.pack_surface": 2,
+    "skip_blind.phase": 2
+  },
+  "comparable_divergences": 109,
+  "exact_transition_counts": {
+    "buy": 1062,
+    "cash_out": 1610,
+    "choose_pack_card": 608,
+    "discard": 1597,
+    "end_shop": 1620,
+    "open_pack": 583,
+    "play_hand": 3658,
+    "rearrange": 134,
+    "reroll": 454,
+    "select_blind": 1760,
+    "sell": 356,
+    "skip_blind": 15
+  },
+  "exact_transitions": 13457,
+  "examples": [
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1199940554.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 43550,
+          "field": "current_score",
+          "simulated": 40634
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 141,
+      "seed": "1199940554",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "end_shop",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_123194512.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 4,
+          "field": "hands_remaining",
+          "simulated": 3
+        }
+      ],
+      "mismatches": [
+        "hands_remaining"
+      ],
+      "row_number": 96,
+      "seed": "123194512",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "select_blind",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_123194512.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 3,
+          "field": "hands_remaining",
+          "simulated": 4
+        }
+      ],
+      "mismatches": [
+        "hands_remaining"
+      ],
+      "row_number": 97,
+      "seed": "123194512",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "cash_out",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_123194512.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 3,
+          "field": "hands_remaining",
+          "simulated": 4
+        }
+      ],
+      "mismatches": [
+        "hands_remaining"
+      ],
+      "row_number": 102,
+      "seed": "123194512",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "cash_out",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_123194512.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 3,
+          "field": "hands_remaining",
+          "simulated": 4
+        }
+      ],
+      "mismatches": [
+        "hands_remaining"
+      ],
+      "row_number": 115,
+      "seed": "123194512",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "cash_out",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1244479556.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 7698,
+          "field": "current_score",
+          "simulated": 0
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 56,
+      "seed": "1244479556",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "end_shop",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1244479556.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 39,
+          "field": "money",
+          "simulated": 28
+        }
+      ],
+      "mismatches": [
+        "money"
+      ],
+      "row_number": 57,
+      "seed": "1244479556",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": "round_eval",
+          "field": "phase",
+          "simulated": "selecting_hand"
+        },
+        {
+          "actual": 1392,
+          "field": "current_score",
+          "simulated": 1160
+        }
+      ],
+      "mismatches": [
+        "phase",
+        "current_score"
+      ],
+      "row_number": 23,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": 1369,
+          "field": "current_score",
+          "simulated": 1173
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 28,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": 2029,
+          "field": "current_score",
+          "simulated": 1947
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 29,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": "selecting_hand",
+          "field": "phase",
+          "simulated": "round_eval"
+        },
+        {
+          "actual": 1384,
+          "field": "current_score",
+          "simulated": 2214
+        },
+        {
+          "actual": 41,
+          "field": "deck_size",
+          "simulated": 52
+        },
+        {
+          "actual": {
+            "3C": 1,
+            "5H": 1,
+            "7D": 1,
+            "AS": 1,
+            "KC": 1,
+            "KH": 1,
+            "TH": 1,
+            "TS": 1
+          },
+          "field": "hand_multiset",
+          "simulated": {}
+        }
+      ],
+      "mismatches": [
+        "phase",
+        "current_score",
+        "deck_size",
+        "hand_multiset"
+      ],
+      "row_number": 33,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": 2844,
+          "field": "current_score",
+          "simulated": 2662
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 39,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": 3576,
+          "field": "current_score",
+          "simulated": 3722
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 40,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": 2376,
+          "field": "current_score",
+          "simulated": 1980
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 46,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": "round_eval",
+          "field": "phase",
+          "simulated": "selecting_hand"
+        },
+        {
+          "actual": 4002,
+          "field": "current_score",
+          "simulated": 3770
+        }
+      ],
+      "mismatches": [
+        "phase",
+        "current_score"
+      ],
+      "row_number": 47,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": 4704,
+          "field": "current_score",
+          "simulated": 4116
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 52,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": 5589,
+          "field": "current_score",
+          "simulated": 6120
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 53,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": 9051,
+          "field": "current_score",
+          "simulated": 8558
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 62,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": 7059,
+          "field": "current_score",
+          "simulated": 6082
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 66,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": 10269,
+          "field": "current_score",
+          "simulated": 11125
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 67,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": 11885,
+          "field": "current_score",
+          "simulated": 11288
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 73,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": 6325,
+          "field": "current_score",
+          "simulated": 6854
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 77,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": 16941,
+          "field": "current_score",
+          "simulated": 16577
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 79,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": 13056,
+          "field": "current_score",
+          "simulated": 14116
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 85,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": 25266,
+          "field": "current_score",
+          "simulated": 24366
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 91,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": 12648,
+          "field": "current_score",
+          "simulated": 13872
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 97,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": 16742,
+          "field": "current_score",
+          "simulated": 15260
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 103,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": 37142,
+          "field": "current_score",
+          "simulated": 35462
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 104,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": 46585,
+          "field": "current_score",
+          "simulated": 48447
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 105,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": 18748,
+          "field": "current_score",
+          "simulated": 17004
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 117,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": 34036,
+          "field": "current_score",
+          "simulated": 35604
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 118,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "The Pillar debuffs previously played cards not always represented in card state",
+      "mismatch_details": [
+        {
+          "actual": 24008,
+          "field": "current_score",
+          "simulated": 21736
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 124,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "The Pillar debuffs previously played cards not always represented in card state",
+      "mismatch_details": [
+        {
+          "actual": 40520,
+          "field": "current_score",
+          "simulated": 42209
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 125,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "The Pillar debuffs previously played cards not always represented in card state",
+      "mismatch_details": [
+        {
+          "actual": 60488,
+          "field": "current_score",
+          "simulated": 58616
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 127,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "The Pillar debuffs previously played cards not always represented in card state",
+      "mismatch_details": [
+        {
+          "actual": 70493,
+          "field": "current_score",
+          "simulated": 71528
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 128,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "Crimson Heart score depends on hidden card metadata missing from older replay logs",
+      "mismatch_details": [
+        {
+          "actual": 55684,
+          "field": "current_score",
+          "simulated": 55349
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 152,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "Crimson Heart score depends on hidden card metadata missing from older replay logs",
+      "mismatch_details": [
+        {
+          "actual": 81304,
+          "field": "current_score",
+          "simulated": 80779
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 153,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "Crimson Heart score depends on hidden card metadata missing from older replay logs",
+      "mismatch_details": [
+        {
+          "actual": 99267,
+          "field": "current_score",
+          "simulated": 98912
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 154,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "Crimson Heart score depends on hidden card metadata missing from older replay logs",
+      "mismatch_details": [
+        {
+          "actual": 111572,
+          "field": "current_score",
+          "simulated": 110997
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 155,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1289741553.jsonl",
+      "known_gap_reason": "Run summary win flag conflicts with final score below required score",
+      "mismatch_details": [
+        {
+          "actual": true,
+          "field": "won",
+          "simulated": false
+        }
+      ],
+      "mismatches": [
+        "won"
+      ],
+      "row_number": 179,
+      "seed": "1289741553",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1326751329.jsonl",
+      "known_gap_reason": "Ramen fractional XMult can differ by Lua rounding",
+      "mismatch_details": [
+        {
+          "actual": 2187,
+          "field": "current_score",
+          "simulated": 2210
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 42,
+      "seed": "1326751329",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1326751329.jsonl",
+      "known_gap_reason": "Ramen fractional XMult can differ by Lua rounding",
+      "mismatch_details": [
+        {
+          "actual": 16340,
+          "field": "current_score",
+          "simulated": 16506
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 46,
+      "seed": "1326751329",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1326751329.jsonl",
+      "known_gap_reason": "Ramen fractional XMult can differ by Lua rounding",
+      "mismatch_details": [
+        {
+          "actual": 2053,
+          "field": "current_score",
+          "simulated": 2074
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 50,
+      "seed": "1326751329",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1326751329.jsonl",
+      "known_gap_reason": "Ramen fractional XMult can differ by Lua rounding",
+      "mismatch_details": [
+        {
+          "actual": 4547,
+          "field": "current_score",
+          "simulated": 4573
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 51,
+      "seed": "1326751329",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1326751329.jsonl",
+      "known_gap_reason": "Ramen fractional XMult can differ by Lua rounding",
+      "mismatch_details": [
+        {
+          "actual": 5351,
+          "field": "current_score",
+          "simulated": 5406
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 57,
+      "seed": "1326751329",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1326751329.jsonl",
+      "known_gap_reason": "Ramen fractional XMult can differ by Lua rounding",
+      "mismatch_details": [
+        {
+          "actual": 10973,
+          "field": "current_score",
+          "simulated": 11084
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 61,
+      "seed": "1326751329",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1326751329.jsonl",
+      "known_gap_reason": "Ramen fractional XMult can differ by Lua rounding",
+      "mismatch_details": [
+        {
+          "actual": 5217,
+          "field": "current_score",
+          "simulated": 5270
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 65,
+      "seed": "1326751329",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1326751329.jsonl",
+      "known_gap_reason": "Ramen fractional XMult can differ by Lua rounding",
+      "mismatch_details": [
+        {
+          "actual": 10064,
+          "field": "current_score",
+          "simulated": 10113
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 66,
+      "seed": "1326751329",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1326751329.jsonl",
+      "known_gap_reason": "Ramen fractional XMult can differ by Lua rounding",
+      "mismatch_details": [
+        {
+          "actual": 4880,
+          "field": "current_score",
+          "simulated": 4930
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 73,
+      "seed": "1326751329",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1326751329.jsonl",
+      "known_gap_reason": "Ramen fractional XMult can differ by Lua rounding",
+      "mismatch_details": [
+        {
+          "actual": 9457,
+          "field": "current_score",
+          "simulated": 9504
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 74,
+      "seed": "1326751329",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1326751329.jsonl",
+      "known_gap_reason": "Ramen fractional XMult can differ by Lua rounding",
+      "mismatch_details": [
+        {
+          "actual": 11880,
+          "field": "current_score",
+          "simulated": 11905
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 75,
+      "seed": "1326751329",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1326751329.jsonl",
+      "known_gap_reason": "Ramen fractional XMult can differ by Lua rounding",
+      "mismatch_details": [
+        {
+          "actual": 11107,
+          "field": "current_score",
+          "simulated": 11220
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 79,
+      "seed": "1326751329",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1326751329.jsonl",
+      "known_gap_reason": "Ramen fractional XMult can differ by Lua rounding",
+      "mismatch_details": [
+        {
+          "actual": 15112,
+          "field": "current_score",
+          "simulated": 15153
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 80,
+      "seed": "1326751329",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1326751329.jsonl",
+      "known_gap_reason": "Ramen fractional XMult can differ by Lua rounding",
+      "mismatch_details": [
+        {
+          "actual": 18910,
+          "field": "current_score",
+          "simulated": 18949
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 83,
+      "seed": "1326751329",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1326751329.jsonl",
+      "known_gap_reason": "Ramen fractional XMult can differ by Lua rounding",
+      "mismatch_details": [
+        {
+          "actual": 9611,
+          "field": "current_score",
+          "simulated": 9711
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 93,
+      "seed": "1326751329",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1326751329.jsonl",
+      "known_gap_reason": "Ramen fractional XMult can differ by Lua rounding",
+      "mismatch_details": [
+        {
+          "actual": 13182,
+          "field": "current_score",
+          "simulated": 13220
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 94,
+      "seed": "1326751329",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1326751329.jsonl",
+      "known_gap_reason": "Ramen fractional XMult can differ by Lua rounding",
+      "mismatch_details": [
+        {
+          "actual": 16396,
+          "field": "current_score",
+          "simulated": 16430
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 95,
+      "seed": "1326751329",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1326751329.jsonl",
+      "known_gap_reason": "Ramen fractional XMult can differ by Lua rounding",
+      "mismatch_details": [
+        {
+          "actual": 26434,
+          "field": "current_score",
+          "simulated": 26540
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 96,
+      "seed": "1326751329",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1326751329.jsonl",
+      "known_gap_reason": "Ramen fractional XMult can differ by Lua rounding",
+      "mismatch_details": [
+        {
+          "actual": 12824,
+          "field": "current_score",
+          "simulated": 12936
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 108,
+      "seed": "1326751329",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1326751329.jsonl",
+      "known_gap_reason": "Ramen fractional XMult can differ by Lua rounding",
+      "mismatch_details": [
+        {
+          "actual": 20338,
+          "field": "current_score",
+          "simulated": 20390
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 109,
+      "seed": "1326751329",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1326751329.jsonl",
+      "known_gap_reason": "Ramen fractional XMult can differ by Lua rounding",
+      "mismatch_details": [
+        {
+          "actual": 15313,
+          "field": "current_score",
+          "simulated": 15452
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 116,
+      "seed": "1326751329",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1326751329.jsonl",
+      "known_gap_reason": "Ramen fractional XMult can differ by Lua rounding",
+      "mismatch_details": [
+        {
+          "actual": 20073,
+          "field": "current_score",
+          "simulated": 20109
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 121,
+      "seed": "1326751329",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1326751329.jsonl",
+      "known_gap_reason": "Ramen fractional XMult can differ by Lua rounding",
+      "mismatch_details": [
+        {
+          "actual": 23765,
+          "field": "current_score",
+          "simulated": 23792
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 122,
+      "seed": "1326751329",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1326751329.jsonl",
+      "known_gap_reason": "Ramen fractional XMult can differ by Lua rounding",
+      "mismatch_details": [
+        {
+          "actual": 26617,
+          "field": "current_score",
+          "simulated": 26638
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 123,
+      "seed": "1326751329",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "discard",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1545868523.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 1,
+          "field": "money",
+          "simulated": 6
+        }
+      ],
+      "mismatches": [
+        "money"
+      ],
+      "row_number": 19,
+      "seed": "1545868523",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1583804157.jsonl",
+      "known_gap_reason": "Ramen fractional XMult can differ by Lua rounding",
+      "mismatch_details": [
+        {
+          "actual": 22979,
+          "field": "current_score",
+          "simulated": 23083
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 122,
+      "seed": "1583804157",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1583804157.jsonl",
+      "known_gap_reason": "Ramen fractional XMult can differ by Lua rounding",
+      "mismatch_details": [
+        {
+          "actual": 32784,
+          "field": "current_score",
+          "simulated": 33003
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 123,
+      "seed": "1583804157",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1583804157.jsonl",
+      "known_gap_reason": "Ramen fractional XMult can differ by Lua rounding",
+      "mismatch_details": [
+        {
+          "actual": 38278,
+          "field": "current_score",
+          "simulated": 38464
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 124,
+      "seed": "1583804157",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "end_shop",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1769843000.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 5,
+          "field": "hands_remaining",
+          "simulated": 4
+        }
+      ],
+      "mismatches": [
+        "hands_remaining"
+      ],
+      "row_number": 130,
+      "seed": "1769843000",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "select_blind",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1769843000.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 4,
+          "field": "hands_remaining",
+          "simulated": 5
+        }
+      ],
+      "mismatches": [
+        "hands_remaining"
+      ],
+      "row_number": 131,
+      "seed": "1769843000",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "buy",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1800943163.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 11000,
+          "field": "required_score",
+          "simulated": 20000
+        }
+      ],
+      "mismatches": [
+        "required_score"
+      ],
+      "row_number": 132,
+      "seed": "1800943163",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "end_shop",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1800943163.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 5,
+          "field": "ante",
+          "simulated": 6
+        },
+        {
+          "actual": 16500,
+          "field": "required_score",
+          "simulated": 30000
+        }
+      ],
+      "mismatches": [
+        "ante",
+        "required_score"
+      ],
+      "row_number": 133,
+      "seed": "1800943163",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "cash_out",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1800943163.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 3,
+          "field": "hands_remaining",
+          "simulated": 4
+        }
+      ],
+      "mismatches": [
+        "hands_remaining"
+      ],
+      "row_number": 137,
+      "seed": "1800943163",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "cash_out",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1800943163.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 3,
+          "field": "hands_remaining",
+          "simulated": 4
+        }
+      ],
+      "mismatches": [
+        "hands_remaining"
+      ],
+      "row_number": 143,
+      "seed": "1800943163",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "cash_out",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1800943163.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 3,
+          "field": "hands_remaining",
+          "simulated": 4
+        }
+      ],
+      "mismatches": [
+        "hands_remaining"
+      ],
+      "row_number": 152,
+      "seed": "1800943163",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "cash_out",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1800943163.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 3,
+          "field": "hands_remaining",
+          "simulated": 4
+        }
+      ],
+      "mismatches": [
+        "hands_remaining"
+      ],
+      "row_number": 157,
+      "seed": "1800943163",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "cash_out",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1800943163.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 3,
+          "field": "hands_remaining",
+          "simulated": 4
+        }
+      ],
+      "mismatches": [
+        "hands_remaining"
+      ],
+      "row_number": 165,
+      "seed": "1800943163",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "cash_out",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1800943163.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 3,
+          "field": "hands_remaining",
+          "simulated": 4
+        }
+      ],
+      "mismatches": [
+        "hands_remaining"
+      ],
+      "row_number": 182,
+      "seed": "1800943163",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "cash_out",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1800943163.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 3,
+          "field": "hands_remaining",
+          "simulated": 4
+        }
+      ],
+      "mismatches": [
+        "hands_remaining"
+      ],
+      "row_number": 188,
+      "seed": "1800943163",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "cash_out",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1800943163.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 3,
+          "field": "hands_remaining",
+          "simulated": 4
+        }
+      ],
+      "mismatches": [
+        "hands_remaining"
+      ],
+      "row_number": 196,
+      "seed": "1800943163",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "cash_out",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1800943163.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 3,
+          "field": "hands_remaining",
+          "simulated": 4
+        }
+      ],
+      "mismatches": [
+        "hands_remaining"
+      ],
+      "row_number": 205,
+      "seed": "1800943163",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "cash_out",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1800943163.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 3,
+          "field": "hands_remaining",
+          "simulated": 4
+        }
+      ],
+      "mismatches": [
+        "hands_remaining"
+      ],
+      "row_number": 213,
+      "seed": "1800943163",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "buy",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_182679358.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 17,
+          "field": "money",
+          "simulated": 12
+        },
+        {
+          "actual": {
+            "Ice Cream/POLYCHROME/$5": 1
+          },
+          "field": "joker_multiset",
+          "simulated": {
+            "Ice Cream/$2": 1
+          }
+        }
+      ],
+      "mismatches": [
+        "money",
+        "joker_multiset"
+      ],
+      "row_number": 36,
+      "seed": "182679358",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "select_blind",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_182679358.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 66,
+          "field": "money",
+          "simulated": 46
+        }
+      ],
+      "mismatches": [
+        "money"
+      ],
+      "row_number": 77,
+      "seed": "182679358",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "cash_out",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_182679358.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 30104,
+          "field": "current_score",
+          "simulated": 0
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 97,
+      "seed": "182679358",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "end_shop",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_182679358.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 90,
+          "field": "money",
+          "simulated": 80
+        }
+      ],
+      "mismatches": [
+        "money"
+      ],
+      "row_number": 98,
+      "seed": "182679358",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1863211019.jsonl",
+      "known_gap_reason": "Business Card has probabilistic money triggers",
+      "mismatch_details": [
+        {
+          "actual": 23,
+          "field": "money",
+          "simulated": 25
+        }
+      ],
+      "mismatches": [
+        "money"
+      ],
+      "row_number": 146,
+      "seed": "1863211019",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "buy",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1882405795.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 5,
+          "field": "discards_remaining",
+          "simulated": 4
+        }
+      ],
+      "mismatches": [
+        "discards_remaining"
+      ],
+      "row_number": 72,
+      "seed": "1882405795",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1899534361.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": {
+            "Popcorn/$2": 1
+          },
+          "field": "joker_multiset",
+          "simulated": {}
+        }
+      ],
+      "mismatches": [
+        "joker_multiset"
+      ],
+      "row_number": 86,
+      "seed": "1899534361",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "buy",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1958626244.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 7,
+          "field": "discards_remaining",
+          "simulated": 4
+        }
+      ],
+      "mismatches": [
+        "discards_remaining"
+      ],
+      "row_number": 23,
+      "seed": "1958626244",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "select_blind",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1958626244.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 4,
+          "field": "discards_remaining",
+          "simulated": 7
+        }
+      ],
+      "mismatches": [
+        "discards_remaining"
+      ],
+      "row_number": 25,
+      "seed": "1958626244",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "buy",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1965011482.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 5000,
+          "field": "required_score",
+          "simulated": 11000
+        }
+      ],
+      "mismatches": [
+        "required_score"
+      ],
+      "row_number": 79,
+      "seed": "1965011482",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "end_shop",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1965011482.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 4,
+          "field": "ante",
+          "simulated": 5
+        },
+        {
+          "actual": 5000,
+          "field": "required_score",
+          "simulated": 11000
+        }
+      ],
+      "mismatches": [
+        "ante",
+        "required_score"
+      ],
+      "row_number": 80,
+      "seed": "1965011482",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "cash_out",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1965011482.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 3,
+          "field": "hands_remaining",
+          "simulated": 4
+        }
+      ],
+      "mismatches": [
+        "hands_remaining"
+      ],
+      "row_number": 84,
+      "seed": "1965011482",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "cash_out",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1965011482.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 3,
+          "field": "hands_remaining",
+          "simulated": 4
+        }
+      ],
+      "mismatches": [
+        "hands_remaining"
+      ],
+      "row_number": 92,
+      "seed": "1965011482",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "cash_out",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1965011482.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 3,
+          "field": "hands_remaining",
+          "simulated": 4
+        }
+      ],
+      "mismatches": [
+        "hands_remaining"
+      ],
+      "row_number": 98,
+      "seed": "1965011482",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "cash_out",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1965011482.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 3,
+          "field": "hands_remaining",
+          "simulated": 4
+        }
+      ],
+      "mismatches": [
+        "hands_remaining"
+      ],
+      "row_number": 108,
+      "seed": "1965011482",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "cash_out",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1965011482.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 3,
+          "field": "hands_remaining",
+          "simulated": 4
+        }
+      ],
+      "mismatches": [
+        "hands_remaining"
+      ],
+      "row_number": 115,
+      "seed": "1965011482",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "cash_out",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1965011482.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 3,
+          "field": "hands_remaining",
+          "simulated": 4
+        }
+      ],
+      "mismatches": [
+        "hands_remaining"
+      ],
+      "row_number": 121,
+      "seed": "1965011482",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "cash_out",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1965011482.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 3,
+          "field": "hands_remaining",
+          "simulated": 4
+        }
+      ],
+      "mismatches": [
+        "hands_remaining"
+      ],
+      "row_number": 133,
+      "seed": "1965011482",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "cash_out",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1965011482.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 3,
+          "field": "hands_remaining",
+          "simulated": 4
+        }
+      ],
+      "mismatches": [
+        "hands_remaining"
+      ],
+      "row_number": 146,
+      "seed": "1965011482",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1968303419.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": 7219,
+          "field": "current_score",
+          "simulated": 6016
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 66,
+      "seed": "1968303419",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1968303419.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": 12212,
+          "field": "current_score",
+          "simulated": 11499
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 67,
+      "seed": "1968303419",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1968303419.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": 6811,
+          "field": "current_score",
+          "simulated": 5959
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 71,
+      "seed": "1968303419",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1968303419.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": "selecting_hand",
+          "field": "phase",
+          "simulated": "round_eval"
+        },
+        {
+          "actual": 10474,
+          "field": "current_score",
+          "simulated": 12671
+        },
+        {
+          "actual": 40,
+          "field": "deck_size",
+          "simulated": 52
+        },
+        {
+          "actual": {
+            "8D": 1,
+            "8H": 1,
+            "9H": 1,
+            "AC": 1,
+            "JC": 1,
+            "JH": 1,
+            "QD": 1,
+            "TC": 1
+          },
+          "field": "hand_multiset",
+          "simulated": {}
+        }
+      ],
+      "mismatches": [
+        "phase",
+        "current_score",
+        "deck_size",
+        "hand_multiset"
+      ],
+      "row_number": 72,
+      "seed": "1968303419",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1968303419.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": 8236,
+          "field": "current_score",
+          "simulated": 6864
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 79,
+      "seed": "1968303419",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1968303419.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": 12364,
+          "field": "current_score",
+          "simulated": 13189
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 80,
+      "seed": "1968303419",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1968303419.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": 17893,
+          "field": "current_score",
+          "simulated": 16972
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 81,
+      "seed": "1968303419",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1968303419.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": 14565,
+          "field": "current_score",
+          "simulated": 12484
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 86,
+      "seed": "1968303419",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1968303419.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": 18795,
+          "field": "current_score",
+          "simulated": 20487
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 87,
+      "seed": "1968303419",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1975587304.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": "round_eval",
+          "field": "phase",
+          "simulated": "selecting_hand"
+        },
+        {
+          "actual": 3186,
+          "field": "current_score",
+          "simulated": 1116
+        }
+      ],
+      "mismatches": [
+        "phase",
+        "current_score"
+      ],
+      "row_number": 64,
+      "seed": "1975587304",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "buy",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_204828891.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 5,
+          "field": "discards_remaining",
+          "simulated": 4
+        }
+      ],
+      "mismatches": [
+        "discards_remaining"
+      ],
+      "row_number": 95,
+      "seed": "204828891",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "buy",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_204828891.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 4,
+          "field": "discards_remaining",
+          "simulated": 5
+        }
+      ],
+      "mismatches": [
+        "discards_remaining"
+      ],
+      "row_number": 137,
+      "seed": "204828891",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_210703471.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": {
+            "Popcorn/HOLO/$4": 1
+          },
+          "field": "joker_multiset",
+          "simulated": {}
+        }
+      ],
+      "mismatches": [
+        "joker_multiset"
+      ],
+      "row_number": 145,
+      "seed": "210703471",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_2119531946.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 406,
+          "field": "current_score",
+          "simulated": 505
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 38,
+      "seed": "2119531946",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_223314236.jsonl",
+      "known_gap_reason": "Ramen fractional XMult can differ by Lua rounding",
+      "mismatch_details": [
+        {
+          "actual": 7379,
+          "field": "current_score",
+          "simulated": 7380
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 111,
+      "seed": "223314236",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_226368036.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 16400,
+          "field": "current_score",
+          "simulated": 15725
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 156,
+      "seed": "226368036",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "buy",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_404649703.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 5000,
+          "field": "required_score",
+          "simulated": 11000
+        }
+      ],
+      "mismatches": [
+        "required_score"
+      ],
+      "row_number": 86,
+      "seed": "404649703",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "end_shop",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_404649703.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 4,
+          "field": "ante",
+          "simulated": 5
+        },
+        {
+          "actual": 5000,
+          "field": "required_score",
+          "simulated": 11000
+        }
+      ],
+      "mismatches": [
+        "ante",
+        "required_score"
+      ],
+      "row_number": 89,
+      "seed": "404649703",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "cash_out",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_404649703.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 3,
+          "field": "hands_remaining",
+          "simulated": 4
+        }
+      ],
+      "mismatches": [
+        "hands_remaining"
+      ],
+      "row_number": 93,
+      "seed": "404649703",
+      "stage": "post_transition"
+    }
+  ],
+  "files_scanned": 129,
+  "first_divergences": [
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1199940554.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 43550,
+          "field": "current_score",
+          "simulated": 40634
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 141,
+      "seed": "1199940554",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "end_shop",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_123194512.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 4,
+          "field": "hands_remaining",
+          "simulated": 3
+        }
+      ],
+      "mismatches": [
+        "hands_remaining"
+      ],
+      "row_number": 96,
+      "seed": "123194512",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "cash_out",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1244479556.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 7698,
+          "field": "current_score",
+          "simulated": 0
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 56,
+      "seed": "1244479556",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_126127878.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": "round_eval",
+          "field": "phase",
+          "simulated": "selecting_hand"
+        },
+        {
+          "actual": 1392,
+          "field": "current_score",
+          "simulated": 1160
+        }
+      ],
+      "mismatches": [
+        "phase",
+        "current_score"
+      ],
+      "row_number": 23,
+      "seed": "126127878",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1289741553.jsonl",
+      "known_gap_reason": "Run summary win flag conflicts with final score below required score",
+      "mismatch_details": [
+        {
+          "actual": true,
+          "field": "won",
+          "simulated": false
+        }
+      ],
+      "mismatches": [
+        "won"
+      ],
+      "row_number": 179,
+      "seed": "1289741553",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1326751329.jsonl",
+      "known_gap_reason": "Ramen fractional XMult can differ by Lua rounding",
+      "mismatch_details": [
+        {
+          "actual": 2187,
+          "field": "current_score",
+          "simulated": 2210
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 42,
+      "seed": "1326751329",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "discard",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1545868523.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 1,
+          "field": "money",
+          "simulated": 6
+        }
+      ],
+      "mismatches": [
+        "money"
+      ],
+      "row_number": 19,
+      "seed": "1545868523",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1583804157.jsonl",
+      "known_gap_reason": "Ramen fractional XMult can differ by Lua rounding",
+      "mismatch_details": [
+        {
+          "actual": 22979,
+          "field": "current_score",
+          "simulated": 23083
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 122,
+      "seed": "1583804157",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "end_shop",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1769843000.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 5,
+          "field": "hands_remaining",
+          "simulated": 4
+        }
+      ],
+      "mismatches": [
+        "hands_remaining"
+      ],
+      "row_number": 130,
+      "seed": "1769843000",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "buy",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1800943163.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 11000,
+          "field": "required_score",
+          "simulated": 20000
+        }
+      ],
+      "mismatches": [
+        "required_score"
+      ],
+      "row_number": 132,
+      "seed": "1800943163",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "buy",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_182679358.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 17,
+          "field": "money",
+          "simulated": 12
+        },
+        {
+          "actual": {
+            "Ice Cream/POLYCHROME/$5": 1
+          },
+          "field": "joker_multiset",
+          "simulated": {
+            "Ice Cream/$2": 1
+          }
+        }
+      ],
+      "mismatches": [
+        "money",
+        "joker_multiset"
+      ],
+      "row_number": 36,
+      "seed": "182679358",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1863211019.jsonl",
+      "known_gap_reason": "Business Card has probabilistic money triggers",
+      "mismatch_details": [
+        {
+          "actual": 23,
+          "field": "money",
+          "simulated": 25
+        }
+      ],
+      "mismatches": [
+        "money"
+      ],
+      "row_number": 146,
+      "seed": "1863211019",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "buy",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1882405795.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 5,
+          "field": "discards_remaining",
+          "simulated": 4
+        }
+      ],
+      "mismatches": [
+        "discards_remaining"
+      ],
+      "row_number": 72,
+      "seed": "1882405795",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1899534361.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": {
+            "Popcorn/$2": 1
+          },
+          "field": "joker_multiset",
+          "simulated": {}
+        }
+      ],
+      "mismatches": [
+        "joker_multiset"
+      ],
+      "row_number": 86,
+      "seed": "1899534361",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "buy",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1958626244.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 7,
+          "field": "discards_remaining",
+          "simulated": 4
+        }
+      ],
+      "mismatches": [
+        "discards_remaining"
+      ],
+      "row_number": 23,
+      "seed": "1958626244",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "buy",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1965011482.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 5000,
+          "field": "required_score",
+          "simulated": 11000
+        }
+      ],
+      "mismatches": [
+        "required_score"
+      ],
+      "row_number": 79,
+      "seed": "1965011482",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1968303419.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": 7219,
+          "field": "current_score",
+          "simulated": 6016
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 66,
+      "seed": "1968303419",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_1975587304.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": "round_eval",
+          "field": "phase",
+          "simulated": "selecting_hand"
+        },
+        {
+          "actual": 3186,
+          "field": "current_score",
+          "simulated": 1116
+        }
+      ],
+      "mismatches": [
+        "phase",
+        "current_score"
+      ],
+      "row_number": 64,
+      "seed": "1975587304",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "buy",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_204828891.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 5,
+          "field": "discards_remaining",
+          "simulated": 4
+        }
+      ],
+      "mismatches": [
+        "discards_remaining"
+      ],
+      "row_number": 95,
+      "seed": "204828891",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_210703471.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": {
+            "Popcorn/HOLO/$4": 1
+          },
+          "field": "joker_multiset",
+          "simulated": {}
+        }
+      ],
+      "mismatches": [
+        "joker_multiset"
+      ],
+      "row_number": 145,
+      "seed": "210703471",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_2119531946.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 406,
+          "field": "current_score",
+          "simulated": 505
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 38,
+      "seed": "2119531946",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_223314236.jsonl",
+      "known_gap_reason": "Ramen fractional XMult can differ by Lua rounding",
+      "mismatch_details": [
+        {
+          "actual": 7379,
+          "field": "current_score",
+          "simulated": 7380
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 111,
+      "seed": "223314236",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_226368036.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 16400,
+          "field": "current_score",
+          "simulated": 15725
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 156,
+      "seed": "226368036",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "buy",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_404649703.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 5000,
+          "field": "required_score",
+          "simulated": 11000
+        }
+      ],
+      "mismatches": [
+        "required_score"
+      ],
+      "row_number": 86,
+      "seed": "404649703",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "select_blind",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_464408402.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 70,
+          "field": "money",
+          "simulated": 35
+        }
+      ],
+      "mismatches": [
+        "money"
+      ],
+      "row_number": 89,
+      "seed": "464408402",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_63656374.jsonl",
+      "known_gap_reason": "Misprint has random mult",
+      "mismatch_details": [
+        {
+          "actual": 3950,
+          "field": "current_score",
+          "simulated": 2340
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 34,
+      "seed": "63656374",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_644751388.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 4100,
+          "field": "current_score",
+          "simulated": 2050
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 54,
+      "seed": "644751388",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_646504551.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 1608,
+          "field": "current_score",
+          "simulated": 800
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 18,
+      "seed": "646504551",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "buy",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_77354638.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 5000,
+          "field": "required_score",
+          "simulated": 11000
+        }
+      ],
+      "mismatches": [
+        "required_score"
+      ],
+      "row_number": 84,
+      "seed": "77354638",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_777388564.jsonl",
+      "known_gap_reason": "Ramen fractional XMult can differ by Lua rounding",
+      "mismatch_details": [
+        {
+          "actual": 6702,
+          "field": "current_score",
+          "simulated": 6703
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 97,
+      "seed": "777388564",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "skip_blind",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_847818877.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": "booster_opened",
+          "field": "phase",
+          "simulated": "blind_select"
+        },
+        {
+          "actual": {
+            "Base Card": 3,
+            "Glass Card": 1,
+            "Gold Card": 1
+          },
+          "field": "pack_surface",
+          "simulated": {}
+        }
+      ],
+      "mismatches": [
+        "phase",
+        "pack_surface"
+      ],
+      "row_number": 46,
+      "seed": "847818877",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_870681525.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": "play-created consumables can create at most 0 injected card(s), got 1",
+          "field": "transition_error",
+          "simulated": "ValueError"
+        }
+      ],
+      "mismatches": [
+        "transition_error"
+      ],
+      "row_number": 75,
+      "seed": "870681525",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "play_hand",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_932597253.jsonl",
+      "known_gap_reason": "Obelisk depends on prior hand-type history and reset timing",
+      "mismatch_details": [
+        {
+          "actual": 24012,
+          "field": "current_score",
+          "simulated": 22122
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 110,
+      "seed": "932597253",
+      "stage": "post_transition"
+    },
+    {
+      "action_type": "cash_out",
+      "file": "C:\\Users\\Wyatt\\Desktop\\Botlatro\\.data\\phase7-overnight-20260503-023822\\replays\\basic_strategy_bot_white_968384127.jsonl",
+      "known_gap_reason": null,
+      "mismatch_details": [
+        {
+          "actual": 16891,
+          "field": "current_score",
+          "simulated": 0
+        }
+      ],
+      "mismatches": [
+        "current_score"
+      ],
+      "row_number": 77,
+      "seed": "968384127",
+      "stage": "post_transition"
+    }
+  ],
+  "known_gap_counts": {
+    "Business Card has probabilistic money triggers": 1,
+    "Crimson Heart score depends on hidden card metadata missing from older replay logs": 4,
+    "Misprint has random mult": 2,
+    "Obelisk depends on prior hand-type history and reset timing": 34,
+    "Ramen fractional XMult can differ by Lua rounding": 29,
+    "Run summary win flag conflicts with final score below required score": 1,
+    "The Pillar debuffs previously played cards not always represented in card state": 4
+  },
+  "malformed_rows": 0,
+  "skipped_rows": 4,
+  "stage_field_mismatches": {
+    "post_transition.ante": 4,
+    "post_transition.current_score": 122,
+    "post_transition.deck_size": 2,
+    "post_transition.discards_remaining": 5,
+    "post_transition.hand_multiset": 2,
+    "post_transition.hands_remaining": 30,
+    "post_transition.joker_multiset": 3,
+    "post_transition.money": 10,
+    "post_transition.pack_surface": 2,
+    "post_transition.phase": 17,
+    "post_transition.required_score": 8,
+    "post_transition.run_over": 1,
+    "post_transition.shop_surface": 1,
+    "post_transition.transition_error": 3,
+    "post_transition.won": 1
+  },
+  "transition_exact_rate": 0.9865112528407008,
+  "transitions_checked": 13641
+}

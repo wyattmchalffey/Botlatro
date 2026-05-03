@@ -34,6 +34,7 @@ from balatro_ai.search.forward_sim import (
     simulate_select_blind,
     simulate_sell,
     simulate_use_consumable,
+    _joker_from_item,
 )
 from balatro_ai.search.shop_sampler import ShopSampler
 
@@ -42,20 +43,42 @@ RANKS = ("A", "K", "Q", "J", "10", "9", "8", "7", "6", "5", "4", "3", "2")
 SUITS = ("S", "H", "D", "C")
 SEALS = ("Red", "Blue", "Gold", "Purple")
 BLIND_KINDS = ("SMALL", "BIG", "BOSS")
-DETERMINISTIC_BOSS_POOL = (
-    "The Club",
-    "The Goad",
-    "The Window",
-    "The Head",
-    "The Plant",
-    "The Flint",
-    "The Arm",
-    "The Psychic",
-    "The Eye",
-    "The Mouth",
-    "The Needle",
-    "The Water",
+SOURCE_BOSS_BLINDS = (
+    {"key": "bl_hook", "name": "The Hook", "min_ante": 1, "dollars": 5, "mult": 2, "showdown": False},
+    {"key": "bl_club", "name": "The Club", "min_ante": 1, "dollars": 5, "mult": 2, "showdown": False},
+    {"key": "bl_manacle", "name": "The Manacle", "min_ante": 1, "dollars": 5, "mult": 2, "showdown": False},
+    {"key": "bl_psychic", "name": "The Psychic", "min_ante": 1, "dollars": 5, "mult": 2, "showdown": False},
+    {"key": "bl_goad", "name": "The Goad", "min_ante": 1, "dollars": 5, "mult": 2, "showdown": False},
+    {"key": "bl_head", "name": "The Head", "min_ante": 1, "dollars": 5, "mult": 2, "showdown": False},
+    {"key": "bl_pillar", "name": "The Pillar", "min_ante": 1, "dollars": 5, "mult": 2, "showdown": False},
+    {"key": "bl_window", "name": "The Window", "min_ante": 1, "dollars": 5, "mult": 2, "showdown": False},
+    {"key": "bl_mouth", "name": "The Mouth", "min_ante": 2, "dollars": 5, "mult": 2, "showdown": False},
+    {"key": "bl_fish", "name": "The Fish", "min_ante": 2, "dollars": 5, "mult": 2, "showdown": False},
+    {"key": "bl_wall", "name": "The Wall", "min_ante": 2, "dollars": 5, "mult": 4, "showdown": False},
+    {"key": "bl_house", "name": "The House", "min_ante": 2, "dollars": 5, "mult": 2, "showdown": False},
+    {"key": "bl_wheel", "name": "The Wheel", "min_ante": 2, "dollars": 5, "mult": 2, "showdown": False},
+    {"key": "bl_arm", "name": "The Arm", "min_ante": 2, "dollars": 5, "mult": 2, "showdown": False},
+    {"key": "bl_water", "name": "The Water", "min_ante": 2, "dollars": 5, "mult": 2, "showdown": False},
+    {"key": "bl_needle", "name": "The Needle", "min_ante": 2, "dollars": 5, "mult": 1, "showdown": False},
+    {"key": "bl_flint", "name": "The Flint", "min_ante": 2, "dollars": 5, "mult": 2, "showdown": False},
+    {"key": "bl_mark", "name": "The Mark", "min_ante": 2, "dollars": 5, "mult": 2, "showdown": False},
+    {"key": "bl_tooth", "name": "The Tooth", "min_ante": 3, "dollars": 5, "mult": 2, "showdown": False},
+    {"key": "bl_eye", "name": "The Eye", "min_ante": 3, "dollars": 5, "mult": 2, "showdown": False},
+    {"key": "bl_plant", "name": "The Plant", "min_ante": 4, "dollars": 5, "mult": 2, "showdown": False},
+    {"key": "bl_serpent", "name": "The Serpent", "min_ante": 5, "dollars": 5, "mult": 2, "showdown": False},
+    {"key": "bl_ox", "name": "The Ox", "min_ante": 6, "dollars": 5, "mult": 2, "showdown": False},
+    {"key": "bl_final_bell", "name": "Cerulean Bell", "min_ante": 8, "dollars": 8, "mult": 2, "showdown": True},
+    {"key": "bl_final_leaf", "name": "Verdant Leaf", "min_ante": 8, "dollars": 8, "mult": 2, "showdown": True},
+    {"key": "bl_final_vessel", "name": "Violet Vessel", "min_ante": 8, "dollars": 8, "mult": 6, "showdown": True},
+    {"key": "bl_final_acorn", "name": "Amber Acorn", "min_ante": 8, "dollars": 8, "mult": 2, "showdown": True},
+    {"key": "bl_final_heart", "name": "Crimson Heart", "min_ante": 8, "dollars": 8, "mult": 2, "showdown": True},
 )
+BOSS_METADATA_BY_NAME = {str(record["name"]): record for record in SOURCE_BOSS_BLINDS}
+BOSS_KEY_BY_NAME = {str(record["name"]): str(record["key"]) for record in SOURCE_BOSS_BLINDS}
+BOSS_NAME_BY_KEY = {str(record["key"]): str(record["name"]) for record in SOURCE_BOSS_BLINDS}
+SOURCE_NORMAL_BOSS_POOL = tuple(str(record["name"]) for record in SOURCE_BOSS_BLINDS if not record["showdown"])
+SOURCE_SHOWDOWN_BOSS_POOL = tuple(str(record["name"]) for record in SOURCE_BOSS_BLINDS if record["showdown"])
+DETERMINISTIC_BOSS_POOL = SOURCE_NORMAL_BOSS_POOL
 ANTE_SMALL_BLIND_SCORES = {
     1: 300,
     2: 800,
@@ -65,6 +88,62 @@ ANTE_SMALL_BLIND_SCORES = {
     6: 20000,
     7: 35000,
     8: 50000,
+}
+TAG_KEYS_BY_NAME = {
+    "Uncommon Tag": "tag_uncommon",
+    "Rare Tag": "tag_rare",
+    "Negative Tag": "tag_negative",
+    "Foil Tag": "tag_foil",
+    "Holographic Tag": "tag_holo",
+    "Polychrome Tag": "tag_polychrome",
+    "Investment Tag": "tag_investment",
+    "Voucher Tag": "tag_voucher",
+    "Boss Tag": "tag_boss",
+    "Standard Tag": "tag_standard",
+    "Charm Tag": "tag_charm",
+    "Meteor Tag": "tag_meteor",
+    "Buffoon Tag": "tag_buffoon",
+    "Handy Tag": "tag_handy",
+    "Garbage Tag": "tag_garbage",
+    "Ethereal Tag": "tag_ethereal",
+    "Coupon Tag": "tag_coupon",
+    "Double Tag": "tag_double",
+    "Juggle Tag": "tag_juggle",
+    "D6 Tag": "tag_d_six",
+    "Top-up Tag": "tag_top_up",
+    "Skip Tag": "tag_skip",
+    "Orbital Tag": "tag_orbital",
+    "Economy Tag": "tag_economy",
+}
+TAG_NAMES_BY_KEY = {key: name for name, key in TAG_KEYS_BY_NAME.items()}
+TAG_MIN_ANTES = {
+    "Negative Tag": 2,
+    "Standard Tag": 2,
+    "Meteor Tag": 2,
+    "Buffoon Tag": 2,
+    "Handy Tag": 2,
+    "Garbage Tag": 2,
+    "Ethereal Tag": 2,
+    "Top-up Tag": 2,
+    "Orbital Tag": 2,
+}
+PACK_KIND_BY_TAG = {
+    "Standard Tag": "Standard",
+    "Charm Tag": "Arcana",
+    "Meteor Tag": "Celestial",
+    "Buffoon Tag": "Buffoon",
+    "Ethereal Tag": "Spectral",
+}
+EDITION_BY_TAG = {
+    "Negative Tag": "NEGATIVE",
+    "Foil Tag": "FOIL",
+    "Holographic Tag": "HOLOGRAPHIC",
+    "Polychrome Tag": "POLYCHROME",
+}
+EDITION_EXTRA_COST = {"FOIL": 2, "HOLOGRAPHIC": 3, "POLYCHROME": 5, "NEGATIVE": 5}
+RARITY_BY_TAG = {
+    "Uncommon Tag": "uncommon",
+    "Rare Tag": "rare",
 }
 
 
@@ -93,6 +172,8 @@ class LocalBalatroSimulator:
     state: GameState | None = None
     _rng: Random = field(init=False, repr=False)
     _boss_by_ante: dict[int, str] = field(default_factory=dict, init=False, repr=False)
+    _boss_use_count: dict[str, int] = field(default_factory=dict, init=False, repr=False)
+    _tag_by_blind: dict[tuple[int, str], str] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self) -> None:
         self._rng = Random(self.seed)
@@ -104,6 +185,8 @@ class LocalBalatroSimulator:
             self.seed = seed
         self._rng = Random(self.seed)
         self._boss_by_ante = {}
+        self._boss_use_count = {}
+        self._tag_by_blind = {}
         deck = self.initial_deck if self.initial_deck is not None else _shuffled_standard_deck(self._rng)
         state = GameState(
             phase=GamePhase.BLIND_SELECT,
@@ -118,13 +201,86 @@ class LocalBalatroSimulator:
             hand_levels=_base_hand_levels(),
             modifiers=_base_modifiers(),
         )
-        self.state = _with_blind_selection_surface(
+        self.state = self._with_tagged_blind_selection_surface(
             state,
             ante=1,
             blind_kind="SMALL",
             boss_name=self._boss_for_ante(1),
         )
         return self.state
+
+    def _with_tagged_blind_selection_surface(
+        self,
+        state: GameState,
+        *,
+        ante: int,
+        blind_kind: str,
+        boss_name: str,
+    ) -> GameState:
+        surfaced = _with_blind_selection_surface(state, ante=ante, blind_kind=blind_kind, boss_name=boss_name)
+        return self._with_visible_skip_tags(surfaced)
+
+    def _with_next_tagged_blind_surface(
+        self,
+        state: GameState,
+        *,
+        cleared_state: GameState,
+        phase: GamePhase,
+        boss_name: str,
+    ) -> GameState:
+        ante, next_kind = _next_blind_position(cleared_state)
+        if ante > 8:
+            return replace(state, phase=GamePhase.RUN_OVER, run_over=True, won=True, ante=8, legal_actions=())
+        surfaced = self._with_tagged_blind_selection_surface(state, ante=ante, blind_kind=next_kind, boss_name=boss_name)
+        return replace(surfaced, phase=phase)
+
+    def _with_visible_skip_tags(self, state: GameState) -> GameState:
+        current_blind = state.modifiers.get("current_blind")
+        if not isinstance(current_blind, Mapping):
+            return state
+        modifiers = dict(state.modifiers)
+        blinds = {
+            str(key): dict(value) if isinstance(value, Mapping) else value
+            for key, value in _mapping(modifiers.get("blinds")).items()
+        }
+        for _blind_key, blind in tuple(blinds.items()):
+            if not isinstance(blind, dict):
+                continue
+            kind = str(blind.get("type", "")).upper()
+            if kind == "BOSS":
+                blind.pop("tag", None)
+                blind.pop("tag_key", None)
+                blind.pop("skip_tag", None)
+                continue
+            tag_name = self._tag_for_blind(state.ante, kind)
+            tag_payload = _tag_payload(tag_name, kind)
+            blind["tag"] = tag_name
+            blind["tag_key"] = TAG_KEYS_BY_NAME.get(tag_name, tag_name)
+            blind["skip_tag"] = tag_payload
+        selected_kind = str(current_blind.get("type", "")).upper()
+        selected = dict(current_blind)
+        if selected_kind != "BOSS":
+            tag_name = self._tag_for_blind(state.ante, selected_kind)
+            selected["tag"] = tag_name
+            selected["tag_key"] = TAG_KEYS_BY_NAME.get(tag_name, tag_name)
+            selected["skip_tag"] = _tag_payload(tag_name, selected_kind)
+        else:
+            selected.pop("tag", None)
+            selected.pop("tag_key", None)
+            selected.pop("skip_tag", None)
+        modifiers["current_blind"] = selected
+        modifiers["blinds"] = blinds
+        return replace(state, modifiers=modifiers)
+
+    def _tag_for_blind(self, ante: int, blind_kind: str) -> str:
+        key = (ante, blind_kind.upper())
+        if key not in self._tag_by_blind:
+            self._tag_by_blind[key] = self._sample_skip_tag(ante)
+        return self._tag_by_blind[key]
+
+    def _sample_skip_tag(self, ante: int) -> str:
+        candidates = tuple(name for name in TAG_KEYS_BY_NAME if ante >= TAG_MIN_ANTES.get(name, 1))
+        return self._rng.choice(candidates or tuple(TAG_KEYS_BY_NAME))
 
     def step(self, action: Action) -> GameState:
         """Apply one bot action and return the next state."""
@@ -156,6 +312,8 @@ class LocalBalatroSimulator:
         if action.action_type == ActionType.USE_CONSUMABLE:
             return self._use_consumable(state, action)
         if action.action_type == ActionType.REROLL:
+            if state.phase == GamePhase.BLIND_SELECT or str(action.metadata.get("kind", "")) == "boss":
+                return self._reroll_boss_voucher(state)
             return simulate_reroll(state, action, self.sampler.sample_shop(state, rng=self._rng))
         if action.action_type == ActionType.OPEN_PACK:
             return self._open_pack(state, action)
@@ -195,10 +353,13 @@ class LocalBalatroSimulator:
         return simulate_use_consumable(state, action, **self._consumable_injections(state, name, storage_use=True))
 
     def _select_blind(self, state: GameState) -> GameState:
+        state = self._apply_round_start_tags(state)
+        state = self._apply_boss_start_effects_before_draw(state)
         state = _with_shuffled_known_deck(state, self._rng)
         draw_count = min(_hand_size(state), state.deck_size)
         drawn_cards = _draw_from_known_deck(state, draw_count)
         drawn_cards = self._drawn_cards_after_blind_flips(state, drawn_cards)
+        drawn_cards = _cards_after_blind_debuffs(state, drawn_cards)
         selected = simulate_select_blind(
             state,
             drawn_cards=drawn_cards,
@@ -213,14 +374,18 @@ class LocalBalatroSimulator:
             ceremonial_destroyed_joker_index=self._ceremonial_destroyed_joker_index(state),
             madness_destroyed_joker_index=self._madness_destroyed_joker_index(state),
         )
+        selected = self._with_cerulean_forced_selection_for_next_hand(selected)
         return self._with_crimson_heart_disabled_for_next_hand(selected)
 
     def _skip_blind(self, state: GameState) -> GameState:
         kind = _blind_kind(state)
         if kind == "BOSS":
             raise LocalSimError("Cannot skip a boss blind.")
+        modifiers = _with_added_tag(dict(state.modifiers), _current_skip_tag(state))
+        modifiers["skips"] = _int_value(modifiers.get("skips")) + 1
         skipped = _jokers_after_skip(state.jokers)
-        return self._advance_to_next_blind_selection(replace(state, jokers=skipped))
+        advanced = self._advance_to_next_blind_selection(replace(state, jokers=skipped, modifiers=modifiers))
+        return self._apply_blind_choice_tags(advanced)
 
     def _play_or_discard(self, state: GameState, action: Action, *, play: bool) -> GameState:
         _validate_card_action(state, action)
@@ -231,18 +396,23 @@ class LocalBalatroSimulator:
         draw_count = min(max(0, _hand_size(state) - held_count), state.deck_size)
         if play:
             draw_count = min(max(0, _hand_size(state) - held_count_after_hook), state.deck_size)
+        if _serpent_draws_three(state):
+            draw_count = min(3, state.deck_size)
         drawn_cards = _draw_from_known_deck(state, draw_count)
-        drawn_cards = self._drawn_cards_after_blind_flips(state, drawn_cards)
+        drawn_cards = self._drawn_cards_after_blind_flips(state, drawn_cards, after_play=play, after_discard=not play)
+        drawn_cards = _cards_after_blind_debuffs(state, drawn_cards)
         if play:
             stochastic_outcomes = self._stochastic_play_outcomes(state, action, hook_discarded_cards)
-            return simulate_play(
+            next_state = simulate_play(
                 state,
                 action,
                 drawn_cards=drawn_cards,
                 created_consumables=self._play_created_consumables(state, action, stochastic_outcomes),
                 stochastic_outcomes=stochastic_outcomes,
             )
-        return simulate_discard(state, action, drawn_cards=drawn_cards)
+        else:
+            next_state = simulate_discard(state, action, drawn_cards=drawn_cards)
+        return self._with_cerulean_forced_selection_for_next_hand(next_state)
 
     def _hook_discards_for_play(self, state: GameState, action: Action) -> tuple[Card, ...]:
         if state.blind != "The Hook" or _boss_disabled(state):
@@ -340,7 +510,8 @@ class LocalBalatroSimulator:
         action: Action,
         stochastic_outcomes: StochasticPlayOutcomes,
     ) -> tuple[Mapping[str, Any], ...]:
-        selected_cards, _ = _split_action_cards(state, action)
+        selected_cards, held_cards = _split_action_cards(state, action)
+        held_cards_after_hook = _without_card_instances(held_cards, stochastic_outcomes.hook_discarded_cards)
         blind_name = "" if _boss_disabled(state) else state.blind
         evaluation = evaluate_played_cards(
             selected_cards,
@@ -350,7 +521,7 @@ class LocalBalatroSimulator:
             jokers=state.jokers,
             discards_remaining=state.discards_remaining,
             hands_remaining=state.hands_remaining,
-            held_cards=(),
+            held_cards=held_cards_after_hook,
             deck_size=state.deck_size,
             money=state.money,
             played_hand_types_this_round=_played_hand_types_this_round(state),
@@ -388,6 +559,17 @@ class LocalBalatroSimulator:
         )
         tarot_count = min(room, tarot_count)
         created.extend(self.sampler.sample_card_of_type(state, "Tarot", self._rng) for _ in range(tarot_count))
+        room -= tarot_count
+        if (
+            room > 0
+            and state.required_score > 0
+            and state.current_score + int(evaluation.score) >= state.required_score
+        ):
+            blue_seal_count = sum(
+                1 for card in held_cards_after_hook if not card.debuffed and str(card.seal or "").lower() == "blue"
+            )
+            count = min(room, blue_seal_count)
+            created.extend(self.sampler.sample_card_of_type(state, "Planet", self._rng) for _ in range(count))
         return tuple(created)
 
     def _roll_odds(self, odds: int | float, *, probability_multiplier: float) -> bool:
@@ -434,27 +616,233 @@ class LocalBalatroSimulator:
             next_booster_packs=self.sampler.sample_boosters(state, rng=self._rng),
             next_to_do_targets=self._to_do_targets(state),
         )
+        if _blind_kind(state) == "BOSS":
+            next_state = _state_after_boss_cleared(next_state, cleared_boss=state.blind)
         next_state = _with_fresh_shop_modifiers(next_state)
+        next_state = self._apply_eval_tags(next_state, cleared_state=state)
+        next_state = self._apply_shop_tags(next_state)
         if state.ante >= 8 and _blind_kind(state) == "BOSS":
             return replace(next_state, phase=GamePhase.RUN_OVER, run_over=True, won=True, ante=8, legal_actions=())
-        return _with_cash_out_shop_surface(next_state, cleared_state=state, boss_name=self._boss_for_next_surface(state))
+        surfaced = _with_cash_out_shop_surface(next_state, cleared_state=state, boss_name=self._boss_for_next_surface(state))
+        return self._with_visible_skip_tags(surfaced)
 
     def _end_shop(self, state: GameState) -> GameState:
         cleared_state = _cleared_blind_state_for_progression(state)
         next_state = simulate_end_shop(state, created_consumables=self._perkeo_consumables(state))
-        return _with_next_blind_surface(
+        surfaced = self._with_next_tagged_blind_surface(
             next_state,
             cleared_state=cleared_state,
             phase=GamePhase.BLIND_SELECT,
             boss_name=self._boss_for_next_surface(cleared_state),
         )
+        return self._apply_blind_choice_tags(surfaced)
 
     def _advance_to_next_blind_selection(self, state: GameState) -> GameState:
-        return _with_next_blind_surface(
+        return self._with_next_tagged_blind_surface(
             state,
             cleared_state=state,
             phase=GamePhase.BLIND_SELECT,
             boss_name=self._boss_for_next_surface(state),
+        )
+
+    def _apply_blind_choice_tags(self, state: GameState) -> GameState:
+        state = self._apply_immediate_tags(state)
+        return self._apply_new_blind_choice_tags(state)
+
+    def _apply_immediate_tags(self, state: GameState) -> GameState:
+        tags = _pending_tags(state.modifiers)
+        if not tags:
+            return state
+        remaining: list[str] = []
+        money = state.money
+        jokers = list(state.jokers)
+        hand_levels = dict(state.hand_levels)
+        modifiers = dict(state.modifiers)
+        for tag in tags:
+            if tag == "Economy Tag":
+                money += min(40, max(0, money))
+            elif tag == "Skip Tag":
+                money += 5 * _int_value(modifiers.get("skips"))
+            elif tag == "Handy Tag":
+                money += _int_value(modifiers.get("hands_played_total", modifiers.get("hands_played")))
+            elif tag == "Garbage Tag":
+                money += _int_value(modifiers.get("unused_discards", modifiers.get("discards_remaining")))
+            elif tag == "Top-up Tag":
+                open_slots = max(0, _normal_joker_open_slots(replace(state, jokers=tuple(jokers))))
+                for index in range(min(2, open_slots)):
+                    payload = self.sampler.sample_joker_by_rarity(state, "common", self._rng, key_append=f"tag_top{index}")
+                    jokers.append(_joker_from_item(payload))
+            elif tag == "Orbital Tag":
+                hand_name = _orbital_hand_for_tag(tag, modifiers) or self._rng.choice(tuple(_base_hand_levels()))
+                hand_levels[hand_name] = max(1, hand_levels.get(hand_name, 1)) + 3
+                modifiers = _with_hand_level_modifier(modifiers, hand_name, hand_levels[hand_name])
+            else:
+                remaining.append(tag)
+        modifiers["tags"] = tuple(remaining)
+        return replace(state, money=money, jokers=tuple(jokers), hand_levels=hand_levels, modifiers=modifiers)
+
+    def _apply_new_blind_choice_tags(self, state: GameState) -> GameState:
+        tags = _pending_tags(state.modifiers)
+        if not tags:
+            return state
+        for index, tag in enumerate(tags):
+            if tag == "Boss Tag":
+                rerolled = self._reroll_boss_tag(state)
+                return replace(rerolled, modifiers={**rerolled.modifiers, "tags": tags[:index] + tags[index + 1 :]})
+            kind = PACK_KIND_BY_TAG.get(tag)
+            if not kind:
+                continue
+            pack = self.sampler.sample_booster_of_kind(state, kind, self._rng, prefer_mega=kind != "Spectral")
+            if pack is None:
+                return state
+            opened = _open_free_tag_pack(state, pack, self.sampler.sample_pack_contents(state, pack, self._rng))
+            # Source truth opens at most one free tag pack per blind-choice event.
+            return replace(opened, modifiers={**opened.modifiers, "tags": tags[:index] + tags[index + 1 :]})
+        return state
+
+    def _reroll_boss_tag(self, state: GameState) -> GameState:
+        return self._reroll_boss_surface(state, cost=0, mark_rerolled=False)
+
+    def _reroll_boss_voucher(self, state: GameState) -> GameState:
+        if not _boss_reroll_available(state):
+            raise LocalSimError("Boss reroll is not available.")
+        cost = _boss_reroll_cost(state)
+        rerolled = self._reroll_boss_surface(state, cost=cost, mark_rerolled=True)
+        return self._apply_new_blind_choice_tags(rerolled)
+
+    def _reroll_boss_surface(self, state: GameState, *, cost: int, mark_rerolled: bool) -> GameState:
+        ante = max(1, state.ante)
+        old_boss = _boss_name_from_surface(state) or self._boss_for_ante(ante)
+        boss_name = self._choose_boss_for_ante(ante, exclude=(old_boss,))
+        self._boss_by_ante[ante] = boss_name
+
+        modifiers = dict(state.modifiers)
+        if mark_rerolled:
+            modifiers["boss_rerolled"] = True
+        blinds = {
+            str(key): dict(value) if isinstance(value, Mapping) else value
+            for key, value in _mapping(modifiers.get("blinds")).items()
+        }
+        boss_payload = _blind_payload(ante, "BOSS", boss_name, selected=_blind_kind(state) == "BOSS")
+        blinds["boss"] = boss_payload
+        modifiers["blinds"] = blinds
+        modifiers["upcoming_boss"] = boss_payload
+        if _blind_kind(state) != "BOSS":
+            return replace(state, money=max(0, state.money - cost), modifiers=modifiers)
+
+        modifiers["current_blind"] = boss_payload
+        modifiers["blind_reward"] = boss_payload["dollars"]
+        return replace(
+            state,
+            money=max(0, state.money - cost),
+            blind=boss_name,
+            required_score=int(boss_payload["score"]),
+            modifiers=modifiers,
+        )
+
+    def _apply_round_start_tags(self, state: GameState) -> GameState:
+        tags = _pending_tags(state.modifiers)
+        if "Juggle Tag" not in tags:
+            return state
+        consumed = False
+        remaining: list[str] = []
+        modifiers = dict(state.modifiers)
+        for tag in tags:
+            if tag == "Juggle Tag" and not consumed:
+                if "hand_size" in modifiers:
+                    modifiers["hand_size"] = _int_value(modifiers.get("hand_size")) + 3
+                else:
+                    modifiers["hand_size_delta"] = _int_value(modifiers.get("hand_size_delta")) + 3
+                modifiers["round_start_hand_size_delta"] = _int_value(modifiers.get("round_start_hand_size_delta")) + 3
+                consumed = True
+            else:
+                remaining.append(tag)
+        modifiers["tags"] = tuple(remaining)
+        return replace(state, modifiers=modifiers)
+
+    def _apply_boss_start_effects_before_draw(self, state: GameState) -> GameState:
+        if not _boss_effect_active(state):
+            return state
+        modifiers = dict(state.modifiers)
+        jokers = state.jokers
+        if state.blind == "The Manacle":
+            if "hand_size" in modifiers:
+                modifiers["hand_size"] = max(1, _int_value(modifiers.get("hand_size")) - 1)
+            else:
+                modifiers["hand_size_delta"] = _int_value(modifiers.get("hand_size_delta")) - 1
+            modifiers["round_start_hand_size_delta"] = _int_value(modifiers.get("round_start_hand_size_delta")) - 1
+        elif state.blind == "Amber Acorn" and jokers:
+            shuffled = list(jokers)
+            self._rng.shuffle(shuffled)
+            jokers = tuple(_joker_with_face_down_metadata(joker) for joker in shuffled)
+        elif state.blind == "The Ox":
+            modifiers["most_played_poker_hand"] = _most_played_hand_name(state)
+        return replace(state, jokers=jokers, modifiers=modifiers)
+
+    def _apply_eval_tags(self, state: GameState, *, cleared_state: GameState) -> GameState:
+        tags = _pending_tags(state.modifiers)
+        if not tags or _blind_kind(cleared_state) != "BOSS":
+            return state
+        payout_count = sum(1 for tag in tags if tag == "Investment Tag")
+        if payout_count <= 0:
+            return state
+        remaining = tuple(tag for tag in tags if tag != "Investment Tag")
+        modifiers = dict(state.modifiers)
+        modifiers["tags"] = remaining
+        return replace(state, money=state.money + 25 * payout_count, modifiers=modifiers)
+
+    def _apply_shop_tags(self, state: GameState) -> GameState:
+        tags = _pending_tags(state.modifiers)
+        if not tags:
+            return state
+        remaining: list[str] = []
+        shop_cards = list(_modifier_items(state.modifiers, "shop_cards"))
+        voucher_cards = list(_modifier_items(state.modifiers, "voucher_cards"))
+        booster_packs = list(_modifier_items(state.modifiers, "booster_packs"))
+        modifiers = dict(state.modifiers)
+
+        for tag in tags:
+            if tag == "D6 Tag":
+                modifiers["reroll_cost"] = 0
+                modifiers["current_reroll_cost"] = 0
+                modifiers["round_reset_reroll_cost"] = 0
+            elif tag == "Voucher Tag":
+                voucher = self.sampler.sample_voucher(state, self._rng)
+                if voucher is None:
+                    remaining.append(tag)
+                else:
+                    voucher_cards.append(voucher)
+            elif tag == "Coupon Tag":
+                shop_cards = [_couponed_payload(item) for item in shop_cards]
+                booster_packs = [_couponed_payload(item) for item in booster_packs]
+                modifiers["shop_free"] = True
+            elif tag in RARITY_BY_TAG:
+                shop_cards.append(
+                    _couponed_payload(
+                        self.sampler.sample_joker_by_rarity(
+                            state,
+                            RARITY_BY_TAG[tag],
+                            self._rng,
+                            key_append=f"tag_{TAG_KEYS_BY_NAME[tag]}",
+                        )
+                    )
+                )
+            elif tag in EDITION_BY_TAG:
+                edited, shop_cards = _with_first_eligible_tag_edition(shop_cards, EDITION_BY_TAG[tag])
+                if not edited:
+                    remaining.append(tag)
+            else:
+                remaining.append(tag)
+
+        modifiers["tags"] = tuple(remaining)
+        modifiers["shop_cards"] = tuple(shop_cards)
+        modifiers["voucher_cards"] = tuple(voucher_cards)
+        modifiers["booster_packs"] = tuple(booster_packs)
+        return replace(
+            state,
+            shop=tuple(_item_label(item) for item in shop_cards),
+            pack=(),
+            modifiers=modifiers,
         )
 
     def _open_pack(self, state: GameState, action: Action) -> GameState:
@@ -468,7 +856,7 @@ class LocalBalatroSimulator:
     def _choose_pack_card(self, state: GameState, action: Action) -> GameState:
         if _is_skip_action(action):
             chosen = simulate_choose_pack_card(state, action)
-            return replace(chosen, modifiers=_without_pack_choice_counter(chosen.modifiers))
+            return self._finish_pack_choice(chosen, _without_pack_choice_counter(chosen.modifiers))
 
         pack_cards = _modifier_items(state.modifiers, "pack_cards")
         index = _action_index(action)
@@ -494,16 +882,58 @@ class LocalBalatroSimulator:
             action,
             **injections,
         )
-        return replace(chosen, modifiers=_without_pack_choice_counter(chosen.modifiers))
+        return self._finish_pack_choice(chosen, _without_pack_choice_counter(chosen.modifiers))
 
-    def _drawn_cards_after_blind_flips(self, state: GameState, drawn_cards: tuple[Card, ...]) -> tuple[Card, ...]:
-        if state.blind != "The Wheel" or _boss_disabled(state):
+    def _finish_pack_choice(self, state: GameState, modifiers: Mapping[str, object]) -> GameState:
+        if modifiers.get("tag_pack_return_phase") != GamePhase.BLIND_SELECT.value:
+            return replace(state, modifiers=dict(modifiers))
+        updated_modifiers = dict(modifiers)
+        updated_modifiers.pop("tag_pack_return_phase", None)
+        return replace(
+            state,
+            phase=GamePhase.BLIND_SELECT,
+            shop=(),
+            pack=(),
+            modifiers=updated_modifiers,
+        )
+
+    def _drawn_cards_after_blind_flips(
+        self,
+        state: GameState,
+        drawn_cards: tuple[Card, ...],
+        *,
+        after_play: bool = False,
+        after_discard: bool = False,
+    ) -> tuple[Card, ...]:
+        if not _boss_effect_active(state):
+            return drawn_cards
+        if state.blind == "The House":
+            if not after_play and not after_discard and not _played_hand_types_this_round(state) and _discard_used_count(state) <= 0:
+                return tuple(_card_with_face_down_metadata(card) for card in drawn_cards)
+            return drawn_cards
+        if state.blind == "The Mark":
+            return tuple(
+                _card_with_face_down_metadata(card) if _is_face_card(card, state.jokers) else card
+                for card in drawn_cards
+            )
+        if state.blind == "The Fish":
+            return tuple(_card_with_face_down_metadata(card) for card in drawn_cards) if after_play else drawn_cards
+        if state.blind != "The Wheel":
             return drawn_cards
         probability_multiplier = _probability_multiplier(state)
         return tuple(
             _card_with_face_down_metadata(card) if self._roll_odds(7, probability_multiplier=probability_multiplier) else card
             for card in drawn_cards
         )
+
+    def _with_cerulean_forced_selection_for_next_hand(self, state: GameState) -> GameState:
+        if state.blind != "Cerulean Bell" or not _boss_effect_active(state) or not state.hand:
+            return state
+        if any(_card_is_forced_selection(card) for card in state.hand):
+            return state
+        forced_index = self._rng.randrange(len(state.hand))
+        hand = tuple(_card_with_forced_selection(card) if index == forced_index else card for index, card in enumerate(state.hand))
+        return replace(state, hand=hand)
 
     def _wheel_of_fortune_outcome(self, state: GameState, item: object) -> tuple[int | None, str | None]:
         if _item_label(item) != "The Wheel of Fortune":
@@ -599,12 +1029,43 @@ class LocalBalatroSimulator:
 
     def _boss_for_ante(self, ante: int) -> str:
         if ante not in self._boss_by_ante:
-            pool = self.boss_pool or DETERMINISTIC_BOSS_POOL
-            self._boss_by_ante[ante] = self._rng.choice(pool)
+            self._boss_by_ante[ante] = self._choose_boss_for_ante(ante)
         return self._boss_by_ante[ante]
 
+    def _choose_boss_for_ante(self, ante: int, *, exclude: tuple[str, ...] = ()) -> str:
+        pool = self._eligible_boss_pool(ante)
+        excluded = set(exclude)
+        filtered = tuple(name for name in pool if name not in excluded)
+        if filtered:
+            pool = filtered
+        if not _using_source_boss_pool(self.boss_pool):
+            return self._rng.choice(pool)
+
+        least_used = min((self._boss_use_count.get(name, 0) for name in pool), default=0)
+        candidates = tuple(name for name in pool if self._boss_use_count.get(name, 0) == least_used)
+        boss_name = self._rng.choice(candidates or pool)
+        self._boss_use_count[boss_name] = self._boss_use_count.get(boss_name, 0) + 1
+        return boss_name
+
+    def _eligible_boss_pool(self, ante: int) -> tuple[str, ...]:
+        pool = tuple(self.boss_pool or DETERMINISTIC_BOSS_POOL)
+        if not _using_source_boss_pool(pool):
+            return pool
+        if _is_showdown_ante(ante):
+            return SOURCE_SHOWDOWN_BOSS_POOL
+        return tuple(
+            str(record["name"])
+            for record in SOURCE_BOSS_BLINDS
+            if not record["showdown"] and int(record["min_ante"]) <= max(1, ante)
+        )
+
     def _boss_for_next_surface(self, state: GameState) -> str:
-        ante, _ = _next_blind_position(state)
+        ante, next_kind = _next_blind_position(state)
+        if next_kind == "BOSS":
+            existing = _boss_name_from_surface(state)
+            if existing:
+                self._boss_by_ante.setdefault(ante, existing)
+                return existing
         return self._boss_for_ante(ante)
 
     def _certificate_cards(self, state: GameState) -> tuple[Card, ...]:
@@ -785,6 +1246,14 @@ def _parse_stake(raw: str) -> Stake:
         return Stake.UNKNOWN
 
 
+def _using_source_boss_pool(pool: tuple[str, ...]) -> bool:
+    return tuple(pool) == DETERMINISTIC_BOSS_POOL
+
+
+def _is_showdown_ante(ante: int) -> bool:
+    return ante >= 2 and ante % 8 == 0
+
+
 def _base_modifiers() -> dict[str, Any]:
     return {
         "base_hands": 4,
@@ -868,6 +1337,18 @@ def _with_cash_out_shop_surface(state: GameState, *, cleared_state: GameState, b
     return _with_local_legal_actions(replace(surfaced, phase=GamePhase.SHOP, modifiers=modifiers))
 
 
+def _state_after_boss_cleared(state: GameState, *, cleared_boss: str) -> GameState:
+    jokers = state.jokers
+    if cleared_boss == "Amber Acorn":
+        jokers = tuple(_joker_without_face_down_metadata(joker) for joker in jokers)
+    return replace(
+        state,
+        known_deck=tuple(_card_without_played_this_ante(card) for card in state.known_deck),
+        hand=tuple(_card_without_played_this_ante(card) for card in state.hand),
+        jokers=jokers,
+    )
+
+
 def _cleared_blind_state_for_progression(state: GameState) -> GameState:
     raw = state.modifiers.get("cleared_blind")
     if not isinstance(raw, Mapping):
@@ -883,7 +1364,7 @@ def _cleared_blind_state_for_progression(state: GameState) -> GameState:
         "name": blind,
         "type": kind,
         "score": required_score,
-        "dollars": _blind_reward(kind),
+        "dollars": _blind_reward(kind, blind),
     }
     return replace(state, ante=ante, blind=blind, required_score=required_score, modifiers=modifiers)
 
@@ -913,10 +1394,11 @@ def _blind_payload(ante: int, blind_kind: str, boss_name: str, *, selected: bool
     else:
         name = boss_name
     return {
+        "key": BOSS_KEY_BY_NAME.get(name, "bl_small" if blind_kind == "SMALL" else "bl_big" if blind_kind == "BIG" else name),
         "name": name,
         "type": blind_kind,
         "score": _required_score(ante, blind_kind, name),
-        "dollars": _blind_reward(blind_kind),
+        "dollars": _blind_reward(blind_kind, name),
         "status": "SELECT" if selected else "UPCOMING",
     }
 
@@ -927,13 +1409,7 @@ def _required_score(ante: int, blind_kind: str, blind_name: str) -> int:
         return small
     if blind_kind == "BIG":
         return int(small * 1.5)
-    if blind_name == "The Needle":
-        return int(small)
-    if blind_name == "The Wall":
-        return int(small * 4)
-    if blind_name == "Violet Vessel":
-        return int(small * 6)
-    return int(small * 2)
+    return int(small * float(BOSS_METADATA_BY_NAME.get(blind_name, {}).get("mult", 2)))
 
 
 def _extrapolated_small_blind_score(ante: int) -> int:
@@ -941,16 +1417,21 @@ def _extrapolated_small_blind_score(ante: int) -> int:
     return int(last * (1.6 ** max(0, ante - 8)))
 
 
-def _blind_reward(blind_kind: str) -> int:
+def _blind_reward(blind_kind: str, blind_name: str = "") -> int:
     if blind_kind == "SMALL":
         return 3
     if blind_kind == "BIG":
         return 4
-    return 5
+    return int(BOSS_METADATA_BY_NAME.get(blind_name, {}).get("dollars", 5))
 
 
 def _with_fresh_shop_modifiers(state: GameState) -> GameState:
     modifiers = dict(state.modifiers)
+    hand_size_delta = _int_value(modifiers.pop("round_start_hand_size_delta", 0))
+    if hand_size_delta and "hand_size" in modifiers:
+        modifiers["hand_size"] = max(1, _int_value(modifiers.get("hand_size")) - hand_size_delta)
+    elif hand_size_delta:
+        modifiers["hand_size_delta"] = _int_value(modifiers.get("hand_size_delta")) - hand_size_delta
     base_cost = _base_reroll_cost(state)
     modifiers["reroll_cost"] = base_cost
     modifiers["current_reroll_cost"] = base_cost
@@ -967,6 +1448,22 @@ def _base_reroll_cost(state: GameState) -> int:
     if "Reroll Glut" in state.vouchers:
         cost -= 2
     return max(1, cost)
+
+
+def _boss_reroll_available(state: GameState) -> bool:
+    if state.phase != GamePhase.BLIND_SELECT:
+        return False
+    if "Retcon" in state.vouchers or state.modifiers.get("boss_rerolls_unlimited"):
+        return state.money >= _boss_reroll_cost(state)
+    if "Director's Cut" not in state.vouchers:
+        return False
+    if state.modifiers.get("boss_rerolled"):
+        return False
+    return state.money >= _boss_reroll_cost(state)
+
+
+def _boss_reroll_cost(state: GameState) -> int:
+    return max(0, _int_value(state.modifiers.get("boss_reroll_cost"), default=10))
 
 
 def _with_local_legal_actions(state: GameState) -> GameState:
@@ -1022,6 +1519,92 @@ def _card_with_face_down_metadata(card: Card) -> Card:
     return replace(card, metadata=metadata)
 
 
+def _card_with_forced_selection(card: Card) -> Card:
+    metadata = dict(card.metadata)
+    metadata["forced_selection"] = True
+    ability = dict(metadata.get("ability")) if isinstance(metadata.get("ability"), Mapping) else {}
+    ability["forced_selection"] = True
+    metadata["ability"] = ability
+    return replace(card, metadata=metadata)
+
+
+def _card_is_forced_selection(card: Card) -> bool:
+    if card.metadata.get("forced_selection"):
+        return True
+    ability = card.metadata.get("ability")
+    if isinstance(ability, Mapping) and ability.get("forced_selection"):
+        return True
+    state = card.metadata.get("state")
+    return isinstance(state, Mapping) and bool(state.get("forced_selection"))
+
+
+def _cards_after_blind_debuffs(state: GameState, cards: tuple[Card, ...]) -> tuple[Card, ...]:
+    if not _boss_effect_active(state):
+        return cards
+    if state.blind == "Verdant Leaf":
+        return tuple(_card_with_blind_debuff(card) for card in cards)
+    if state.blind == "The Plant":
+        return tuple(_card_with_blind_debuff(card) if _is_face_card(card, state.jokers) else card for card in cards)
+    if state.blind == "The Pillar":
+        return tuple(_card_with_blind_debuff(card) if _card_was_played_this_ante(card) else card for card in cards)
+    return cards
+
+
+def _card_with_blind_debuff(card: Card) -> Card:
+    metadata = dict(card.metadata)
+    metadata["debuffed_by_blind"] = True
+    state = dict(metadata.get("state")) if isinstance(metadata.get("state"), Mapping) else {}
+    state["debuff"] = True
+    metadata["state"] = state
+    return replace(card, debuffed=True, metadata=metadata)
+
+
+def _card_was_played_this_ante(card: Card) -> bool:
+    if card.metadata.get("played_this_ante"):
+        return True
+    ability = card.metadata.get("ability")
+    return isinstance(ability, Mapping) and bool(ability.get("played_this_ante"))
+
+
+def _joker_with_face_down_metadata(joker: Joker) -> Joker:
+    metadata = dict(joker.metadata)
+    metadata["face_down"] = True
+    metadata["flipped"] = True
+    state = dict(metadata.get("state")) if isinstance(metadata.get("state"), Mapping) else {}
+    state["facing"] = "back"
+    metadata["state"] = state
+    return Joker(joker.name, edition=joker.edition, sell_value=joker.sell_value, metadata=metadata)
+
+
+def _joker_without_face_down_metadata(joker: Joker) -> Joker:
+    if not joker.metadata.get("face_down") and not joker.metadata.get("flipped"):
+        return joker
+    metadata = dict(joker.metadata)
+    metadata.pop("face_down", None)
+    metadata.pop("flipped", None)
+    state = dict(metadata.get("state")) if isinstance(metadata.get("state"), Mapping) else {}
+    state.pop("facing", None)
+    if state:
+        metadata["state"] = state
+    else:
+        metadata.pop("state", None)
+    return Joker(joker.name, edition=joker.edition, sell_value=joker.sell_value, metadata=metadata)
+
+
+def _card_without_played_this_ante(card: Card) -> Card:
+    if not _card_was_played_this_ante(card):
+        return card
+    metadata = dict(card.metadata)
+    metadata.pop("played_this_ante", None)
+    ability = dict(metadata.get("ability")) if isinstance(metadata.get("ability"), Mapping) else {}
+    ability.pop("played_this_ante", None)
+    if ability:
+        metadata["ability"] = ability
+    else:
+        metadata.pop("ability", None)
+    return replace(card, metadata=metadata)
+
+
 def _hand_size(state: GameState) -> int:
     explicit = _modifier_int_or_none(state.modifiers, ("hand_size", "hand_size_limit", "hand_size_max"))
     if explicit is not None:
@@ -1040,6 +1623,202 @@ def _blind_kind(state: GameState) -> str:
     if state.blind == "Big Blind":
         return "BIG"
     return "BOSS"
+
+
+def _boss_effect_active(state: GameState) -> bool:
+    return _blind_kind(state) == "BOSS" and not _boss_disabled(state) and _active_joker_count(state, "Chicot") <= 0
+
+
+def _serpent_draws_three(state: GameState) -> bool:
+    return state.blind == "The Serpent" and _boss_effect_active(state)
+
+
+def _discard_used_count(state: GameState) -> int:
+    for key in ("discards_used", "discard_count", "discards_taken"):
+        if key in state.modifiers:
+            return _int_value(state.modifiers.get(key))
+    base = _int_value(state.modifiers.get("base_discards"), default=4)
+    return max(0, base - state.discards_remaining)
+
+
+def _most_played_hand_name(state: GameState) -> str:
+    explicit = state.modifiers.get("most_played_poker_hand")
+    if explicit:
+        return str(explicit)
+    hands = state.modifiers.get("hands", {})
+    if not isinstance(hands, Mapping):
+        return HandType.HIGH_CARD.value
+    best_name = HandType.HIGH_CARD.value
+    best_played = -1
+    best_order = 100
+    for name, raw in hands.items():
+        if not isinstance(raw, Mapping):
+            continue
+        played = _int_value(raw.get("played"))
+        order = _int_value(raw.get("order")) or 100
+        if played > best_played or (played == best_played and order < best_order):
+            best_name = str(name)
+            best_played = played
+            best_order = order
+    return best_name
+
+
+def _boss_name_from_surface(state: GameState) -> str | None:
+    blinds = _mapping(state.modifiers.get("blinds"))
+    boss = blinds.get("boss")
+    if isinstance(boss, Mapping) and boss.get("name"):
+        return str(boss["name"])
+    upcoming = state.modifiers.get("upcoming_boss")
+    if isinstance(upcoming, Mapping) and upcoming.get("name"):
+        return str(upcoming["name"])
+    if _blind_kind(state) == "BOSS" and state.blind:
+        return state.blind
+    return None
+
+
+def _mapping(raw: object) -> Mapping[str, Any]:
+    return raw if isinstance(raw, Mapping) else {}
+
+
+def _tag_payload(name_or_key: object, blind_kind: str | None = None) -> dict[str, Any]:
+    name = _normalize_tag_name(name_or_key)
+    return {
+        "key": TAG_KEYS_BY_NAME.get(name, str(name_or_key)),
+        "name": name,
+        "label": name,
+        "set": "Tag",
+        "blind_type": _tag_blind_type(blind_kind),
+    }
+
+
+def _normalize_tag_name(value: object) -> str:
+    if isinstance(value, Mapping):
+        if value.get("name") or value.get("label"):
+            return str(value.get("name", value.get("label")))
+        value = value.get("key", "")
+    text = str(value or "")
+    return TAG_NAMES_BY_KEY.get(text, text)
+
+
+def _tag_blind_type(blind_kind: str | None) -> str | None:
+    if blind_kind is None:
+        return None
+    normalized = blind_kind.upper()
+    if normalized == "SMALL":
+        return "Small"
+    if normalized == "BIG":
+        return "Big"
+    if normalized == "BOSS":
+        return "Boss"
+    return blind_kind
+
+
+def _pending_tags(modifiers: Mapping[str, object]) -> tuple[str, ...]:
+    raw = modifiers.get("tags", ())
+    if isinstance(raw, Mapping):
+        raw = raw.get("cards", ())
+    if isinstance(raw, list | tuple):
+        return tuple(_normalize_tag_name(item) for item in raw if _normalize_tag_name(item))
+    if raw:
+        return (_normalize_tag_name(raw),)
+    return ()
+
+
+def _with_added_tag(modifiers: dict[str, object], tag: object) -> dict[str, object]:
+    tag_name = _normalize_tag_name(tag)
+    if not tag_name:
+        return modifiers
+    pending = list(_pending_tags(modifiers))
+    if tag_name != "Double Tag":
+        double_count = sum(1 for existing in pending if existing == "Double Tag")
+        if double_count:
+            pending = [existing for existing in pending if existing != "Double Tag"]
+            pending.extend(tag_name for _ in range(double_count))
+    pending.append(tag_name)
+    modifiers["tags"] = tuple(pending)
+    return modifiers
+
+
+def _current_skip_tag(state: GameState) -> str:
+    current_blind = state.modifiers.get("current_blind")
+    if isinstance(current_blind, Mapping):
+        for key in ("skip_tag", "tag", "tag_key"):
+            if current_blind.get(key):
+                return _normalize_tag_name(current_blind[key])
+    return "Skip Tag"
+
+
+def _couponed_payload(item: Mapping[str, Any]) -> dict[str, Any]:
+    payload = {**item}
+    cost = dict(payload.get("cost")) if isinstance(payload.get("cost"), Mapping) else {"buy": _int_value(payload.get("cost"))}
+    cost["buy"] = 0
+    payload["cost"] = cost
+    metadata = dict(payload.get("metadata")) if isinstance(payload.get("metadata"), Mapping) else {}
+    metadata["couponed"] = True
+    payload["metadata"] = metadata
+    payload["couponed"] = True
+    return payload
+
+
+def _with_first_eligible_tag_edition(
+    shop_cards: Iterable[Mapping[str, Any]],
+    edition: str,
+) -> tuple[bool, list[Mapping[str, Any]]]:
+    updated: list[Mapping[str, Any]] = []
+    applied = False
+    for item in shop_cards:
+        payload = dict(item)
+        if not applied and _item_set(payload) == "JOKER" and not payload.get("edition"):
+            base_buy_cost = _item_buy_cost(payload)
+            payload["edition"] = edition
+            modifier = dict(payload.get("modifier")) if isinstance(payload.get("modifier"), Mapping) else {}
+            modifier["edition"] = edition
+            payload["modifier"] = modifier
+            payload = _couponed_payload(payload)
+            cost = dict(payload.get("cost")) if isinstance(payload.get("cost"), Mapping) else {}
+            sell_value = max(1, (base_buy_cost + EDITION_EXTRA_COST.get(edition, 0)) // 2)
+            cost["sell"] = sell_value
+            payload["cost"] = cost
+            payload["sell_value"] = sell_value
+            applied = True
+        updated.append(payload)
+    return applied, updated
+
+
+def _open_free_tag_pack(state: GameState, pack: Mapping[str, Any], contents: Iterable[Mapping[str, Any]]) -> GameState:
+    modifiers = dict(state.modifiers)
+    pack_cards = tuple(contents)
+    modifiers["pack_cards"] = pack_cards
+    modifiers["pack_choices_remaining"] = _pack_choices(pack)
+    modifiers["tag_pack_return_phase"] = GamePhase.BLIND_SELECT.value
+    return replace(
+        state,
+        phase=GamePhase.BOOSTER_OPENED,
+        pack=(_item_label(pack),),
+        modifiers=modifiers,
+        legal_actions=(),
+    )
+
+
+def _orbital_hand_for_tag(tag: str, modifiers: Mapping[str, object]) -> str | None:
+    raw = modifiers.get("tag_orbital_hands")
+    if isinstance(raw, Mapping):
+        value = raw.get(tag)
+        if value:
+            return str(value)
+    value = modifiers.get("orbital_hand")
+    return str(value) if value else None
+
+
+def _with_hand_level_modifier(modifiers: Mapping[str, object], hand_name: str, level: int) -> dict[str, object]:
+    updated = dict(modifiers)
+    raw_hands = modifiers.get("hands", {})
+    hands = dict(raw_hands) if isinstance(raw_hands, Mapping) else {}
+    current = dict(hands.get(hand_name)) if isinstance(hands.get(hand_name), Mapping) else {}
+    current["level"] = level
+    hands[hand_name] = current
+    updated["hands"] = hands
+    return updated
 
 
 def _boss_disabled(state: GameState) -> bool:
@@ -1095,6 +1874,21 @@ def _item_label(item: object) -> str:
     if isinstance(item, Mapping):
         return str(item.get("label", item.get("name", item.get("key", "unknown"))))
     return str(item)
+
+
+def _item_set(item: object) -> str:
+    if isinstance(item, Mapping):
+        return str(item.get("set", "")).upper()
+    return ""
+
+
+def _item_buy_cost(item: object) -> int:
+    if not isinstance(item, Mapping):
+        return 0
+    cost = item.get("cost", {})
+    if isinstance(cost, Mapping):
+        return _int_value(cost.get("buy", cost.get("cost", 0)))
+    return _int_value(cost)
 
 
 def _last_tarot_planet_label(state: GameState) -> str:

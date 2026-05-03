@@ -1,0 +1,36 @@
+{
+  "action_counts": {
+    "buy": 2,
+    "cash_out": 12,
+    "choose_pack_card": 5,
+    "discard": 9,
+    "end_shop": 1,
+    "play_hand": 143,
+    "reroll": 1,
+    "select_blind": 9,
+    "sell": 3
+  },
+  "action_field_mismatches": {},
+  "comparable_divergences": 0,
+  "exact_transition_counts": {
+    "buy": 2,
+    "cash_out": 12,
+    "choose_pack_card": 5,
+    "discard": 9,
+    "end_shop": 1,
+    "play_hand": 143,
+    "reroll": 1,
+    "select_blind": 9,
+    "sell": 3
+  },
+  "exact_transitions": 185,
+  "examples": [],
+  "files_scanned": 1,
+  "first_divergences": [],
+  "known_gap_counts": {},
+  "malformed_rows": 0,
+  "skipped_rows": 0,
+  "stage_field_mismatches": {},
+  "transition_exact_rate": 1.0,
+  "transitions_checked": 185
+}

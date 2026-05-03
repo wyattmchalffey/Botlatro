@@ -482,6 +482,7 @@ def _with_observed_validation_modifiers(simulated: GameState, observed: GameStat
         "voucher_cards",
         "booster_packs",
         "pack_cards",
+        "current_blind",
     )
     additions = {key: observed.modifiers[key] for key in oracle_keys if key in observed.modifiers}
     modifiers = {**simulated.modifiers, **additions} if additions else simulated.modifiers
@@ -522,6 +523,7 @@ def _simulate_replay_step(pre_state: GameState, post_state: GameState, action: A
             cleared_state=pre_state,
             boss_name=_boss_name_for_surface(pre_state, post_state),
         )
+        simulated = replay_diff._with_deferred_cash_out_latency(simulated, post_state)
     elif action.action_type == ActionType.END_SHOP:
         simulated = replay_diff._simulate_transition(pre_state, post_state, action)
         cleared_state = _cleared_blind_state_for_progression(pre_state)
@@ -531,8 +533,12 @@ def _simulate_replay_step(pre_state: GameState, post_state: GameState, action: A
             phase=GamePhase.BLIND_SELECT,
             boss_name=_boss_name_for_surface(cleared_state, post_state),
         )
+    elif action.action_type == ActionType.SELECT_BLIND:
+        simulated = replay_diff._simulate_transition(_with_blind_choice_money_tag_effects(pre_state), post_state, action)
     elif action.action_type in replay_diff.SUPPORTED_ACTIONS:
         simulated = replay_diff._simulate_transition(pre_state, post_state, action)
+        if action.action_type == ActionType.CHOOSE_PACK_CARD:
+            simulated = _with_tag_pack_return_surface(simulated, pre_state, post_state)
     elif action.action_type == ActionType.SKIP_BLIND:
         simulated = _simulate_skip_blind(pre_state, post_state)
     elif action.action_type == ActionType.REARRANGE:
@@ -550,13 +556,140 @@ def _simulate_skip_blind(pre_state: GameState, post_state: GameState) -> GameSta
         raise ValueError("Cannot skip boss blind")
     next_kind = "BIG" if blind_kind == "SMALL" else "BOSS"
     boss_name = _boss_name_for_surface(pre_state, post_state)
-    skipped = replace(pre_state, jokers=_jokers_after_skip(pre_state.jokers))
-    return _with_blind_selection_surface(
+    modifiers = dict(pre_state.modifiers)
+    skipped_tag = _current_blind_tag_name(pre_state)
+    if skipped_tag:
+        modifiers["tags"] = _pending_tags(modifiers) + (skipped_tag,)
+    modifiers["skips"] = replay_diff._int_value(modifiers.get("skips")) + 1
+    skipped = replace(pre_state, jokers=_jokers_after_skip(pre_state.jokers), modifiers=modifiers)
+    advanced = _with_blind_selection_surface(
         skipped,
         ante=pre_state.ante,
         blind_kind=next_kind,
         boss_name=boss_name,
     )
+    if post_state.phase == GamePhase.BOOSTER_OPENED:
+        return _with_observed_blind_and_pack_surface(advanced, post_state)
+    return advanced
+
+
+def _with_blind_choice_money_tag_effects(state: GameState) -> GameState:
+    tags = _pending_tags(state.modifiers)
+    if not tags:
+        return state
+    money = state.money
+    remaining: list[str] = []
+    for tag_name in tags:
+        if tag_name == "Economy Tag":
+            money += min(40, max(0, money))
+        elif tag_name == "Skip Tag":
+            skipped = replay_diff._int_value(state.modifiers.get("skips"))
+            if not skipped:
+                blind_states = state.modifiers.get("blind_states")
+                if isinstance(blind_states, dict):
+                    skipped = sum(1 for value in blind_states.values() if str(value).lower() == "skipped")
+            money += 5 * skipped
+        elif tag_name == "Handy Tag":
+            money += replay_diff._int_value(state.modifiers.get("hands_played_total", state.modifiers.get("hands_played")))
+        elif tag_name == "Garbage Tag":
+            money += replay_diff._int_value(state.modifiers.get("unused_discards", state.discards_remaining))
+        else:
+            remaining.append(tag_name)
+    if money == state.money and len(remaining) == len(tags):
+        return state
+    modifiers = dict(state.modifiers)
+    modifiers["tags"] = tuple(remaining)
+    return replace(state, money=money, modifiers=modifiers)
+
+
+def _pending_tags(modifiers: dict[str, object]) -> tuple[str, ...]:
+    raw = modifiers.get("tags", ())
+    if isinstance(raw, str):
+        return (raw,) if raw else ()
+    if isinstance(raw, list | tuple):
+        tags: list[str] = []
+        for item in raw:
+            if isinstance(item, dict):
+                name = str(item.get("name", item.get("label", "")))
+            else:
+                name = str(item or "")
+            if name:
+                tags.append(name)
+        return tuple(tags)
+    return ()
+
+
+def _current_blind_tag_name(state: GameState) -> str:
+    current_blind = state.modifiers.get("current_blind")
+    if not isinstance(current_blind, dict):
+        return ""
+    for key in ("tag_name", "tag", "skip_tag"):
+        value = current_blind.get(key)
+        if isinstance(value, dict):
+            name = str(value.get("name", value.get("label", "")))
+        else:
+            name = str(value or "")
+        if name:
+            return name
+    return ""
+
+
+def _with_observed_blind_and_pack_surface(simulated: GameState, observed: GameState) -> GameState:
+    modifiers = _modifiers_with_observed_blind_surface(simulated.modifiers, observed)
+    modifiers["pack_cards"] = replay_diff._modifier_items(observed.modifiers, "pack_cards")
+    return replace(
+        simulated,
+        phase=observed.phase,
+        ante=observed.ante,
+        blind=observed.blind,
+        required_score=observed.required_score,
+        current_score=observed.current_score,
+        money=observed.money,
+        hand=observed.hand,
+        deck_size=observed.deck_size,
+        known_deck=observed.known_deck,
+        pack=observed.pack,
+        modifiers=modifiers,
+    )
+
+
+def _with_tag_pack_return_surface(simulated: GameState, pre_state: GameState, post_state: GameState) -> GameState:
+    if pre_state.phase != GamePhase.BOOSTER_OPENED or post_state.phase != GamePhase.BLIND_SELECT:
+        return simulated
+    modifiers = _modifiers_with_observed_blind_surface(simulated.modifiers, post_state)
+    modifiers["pack_cards"] = ()
+    return replace(
+        simulated,
+        phase=GamePhase.BLIND_SELECT,
+        ante=post_state.ante,
+        blind=post_state.blind,
+        required_score=post_state.required_score,
+        current_score=post_state.current_score,
+        money=post_state.money,
+        hand=post_state.hand,
+        pack=(),
+        modifiers=modifiers,
+    )
+
+
+def _modifiers_with_observed_blind_surface(
+    modifiers: dict[str, object],
+    observed: GameState,
+) -> dict[str, object]:
+    updated = dict(modifiers)
+    for key in (
+        "current_blind",
+        "round",
+        "blinds",
+        "upcoming_boss",
+        "blind_reward",
+        "blind_score",
+        "blind_on_deck",
+        "blind_states",
+    ):
+        if key in observed.modifiers:
+            updated[key] = observed.modifiers[key]
+    return updated
 
 
 def _simulate_rearrange(pre_state: GameState, action: Action) -> GameState:
