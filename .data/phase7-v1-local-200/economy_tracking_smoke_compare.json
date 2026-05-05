@@ -1,0 +1,181 @@
+{
+  "ante": {
+    "average_delta": 0,
+    "bot_a_average": 3.4,
+    "bot_b_average": 3.4,
+    "wilcoxon_signed_rank_p_value": 1.0
+  },
+  "bot_a": "basic_strategy_bot",
+  "bot_b": "basic_strategy_bot",
+  "economy": {
+    "count_boss_rerolls": {
+      "average_delta": 0.0,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.0
+    },
+    "count_buy_consumables": {
+      "average_delta": 0.0,
+      "bot_a_average": 0.4,
+      "bot_b_average": 0.4
+    },
+    "count_buy_jokers": {
+      "average_delta": 0.0,
+      "bot_a_average": 5.4,
+      "bot_b_average": 5.4
+    },
+    "count_buy_playing_cards": {
+      "average_delta": 0.0,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.0
+    },
+    "count_buy_vouchers": {
+      "average_delta": 0.0,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.0
+    },
+    "count_open_booster_packs": {
+      "average_delta": 0.0,
+      "bot_a_average": 2.2,
+      "bot_b_average": 2.2
+    },
+    "count_rerolls": {
+      "average_delta": 0.0,
+      "bot_a_average": 1.8,
+      "bot_b_average": 1.8
+    },
+    "count_sell_consumables": {
+      "average_delta": 0.0,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.0
+    },
+    "count_sell_jokers": {
+      "average_delta": 0.0,
+      "bot_a_average": 1.2,
+      "bot_b_average": 1.2
+    },
+    "money_effective_purchase_power": {
+      "average_delta": 0.0,
+      "bot_a_average": 85.8,
+      "bot_b_average": 85.8
+    },
+    "money_income_cash_out": {
+      "average_delta": 0.0,
+      "bot_a_average": 79.0,
+      "bot_b_average": 79.0
+    },
+    "money_income_consumables": {
+      "average_delta": 0.0,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.0
+    },
+    "money_income_discards": {
+      "average_delta": 0.0,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.0
+    },
+    "money_income_other": {
+      "average_delta": 0.0,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.0
+    },
+    "money_income_play": {
+      "average_delta": 0.0,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.0
+    },
+    "money_income_sell": {
+      "average_delta": 0.0,
+      "bot_a_average": 2.8,
+      "bot_b_average": 2.8
+    },
+    "money_income_skip": {
+      "average_delta": 0.0,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.0
+    },
+    "money_income_total": {
+      "average_delta": 0.0,
+      "bot_a_average": 81.8,
+      "bot_b_average": 81.8
+    },
+    "money_net": {
+      "average_delta": 0.0,
+      "bot_a_average": 36.0,
+      "bot_b_average": 36.0
+    },
+    "money_spent_blind_effects": {
+      "average_delta": 0.0,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.0
+    },
+    "money_spent_booster_packs": {
+      "average_delta": 0.0,
+      "bot_a_average": 9.2,
+      "bot_b_average": 9.2
+    },
+    "money_spent_consumables": {
+      "average_delta": 0.0,
+      "bot_a_average": 1.2,
+      "bot_b_average": 1.2
+    },
+    "money_spent_jokers": {
+      "average_delta": 0.0,
+      "bot_a_average": 27.0,
+      "bot_b_average": 27.0
+    },
+    "money_spent_other": {
+      "average_delta": 0.0,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.0
+    },
+    "money_spent_playing_cards": {
+      "average_delta": 0.0,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.0
+    },
+    "money_spent_rerolls": {
+      "average_delta": 0.0,
+      "bot_a_average": 8.4,
+      "bot_b_average": 8.4
+    },
+    "money_spent_total": {
+      "average_delta": 0.0,
+      "bot_a_average": 45.8,
+      "bot_b_average": 45.8
+    },
+    "money_spent_vouchers": {
+      "average_delta": 0.0,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.0
+    },
+    "money_start": {
+      "average_delta": 0.0,
+      "bot_a_average": 4.0,
+      "bot_b_average": 4.0
+    },
+    "money_unspent_final": {
+      "average_delta": 0.0,
+      "bot_a_average": 40.0,
+      "bot_b_average": 40.0
+    }
+  },
+  "score": {
+    "average_delta": 0,
+    "bootstrap_95_ci": [
+      0.0,
+      0.0
+    ],
+    "bot_a_average": 4007.4,
+    "bot_b_average": 4007.4
+  },
+  "seed_count": 5,
+  "stake": "white",
+  "win_rate": {
+    "bot_a": 0.0,
+    "bot_b": 0.0,
+    "delta": 0.0,
+    "mcnemar_p_value": 1.0,
+    "wins_flipped": 0,
+    "wins_lost": 0
+  }
+}

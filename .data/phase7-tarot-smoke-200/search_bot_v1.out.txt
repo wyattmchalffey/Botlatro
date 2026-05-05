@@ -1,0 +1,24 @@
+Progress: 25/200
+Progress: 50/200
+Progress: 75/200
+Progress: 100/200
+Progress: 125/200
+Progress: 150/200
+Progress: 175/200
+Progress: 200/200
+Bot: search_bot_v1
+Stake: white
+Deck: unknown
+Profile: unknown
+Unlocks: unknown
+Runs: 200
+Win rate: 3.5%
+Average ante: 5.49
+Average final score: 23079.5
+Average final money: 22.9
+Average effective money: 165.0
+Average income: 161.0
+Average spent: 142.1
+Average spend by type: jokers=39.0, consumables=15.1, packs=44.1, vouchers=31.8, rerolls=9.9, cards=0.3, other=0.0
+Average tarot uses: total=3.09, Temperance=0.34, The Wheel of Fortune=0.33, The Emperor=0.30, The Fool=0.29, The High Priestess=0.28, The Hermit=0.25, The Hanged Man=0.24, Judgement=0.21
+Average runtime: 193.89 sec/run

@@ -9,8 +9,8 @@ from balatro_ai.eval.metrics import RunResult, summarize_runs
 class MetricsTests(unittest.TestCase):
     def test_summarize_runs(self) -> None:
         results = [
-            RunResult("bot_v1", 1, "white", True, 8, 10000, 20, 10.0),
-            RunResult("bot_v1", 2, "white", False, 5, 4000, 8, 20.0),
+            RunResult("bot_v1", 1, "white", True, 8, 10000, 20, 10.0, tarot_usage={"The Hermit": 2}),
+            RunResult("bot_v1", 2, "white", False, 5, 4000, 8, 20.0, tarot_usage={"Death": 1}),
         ]
 
         summary = summarize_runs(results)
@@ -19,6 +19,9 @@ class MetricsTests(unittest.TestCase):
         self.assertEqual(summary.win_rate, 0.5)
         self.assertEqual(summary.average_ante, 6.5)
         self.assertEqual(summary.average_runtime_seconds, 15.0)
+        self.assertEqual(summary.average_tarot_usage["The Hermit"], 1.0)
+        self.assertEqual(summary.average_tarot_usage["Death"], 0.5)
+        self.assertIn("Average tarot uses", summary.to_text())
         self.assertIn("Profile: unknown", summary.to_text())
 
     def test_empty_summary_fails(self) -> None:

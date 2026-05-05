@@ -1,0 +1,29 @@
+{
+  "ante": {
+    "average_delta": 0.105,
+    "bot_a_average": 5.025,
+    "bot_b_average": 5.13,
+    "wilcoxon_signed_rank_p_value": 0.10355018775209324
+  },
+  "bot_a": "search_bot_v1",
+  "bot_b": "search_bot_v1",
+  "score": {
+    "average_delta": 1071.84,
+    "bootstrap_95_ci": [
+      -1076.655,
+      3235.045
+    ],
+    "bot_a_average": 16285.12,
+    "bot_b_average": 17356.96
+  },
+  "seed_count": 200,
+  "stake": "white",
+  "win_rate": {
+    "bot_a": 0.045,
+    "bot_b": 0.045,
+    "delta": 0.0,
+    "mcnemar_p_value": 1.0,
+    "wins_flipped": 2,
+    "wins_lost": 2
+  }
+}

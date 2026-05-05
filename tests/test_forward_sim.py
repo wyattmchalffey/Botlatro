@@ -440,6 +440,40 @@ class ForwardSimTests(unittest.TestCase):
         self.assertEqual(next_state.hand_levels["High Card"], 2)
         self.assertEqual(next_state.modifiers["hands"]["High Card"]["level"], 2)
 
+    def test_simulate_play_updates_obelisk_before_scoring(self) -> None:
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            blind="Small Blind",
+            required_score=500,
+            current_score=0,
+            hands_remaining=4,
+            hand=(Card("A", "S"),),
+            jokers=(Joker("Obelisk", metadata={"current_xmult": 1.0}),),
+            modifiers={"hands": {"Pair": {"played": 1, "order": 1}}},
+        )
+
+        next_state = simulate_play(state, Action(ActionType.PLAY_HAND, card_indices=(0,)))
+
+        self.assertEqual(next_state.current_score, 19)
+        self.assertAlmostEqual(next_state.jokers[0].metadata["current_xmult"], 1.2)
+
+    def test_simulate_play_resets_obelisk_when_hand_becomes_most_played(self) -> None:
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            blind="Small Blind",
+            required_score=500,
+            current_score=0,
+            hands_remaining=4,
+            hand=(Card("A", "S"),),
+            jokers=(Joker("Obelisk", metadata={"current_xmult": 2.0}),),
+            modifiers={"hands": {"High Card": {"played": 2, "order": 1}, "Pair": {"played": 1, "order": 2}}},
+        )
+
+        next_state = simulate_play(state, Action(ActionType.PLAY_HAND, card_indices=(0,)))
+
+        self.assertEqual(next_state.current_score, 16)
+        self.assertAlmostEqual(next_state.jokers[0].metadata["current_xmult"], 1.0)
+
     def test_simulate_play_pays_held_gold_cards_when_blind_clears(self) -> None:
         state = GameState(
             phase=GamePhase.SELECTING_HAND,

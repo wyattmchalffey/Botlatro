@@ -1272,6 +1272,28 @@ class BasicStrategyBotTests(unittest.TestCase):
 
         self.assertEqual(action.action_type, ActionType.END_SHOP)
 
+    def test_safe_economy_joker_buy_discounts_interest_floor_penalty(self) -> None:
+        state = GameState(
+            ante=3,
+            money=25,
+            jokers=(Joker("Gros Michel", metadata={"value": {"effect": "+15 Mult"}}),),
+        )
+        pressure = strategy._ShopPressure(
+            target_score=1200,
+            build_capacity=3000,
+            ratio=0.6,
+            raw_ratio=0.6,
+            safety_multiplier=1.0,
+            capacity_safety_factor=1.0,
+        )
+        golden = {"label": "Golden Joker", "set": "JOKER", "cost": {"buy": 6}}
+        plain = {"label": "Joker", "set": "JOKER", "cost": {"buy": 6}}
+
+        self.assertLess(
+            strategy._cost_penalty(state, golden, pressure),
+            strategy._cost_penalty(state, plain, pressure),
+        )
+
     def test_early_shop_skips_target_required_tarot_until_targets_are_supported(self) -> None:
         state = GameState(
             ante=1,
@@ -2042,6 +2064,47 @@ class BasicStrategyBotTests(unittest.TestCase):
         self.assertEqual(first_action.card_indices, (0, 1))
         self.assertEqual(second_action.card_indices, (0, 1))
 
+    def test_sample_build_score_projects_card_sharp_repeat_xmult(self) -> None:
+        state = GameState(
+            ante=3,
+            blind="Small Blind",
+            hands_remaining=4,
+            deck_size=40,
+            hand_levels={"Pair": 1},
+            hand=(Card("A", "S"), Card("A", "H")),
+            jokers=(Joker("Joker"), Joker("Card Sharp")),
+        )
+
+        card_sharp_build = strategy._sample_build_score(state, state.jokers)
+        flat_mult_build = strategy._sample_build_score(
+            state,
+            (Joker("Joker"), Joker("Joker")),
+        )
+
+        self.assertGreater(card_sharp_build, flat_mult_build)
+
+    def test_owned_joker_value_counts_card_sharp_repeat_xmult(self) -> None:
+        state = GameState(
+            ante=4,
+            blind="Small Blind",
+            money=14,
+            hands_remaining=4,
+            discards_remaining=3,
+            deck_size=40,
+            jokers=(
+                Joker("Joker", sell_value=3),
+                Joker("Mystic Summit", sell_value=3),
+                Joker("Photograph", sell_value=3),
+                Joker("Card Sharp", sell_value=3),
+                Joker("Constellation", sell_value=3, metadata={"value": {"effect": "Currently X1.3 Mult"}}),
+            ),
+        )
+
+        joker_value = strategy._owned_joker_value(state, state.jokers[0], remove_index=0)
+        card_sharp_value = strategy._owned_joker_value(state, state.jokers[3], remove_index=3)
+
+        self.assertGreater(card_sharp_value, joker_value)
+
     def test_square_joker_prefers_four_card_clear_to_scale(self) -> None:
         state = GameState(
             ante=2,
@@ -2236,6 +2299,39 @@ class BasicStrategyBotTests(unittest.TestCase):
         self.assertEqual(action.action_type, ActionType.CHOOSE_PACK_CARD)
         self.assertEqual(action.target_id, "skip")
         self.assertIn("pack_skip", action.metadata["reason"])
+
+    def test_unscaled_red_card_is_low_value_without_skip_plan(self) -> None:
+        state = GameState(
+            ante=1,
+            money=10,
+            modifiers={"joker_slots": 5},
+        )
+
+        red_card_value = strategy._joker_card_value(state, {"label": "Red Card", "set": "JOKER", "cost": {"buy": 4}})
+        joker_value = strategy._joker_card_value(state, {"label": "Joker", "set": "JOKER", "cost": {"buy": 4}})
+
+        self.assertLess(red_card_value, 35.0)
+        self.assertLess(red_card_value, joker_value)
+
+    def test_unscaled_red_card_gets_more_value_with_visible_skip_plan(self) -> None:
+        without_pack = GameState(
+            ante=1,
+            money=10,
+            modifiers={"joker_slots": 5},
+        )
+        with_pack = GameState(
+            ante=1,
+            money=10,
+            modifiers={
+                "joker_slots": 5,
+                "booster_packs": ({"label": "Buffoon Pack", "set": "BOOSTER", "cost": {"buy": 4}},),
+            },
+        )
+
+        without_value = strategy._joker_card_value(without_pack, {"label": "Red Card", "set": "JOKER", "cost": {"buy": 4}})
+        with_value = strategy._joker_card_value(with_pack, {"label": "Red Card", "set": "JOKER", "cost": {"buy": 4}})
+
+        self.assertGreater(with_value, without_value)
 
     def test_pack_choice_prioritizes_black_hole_over_matching_planet(self) -> None:
         state = GameState(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import unittest
 
 import context  # noqa: F401
@@ -742,6 +743,57 @@ class LocalRunnerTests(unittest.TestCase):
         self.assertEqual(result.ante_reached, 1)
         self.assertEqual(result.death_reason, "max_steps")
         self.assertLess(result.runtime_seconds, 1.0)
+        self.assertGreater(result.economy["money_income_cash_out"], 0.0)
+        self.assertGreater(result.economy["money_effective_purchase_power"], result.economy["money_start"])
+
+    def test_local_sim_economy_tracks_shop_spend_categories(self) -> None:
+        sim = LocalBalatroSimulator(seed=1, sampler=ShopSampler(tiny_sim_data()), boss_pool=("The Club",))
+        sim.state = GameState(
+            phase=GamePhase.SHOP,
+            money=30,
+            modifiers={
+                "shop_cards": (
+                    {"key": "j_joker", "name": "Joker", "set": "Joker", "cost": 4},
+                    {"key": "c_empress", "name": "The Empress", "set": "Tarot", "cost": 3},
+                ),
+                "voucher_cards": ({"key": "v_blank", "name": "Blank", "set": "Voucher", "cost": 10},),
+                "reroll_cost": 5,
+            },
+        )
+        sim._economy.reset(30)
+
+        sim.step(Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}))
+        sim.step(Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}))
+        sim.state = replace(
+            sim.state,
+            money=23,
+            modifiers={**sim.state.modifiers, "voucher_cards": ({"key": "v_blank", "name": "Blank", "set": "Voucher", "cost": 10},)},
+        )
+        sim.step(Action(ActionType.BUY, target_id="voucher", amount=0, metadata={"kind": "voucher", "index": 0}))
+        sim.step(Action(ActionType.REROLL))
+
+        economy = sim.economy_payload()
+
+        self.assertEqual(economy["money_spent_jokers"], 4.0)
+        self.assertEqual(economy["money_spent_consumables"], 3.0)
+        self.assertEqual(economy["money_spent_vouchers"], 10.0)
+        self.assertEqual(economy["money_spent_rerolls"], 5.0)
+        self.assertEqual(economy["money_spent_total"], 22.0)
+        self.assertEqual(economy["count_buy_jokers"], 1.0)
+        self.assertEqual(economy["count_buy_consumables"], 1.0)
+        self.assertEqual(economy["count_buy_vouchers"], 1.0)
+        self.assertEqual(economy["count_rerolls"], 1.0)
+
+    def test_local_sim_reports_tarot_usage_payload(self) -> None:
+        sim = LocalBalatroSimulator(seed=1, sampler=ShopSampler(tiny_sim_data()), boss_pool=("The Club",))
+        sim.state = GameState(
+            phase=GamePhase.SHOP,
+            modifiers={"tarot_cards_used": {"The Hermit": 2, "Death": 1, "bad": "nope"}},
+        )
+
+        usage = sim.tarot_usage_payload()
+
+        self.assertEqual(usage, {"The Hermit": 2, "Death": 1})
 
 
 if __name__ == "__main__":

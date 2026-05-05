@@ -1,0 +1,1846 @@
+{
+  "action_counts": {
+    "asteroid": 4,
+    "boughtCardFromShop": 25,
+    "connect": 1,
+    "endGameStatsRequested": 2,
+    "endPvP": 5,
+    "enemyInfo": 46,
+    "enemyLocation": 61,
+    "getEndGameJokers": 2,
+    "getNemesisDeck": 2,
+    "joinLobby": 1,
+    "letsGoGamblingNemesis": 7,
+    "lobbyInfo": 4,
+    "lobbyOptions": 4,
+    "moneyMoved": 216,
+    "nemesisEndGameStats": 2,
+    "newRound": 21,
+    "note": 6,
+    "playHand": 43,
+    "playerInfo": 4,
+    "readyBlind": 6,
+    "readyLobby": 1,
+    "receiveEndGameJokers": 2,
+    "receiveNemesisDeck": 2,
+    "receivedEndGameJokers": 3,
+    "removePhantom": 4,
+    "rerollShop": 42,
+    "sendEndGameJokers": 1,
+    "sendPhantom": 5,
+    "setAnte": 7,
+    "setFurthestBlind": 20,
+    "setLocation": 67,
+    "soldCard": 18,
+    "soldJoker": 32,
+    "speedrun": 4,
+    "spentLastShop": 38,
+    "startAnteTimer": 5,
+    "startBlind": 6,
+    "startGame": 1,
+    "stochasticSelection": 42,
+    "syncClient": 1,
+    "usedCard": 86,
+    "username": 1,
+    "version": 1,
+    "winGame": 1
+  },
+  "duration_seconds": 2144,
+  "end_timestamp": "2026-05-04T10:22:12",
+  "event_count": 852,
+  "local_player": {
+    "bought_cards": {
+      "Baron": 1,
+      "Droll Joker": 1,
+      "Fibonacci": 1,
+      "Four Fingers": 1,
+      "Jupiter": 2,
+      "Mystic Summit": 1,
+      "Sigil": 1,
+      "Temperance": 1,
+      "The Fool": 1,
+      "The Hanged Man": 2,
+      "The Hermit": 1,
+      "The High Priestess": 1,
+      "The Magician": 2,
+      "The Sun": 2,
+      "Wraith": 1,
+      "c_mp_ouija_standard": 1,
+      "j_mp_hanging_chad": 1,
+      "j_mp_lets_go_gambling": 1,
+      "j_mp_seltzer": 1,
+      "j_mp_speedrun": 1,
+      "j_mp_turtle_bean": 1
+    },
+    "endgame_stats": {
+      "action": "nemesisEndGameStats",
+      "reroll_cost_total": 294,
+      "reroll_count": 42,
+      "vouchers": "v_clearance_sale-v_paint_brush"
+    },
+    "final_deck": {
+      "action": "receiveNemesisDeck",
+      "card_count": 45,
+      "cards": ";S-Q-m_steel-none-none;S-9-c_base-none-none;S-8-m_gold-none-none;S-4-c_base-none-none;S-2-c_base-none-none;H-A-c_base-foil-Purple;H-A-m_steel-polychrome-Gold;H-A-m_lucky-none-none;H-A-m_steel-polychrome-Gold;H-A-m_steel-polychrome-Gold;H-A-c_base-none-none;H-K-m_lucky-none-none;H-K-m_lucky-none-none;H-K-c_base-foil-Purple;H-K-c_base-foil-Purple;H-K-c_base-none-none;H-K-m_wild-none-none;H-Q-c_base-none-none;H-Q-m_bonus-none-none;H-J-m_bonus-none-none;H-T-c_base-none-none;H-9-c_base-none-none;H-9-m_lucky-none-none;H-8-c_base-none-none;H-6-c_base-none-none;H-5-c_base-none-none;H-2-c_base-none-none;C-A-m_wild-none-none;C-K-m_gold-none-none;C-Q-m_lucky-none-none;C-J-m_wild-none-none;C-J-c_base-none-none;C-T-m_lucky-none-none;C-9-c_base-none-none;C-9-c_base-none-none;C-9-c_base-none-none;C-8-m_lucky-none-none;C-7-c_base-none-none;C-6-c_base-none-none;C-5-c_base-none-none;D-Q-c_base-none-none;D-T-c_base-none-none;D-9-c_base-none-none;D-2-c_base-none-none;C-9-m_stone-none-none",
+      "cards_parsed": [
+        {
+          "edition": null,
+          "enhancement": "m_steel",
+          "name": "Queen of Spades",
+          "rank": "Queen",
+          "raw": "S-Q-m_steel-none-none",
+          "seal": null,
+          "suit": "Spades"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "9 of Spades",
+          "rank": "9",
+          "raw": "S-9-c_base-none-none",
+          "seal": null,
+          "suit": "Spades"
+        },
+        {
+          "edition": null,
+          "enhancement": "m_gold",
+          "name": "8 of Spades",
+          "rank": "8",
+          "raw": "S-8-m_gold-none-none",
+          "seal": null,
+          "suit": "Spades"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "4 of Spades",
+          "rank": "4",
+          "raw": "S-4-c_base-none-none",
+          "seal": null,
+          "suit": "Spades"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "2 of Spades",
+          "rank": "2",
+          "raw": "S-2-c_base-none-none",
+          "seal": null,
+          "suit": "Spades"
+        },
+        {
+          "edition": "foil",
+          "enhancement": "c_base",
+          "name": "Ace of Hearts",
+          "rank": "Ace",
+          "raw": "H-A-c_base-foil-Purple",
+          "seal": "Purple",
+          "suit": "Hearts"
+        },
+        {
+          "edition": "polychrome",
+          "enhancement": "m_steel",
+          "name": "Ace of Hearts",
+          "rank": "Ace",
+          "raw": "H-A-m_steel-polychrome-Gold",
+          "seal": "Gold",
+          "suit": "Hearts"
+        },
+        {
+          "edition": null,
+          "enhancement": "m_lucky",
+          "name": "Ace of Hearts",
+          "rank": "Ace",
+          "raw": "H-A-m_lucky-none-none",
+          "seal": null,
+          "suit": "Hearts"
+        },
+        {
+          "edition": "polychrome",
+          "enhancement": "m_steel",
+          "name": "Ace of Hearts",
+          "rank": "Ace",
+          "raw": "H-A-m_steel-polychrome-Gold",
+          "seal": "Gold",
+          "suit": "Hearts"
+        },
+        {
+          "edition": "polychrome",
+          "enhancement": "m_steel",
+          "name": "Ace of Hearts",
+          "rank": "Ace",
+          "raw": "H-A-m_steel-polychrome-Gold",
+          "seal": "Gold",
+          "suit": "Hearts"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "Ace of Hearts",
+          "rank": "Ace",
+          "raw": "H-A-c_base-none-none",
+          "seal": null,
+          "suit": "Hearts"
+        },
+        {
+          "edition": null,
+          "enhancement": "m_lucky",
+          "name": "King of Hearts",
+          "rank": "King",
+          "raw": "H-K-m_lucky-none-none",
+          "seal": null,
+          "suit": "Hearts"
+        },
+        {
+          "edition": null,
+          "enhancement": "m_lucky",
+          "name": "King of Hearts",
+          "rank": "King",
+          "raw": "H-K-m_lucky-none-none",
+          "seal": null,
+          "suit": "Hearts"
+        },
+        {
+          "edition": "foil",
+          "enhancement": "c_base",
+          "name": "King of Hearts",
+          "rank": "King",
+          "raw": "H-K-c_base-foil-Purple",
+          "seal": "Purple",
+          "suit": "Hearts"
+        },
+        {
+          "edition": "foil",
+          "enhancement": "c_base",
+          "name": "King of Hearts",
+          "rank": "King",
+          "raw": "H-K-c_base-foil-Purple",
+          "seal": "Purple",
+          "suit": "Hearts"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "King of Hearts",
+          "rank": "King",
+          "raw": "H-K-c_base-none-none",
+          "seal": null,
+          "suit": "Hearts"
+        },
+        {
+          "edition": null,
+          "enhancement": "m_wild",
+          "name": "King of Hearts",
+          "rank": "King",
+          "raw": "H-K-m_wild-none-none",
+          "seal": null,
+          "suit": "Hearts"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "Queen of Hearts",
+          "rank": "Queen",
+          "raw": "H-Q-c_base-none-none",
+          "seal": null,
+          "suit": "Hearts"
+        },
+        {
+          "edition": null,
+          "enhancement": "m_bonus",
+          "name": "Queen of Hearts",
+          "rank": "Queen",
+          "raw": "H-Q-m_bonus-none-none",
+          "seal": null,
+          "suit": "Hearts"
+        },
+        {
+          "edition": null,
+          "enhancement": "m_bonus",
+          "name": "Jack of Hearts",
+          "rank": "Jack",
+          "raw": "H-J-m_bonus-none-none",
+          "seal": null,
+          "suit": "Hearts"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "10 of Hearts",
+          "rank": "10",
+          "raw": "H-T-c_base-none-none",
+          "seal": null,
+          "suit": "Hearts"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "9 of Hearts",
+          "rank": "9",
+          "raw": "H-9-c_base-none-none",
+          "seal": null,
+          "suit": "Hearts"
+        },
+        {
+          "edition": null,
+          "enhancement": "m_lucky",
+          "name": "9 of Hearts",
+          "rank": "9",
+          "raw": "H-9-m_lucky-none-none",
+          "seal": null,
+          "suit": "Hearts"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "8 of Hearts",
+          "rank": "8",
+          "raw": "H-8-c_base-none-none",
+          "seal": null,
+          "suit": "Hearts"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "6 of Hearts",
+          "rank": "6",
+          "raw": "H-6-c_base-none-none",
+          "seal": null,
+          "suit": "Hearts"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "5 of Hearts",
+          "rank": "5",
+          "raw": "H-5-c_base-none-none",
+          "seal": null,
+          "suit": "Hearts"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "2 of Hearts",
+          "rank": "2",
+          "raw": "H-2-c_base-none-none",
+          "seal": null,
+          "suit": "Hearts"
+        },
+        {
+          "edition": null,
+          "enhancement": "m_wild",
+          "name": "Ace of Clubs",
+          "rank": "Ace",
+          "raw": "C-A-m_wild-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "m_gold",
+          "name": "King of Clubs",
+          "rank": "King",
+          "raw": "C-K-m_gold-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "m_lucky",
+          "name": "Queen of Clubs",
+          "rank": "Queen",
+          "raw": "C-Q-m_lucky-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "m_wild",
+          "name": "Jack of Clubs",
+          "rank": "Jack",
+          "raw": "C-J-m_wild-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "Jack of Clubs",
+          "rank": "Jack",
+          "raw": "C-J-c_base-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "m_lucky",
+          "name": "10 of Clubs",
+          "rank": "10",
+          "raw": "C-T-m_lucky-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "9 of Clubs",
+          "rank": "9",
+          "raw": "C-9-c_base-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "9 of Clubs",
+          "rank": "9",
+          "raw": "C-9-c_base-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "9 of Clubs",
+          "rank": "9",
+          "raw": "C-9-c_base-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "m_lucky",
+          "name": "8 of Clubs",
+          "rank": "8",
+          "raw": "C-8-m_lucky-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "7 of Clubs",
+          "rank": "7",
+          "raw": "C-7-c_base-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "6 of Clubs",
+          "rank": "6",
+          "raw": "C-6-c_base-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "5 of Clubs",
+          "rank": "5",
+          "raw": "C-5-c_base-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "Queen of Diamonds",
+          "rank": "Queen",
+          "raw": "D-Q-c_base-none-none",
+          "seal": null,
+          "suit": "Diamonds"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "10 of Diamonds",
+          "rank": "10",
+          "raw": "D-T-c_base-none-none",
+          "seal": null,
+          "suit": "Diamonds"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "9 of Diamonds",
+          "rank": "9",
+          "raw": "D-9-c_base-none-none",
+          "seal": null,
+          "suit": "Diamonds"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "2 of Diamonds",
+          "rank": "2",
+          "raw": "D-2-c_base-none-none",
+          "seal": null,
+          "suit": "Diamonds"
+        },
+        {
+          "edition": null,
+          "enhancement": "m_stone",
+          "name": "9 of Clubs",
+          "rank": "9",
+          "raw": "C-9-m_stone-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        }
+      ]
+    },
+    "final_jokers": {
+      "jokers": [
+        {
+          "edition": null,
+          "enhancement": null,
+          "key": "j_fibonacci",
+          "raw": "j_fibonacci-none-none-none",
+          "seal": null
+        },
+        {
+          "edition": null,
+          "enhancement": null,
+          "key": "j_four_fingers",
+          "raw": "j_four_fingers-none-none-none",
+          "seal": null
+        },
+        {
+          "edition": "polychrome",
+          "enhancement": null,
+          "key": "j_square",
+          "raw": "j_square-polychrome-none-none",
+          "seal": null
+        },
+        {
+          "edition": null,
+          "enhancement": null,
+          "key": "j_baron",
+          "raw": "j_baron-none-none-none",
+          "seal": null
+        },
+        {
+          "edition": null,
+          "enhancement": null,
+          "key": "j_mp_turtle_bean",
+          "raw": "j_mp_turtle_bean-none-none-none",
+          "seal": null
+        }
+      ],
+      "jokers_raw": ";j_fibonacci-none-none-none;j_four_fingers-none-none-none;j_square-polychrome-none-none;j_baron-none-none-none;j_mp_turtle_bean-none-none-none"
+    },
+    "money_moved_negative_observed": -537,
+    "money_moved_net_observed": 18,
+    "money_moved_positive_observed": 555,
+    "play_hand_events": [
+      {
+        "action": "playHand",
+        "handsLeft": 4,
+        "location_at_play": null,
+        "score": "0"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 4,
+        "location_at_play": "loc_selecting",
+        "score": "0"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 4,
+        "location_at_play": "loc_selecting",
+        "score": "0"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 4,
+        "location_at_play": "loc_selecting",
+        "score": "0"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 4,
+        "location_at_play": "loc_selecting",
+        "score": "0"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 4,
+        "location_at_play": "loc_ready",
+        "score": "0"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 3,
+        "location_at_play": "loc_playing-bl_mp_nemesis",
+        "score": "3306"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 2,
+        "location_at_play": "loc_playing-bl_mp_nemesis",
+        "score": "8270"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 1,
+        "location_at_play": "loc_playing-bl_mp_nemesis",
+        "score": "9878"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 4,
+        "location_at_play": "loc_selecting",
+        "score": "0"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 4,
+        "location_at_play": "loc_selecting",
+        "score": "0"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 4,
+        "location_at_play": "loc_ready",
+        "score": "0"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 3,
+        "location_at_play": "loc_playing-bl_mp_nemesis",
+        "score": "870"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 2,
+        "location_at_play": "loc_playing-bl_mp_nemesis",
+        "score": "1477"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 1,
+        "location_at_play": "loc_playing-bl_mp_nemesis",
+        "score": "2023"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 0,
+        "location_at_play": "loc_playing-bl_mp_nemesis",
+        "score": "5830"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 4,
+        "location_at_play": "loc_selecting",
+        "score": "0"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 4,
+        "location_at_play": "loc_selecting",
+        "score": "0"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 4,
+        "location_at_play": "loc_ready",
+        "score": "0"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 3,
+        "location_at_play": "loc_playing-bl_mp_nemesis",
+        "score": "769"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 2,
+        "location_at_play": "loc_playing-bl_mp_nemesis",
+        "score": "7237"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 1,
+        "location_at_play": "loc_playing-bl_mp_nemesis",
+        "score": "7469"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 4,
+        "location_at_play": "loc_selecting",
+        "score": "0"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 4,
+        "location_at_play": "loc_selecting",
+        "score": "0"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 4,
+        "location_at_play": "loc_ready",
+        "score": "0"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 3,
+        "location_at_play": "loc_playing-bl_mp_nemesis",
+        "score": "4221"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 2,
+        "location_at_play": "loc_playing-bl_mp_nemesis",
+        "score": "5007"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 1,
+        "location_at_play": "loc_playing-bl_mp_nemesis",
+        "score": "5679"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 0,
+        "location_at_play": "loc_playing-bl_mp_nemesis",
+        "score": "13545"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 4,
+        "location_at_play": "loc_selecting",
+        "score": "0"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 4,
+        "location_at_play": "loc_selecting",
+        "score": "0"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 4,
+        "location_at_play": "loc_ready",
+        "score": "0"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 3,
+        "location_at_play": "loc_playing-bl_mp_nemesis",
+        "score": "1170"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 2,
+        "location_at_play": "loc_playing-bl_mp_nemesis",
+        "score": "13698"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 1,
+        "location_at_play": "loc_playing-bl_mp_nemesis",
+        "score": "14095"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 0,
+        "location_at_play": "loc_playing-bl_mp_nemesis",
+        "score": "69364"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 4,
+        "location_at_play": "loc_selecting",
+        "score": "0"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 4,
+        "location_at_play": "loc_selecting",
+        "score": "0"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 4,
+        "location_at_play": "loc_ready",
+        "score": "0"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 3,
+        "location_at_play": "loc_playing-bl_mp_nemesis",
+        "score": "5406"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 2,
+        "location_at_play": "loc_playing-bl_mp_nemesis",
+        "score": "69683"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 1,
+        "location_at_play": "loc_playing-bl_mp_nemesis",
+        "score": "95132"
+      },
+      {
+        "action": "playHand",
+        "handsLeft": 0,
+        "location_at_play": "loc_playing-bl_mp_nemesis",
+        "score": "908160"
+      }
+    ],
+    "reroll_cost_total_observed": 294,
+    "reroll_count_observed": 42,
+    "sold_cards": {
+      "Business Card": 1,
+      "Droll Joker": 1,
+      "Judgement": 1,
+      "Mercury": 1,
+      "Mime": 1,
+      "Mystic Summit": 1,
+      "The Empress": 1,
+      "The Hierophant": 2,
+      "The Moon": 1,
+      "The Star": 1,
+      "The Sun": 1,
+      "Wraith": 1,
+      "j_mp_bloodstone": 1,
+      "j_mp_hanging_chad": 1,
+      "j_mp_lets_go_gambling": 1,
+      "j_mp_seltzer": 1,
+      "j_mp_speedrun": 1
+    },
+    "used_cards": {
+      "Arcana Pack": 4,
+      "Buffoon Pack": 4,
+      "Business Card": 1,
+      "Celestial Pack": 3,
+      "Clearance Sale": 1,
+      "Death": 4,
+      "Default Base": 2,
+      "Familiar": 1,
+      "Hex": 1,
+      "Jumbo Arcana Pack": 5,
+      "Jumbo Buffoon Pack": 2,
+      "Jumbo Celestial Pack": 2,
+      "Jumbo Standard Pack": 4,
+      "Jupiter": 4,
+      "Mars": 1,
+      "Mega Standard Pack": 1,
+      "Mercury": 1,
+      "Mime": 1,
+      "Paint Brush": 1,
+      "Sigil": 1,
+      "Spectral Pack": 1,
+      "Square Joker": 1,
+      "Standard Pack": 3,
+      "Strength": 1,
+      "Temperance": 2,
+      "The Chariot": 2,
+      "The Devil": 2,
+      "The Emperor": 3,
+      "The Fool": 1,
+      "The Hanged Man": 4,
+      "The Hermit": 3,
+      "The Hierophant": 1,
+      "The High Priestess": 2,
+      "The Lovers": 1,
+      "The Magician": 4,
+      "The Sun": 3,
+      "The Tower": 1,
+      "The Wheel of Fortune": 1,
+      "Venus": 1,
+      "c_mp_asteroid": 3,
+      "c_mp_ouija_standard": 1,
+      "j_mp_bloodstone": 1
+    }
+  },
+  "match_setup": {
+    "latest_lobby_options": {
+      "action": "lobbyOptions",
+      "back": "Ghost Deck",
+      "challenge": "",
+      "cocktail": "1111111111111111111111H",
+      "custom_seed": "random",
+      "death_on_round_loss": true,
+      "different_decks": false,
+      "different_seeds": false,
+      "disable_live_and_timer_hud": false,
+      "forced_config": true,
+      "gamemode": "gamemode_mp_attrition",
+      "gold_on_life_loss": true,
+      "legacy_smallworld": false,
+      "multiplayer_jokers": true,
+      "no_gold_on_round_loss": false,
+      "preview_disabled": false,
+      "pvp_countdown_seconds": 3,
+      "pvp_start_round": 2,
+      "ruleset": "ruleset_mp_standard_ranked",
+      "showdown_starting_antes": 3,
+      "stake": 1,
+      "starting_lives": 4,
+      "the_order": true,
+      "timer": true,
+      "timer_base_seconds": 150,
+      "timer_forgiveness": 0,
+      "timer_increment_seconds": 60
+    },
+    "result": "winGame",
+    "seed": "4MU6C8WJ",
+    "start_game": {
+      "action": "startGame",
+      "deck": "c_multiplayer_1"
+    }
+  },
+  "opponent": {
+    "endgame_stats": {
+      "action": "nemesisEndGameStats",
+      "reroll_cost_total": 235,
+      "reroll_count": 36,
+      "vouchers": "v_clearance_sale"
+    },
+    "enemy_info_events": [
+      {
+        "action": "enemyInfo",
+        "handsLeft": 4,
+        "lives": 4,
+        "score": 0,
+        "skips": 0
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 4,
+        "lives": 4,
+        "score": 0,
+        "skips": 0
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 4,
+        "lives": 4,
+        "score": 0,
+        "skips": 0
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 4,
+        "lives": 4,
+        "score": 0,
+        "skips": 0
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 4,
+        "lives": 4,
+        "score": 0,
+        "skips": 0
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 4,
+        "lives": 4,
+        "score": 0,
+        "skips": 0
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 3,
+        "lives": 4,
+        "score": 1512,
+        "skips": 0
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 2,
+        "lives": 4,
+        "score": 1534,
+        "skips": 0
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 1,
+        "lives": 4,
+        "score": 1556,
+        "skips": 0
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 0,
+        "lives": 4,
+        "score": 1572,
+        "skips": 0
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 0,
+        "lives": 3,
+        "score": 1572,
+        "skips": 0
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 0,
+        "lives": 3,
+        "score": 1572,
+        "skips": 1
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 4,
+        "lives": 3,
+        "score": 0,
+        "skips": 1
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 4,
+        "lives": 3,
+        "score": 0,
+        "skips": 1
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 3,
+        "lives": 3,
+        "score": 61965,
+        "skips": 1
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 2,
+        "lives": 3,
+        "score": 61987,
+        "skips": 1
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 1,
+        "lives": 3,
+        "score": 62008,
+        "skips": 1
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 4,
+        "lives": 3,
+        "score": 0,
+        "skips": 1
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 4,
+        "lives": 3,
+        "score": 0,
+        "skips": 1
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 4,
+        "lives": 3,
+        "score": 0,
+        "skips": 1
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 3,
+        "lives": 3,
+        "score": 40,
+        "skips": 1
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 2,
+        "lives": 3,
+        "score": 130,
+        "skips": 1
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 1,
+        "lives": 3,
+        "score": 208,
+        "skips": 1
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 0,
+        "lives": 3,
+        "score": 5068,
+        "skips": 1
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 0,
+        "lives": 2,
+        "score": 5068,
+        "skips": 1
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 4,
+        "lives": 2,
+        "score": 0,
+        "skips": 1
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 4,
+        "lives": 1,
+        "score": 0,
+        "skips": 1
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 4,
+        "lives": 1,
+        "score": 0,
+        "skips": 1
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 4,
+        "lives": 1,
+        "score": 0,
+        "skips": 1
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 3,
+        "lives": 1,
+        "score": 60,
+        "skips": 1
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 2,
+        "lives": 1,
+        "score": 142620,
+        "skips": 1
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 2,
+        "lives": 1,
+        "score": 142620,
+        "skips": 2
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 4,
+        "lives": 1,
+        "score": 0,
+        "skips": 2
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 4,
+        "lives": 1,
+        "score": 0,
+        "skips": 2
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 3,
+        "lives": 1,
+        "score": 45,
+        "skips": 2
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 2,
+        "lives": 1,
+        "score": 90,
+        "skips": 2
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 1,
+        "lives": 1,
+        "score": 234,
+        "skips": 2
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 0,
+        "lives": 1,
+        "score": 257274,
+        "skips": 2
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 4,
+        "lives": 1,
+        "score": 0,
+        "skips": 2
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 4,
+        "lives": 1,
+        "score": 0,
+        "skips": 2
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 4,
+        "lives": 1,
+        "score": 0,
+        "skips": 2
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 3,
+        "lives": 1,
+        "score": 540,
+        "skips": 2
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 2,
+        "lives": 1,
+        "score": 675,
+        "skips": 2
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 1,
+        "lives": 1,
+        "score": 747,
+        "skips": 2
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 0,
+        "lives": 1,
+        "score": 752427,
+        "skips": 2
+      },
+      {
+        "action": "enemyInfo",
+        "handsLeft": 0,
+        "lives": 0,
+        "score": 752427,
+        "skips": 2
+      }
+    ],
+    "final_deck": {
+      "action": "receiveNemesisDeck",
+      "card_count": 59,
+      "cards": ";S-A-c_base-none-none;S-K-c_base-none-none;S-K-m_mult-none-none;S-Q-m_steel-none-none;S-Q-m_lucky-none-none;S-J-m_gold-none-none;S-9-c_base-none-none;S-8-c_base-none-none;S-6-c_base-none-none;S-5-c_base-none-none;S-4-c_base-none-none;S-3-c_base-none-none;S-2-c_base-none-none;H-K-m_wild-foil-Purple;H-J-c_base-none-none;H-J-m_wild-none-none;H-T-c_base-none-none;H-9-c_base-none-none;H-8-c_base-none-none;H-7-m_mult-none-none;H-6-c_base-none-none;H-5-c_base-none-none;H-4-c_base-none-none;H-3-c_base-none-none;H-2-c_base-none-none;C-A-c_base-none-none;C-A-c_base-none-none;C-K-c_base-foil-Purple;C-K-m_lucky-none-none;C-K-c_base-none-none;C-K-m_bonus-none-none;C-K-m_lucky-none-none;C-K-m_lucky-none-none;C-K-m_lucky-polychrome-Gold;C-K-m_lucky-none-none;C-K-m_lucky-none-none;C-K-m_wild-none-none;C-Q-c_base-none-none;C-J-c_base-none-none;C-T-c_base-none-none;C-T-c_base-none-none;C-9-c_base-none-none;C-8-c_base-none-none;C-7-c_base-none-none;C-7-c_base-none-none;C-5-c_base-none-none;C-3-c_base-none-none;C-2-c_base-none-none;D-A-c_base-none-none;D-K-m_wild-none-none;D-Q-c_base-none-none;D-J-c_base-none-none;D-9-c_base-none-none;D-8-c_base-none-none;D-7-c_base-none-none;D-6-c_base-none-none;D-4-c_base-none-none;D-3-c_base-none-none;D-2-c_base-none-none",
+      "cards_parsed": [
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "Ace of Spades",
+          "rank": "Ace",
+          "raw": "S-A-c_base-none-none",
+          "seal": null,
+          "suit": "Spades"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "King of Spades",
+          "rank": "King",
+          "raw": "S-K-c_base-none-none",
+          "seal": null,
+          "suit": "Spades"
+        },
+        {
+          "edition": null,
+          "enhancement": "m_mult",
+          "name": "King of Spades",
+          "rank": "King",
+          "raw": "S-K-m_mult-none-none",
+          "seal": null,
+          "suit": "Spades"
+        },
+        {
+          "edition": null,
+          "enhancement": "m_steel",
+          "name": "Queen of Spades",
+          "rank": "Queen",
+          "raw": "S-Q-m_steel-none-none",
+          "seal": null,
+          "suit": "Spades"
+        },
+        {
+          "edition": null,
+          "enhancement": "m_lucky",
+          "name": "Queen of Spades",
+          "rank": "Queen",
+          "raw": "S-Q-m_lucky-none-none",
+          "seal": null,
+          "suit": "Spades"
+        },
+        {
+          "edition": null,
+          "enhancement": "m_gold",
+          "name": "Jack of Spades",
+          "rank": "Jack",
+          "raw": "S-J-m_gold-none-none",
+          "seal": null,
+          "suit": "Spades"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "9 of Spades",
+          "rank": "9",
+          "raw": "S-9-c_base-none-none",
+          "seal": null,
+          "suit": "Spades"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "8 of Spades",
+          "rank": "8",
+          "raw": "S-8-c_base-none-none",
+          "seal": null,
+          "suit": "Spades"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "6 of Spades",
+          "rank": "6",
+          "raw": "S-6-c_base-none-none",
+          "seal": null,
+          "suit": "Spades"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "5 of Spades",
+          "rank": "5",
+          "raw": "S-5-c_base-none-none",
+          "seal": null,
+          "suit": "Spades"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "4 of Spades",
+          "rank": "4",
+          "raw": "S-4-c_base-none-none",
+          "seal": null,
+          "suit": "Spades"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "3 of Spades",
+          "rank": "3",
+          "raw": "S-3-c_base-none-none",
+          "seal": null,
+          "suit": "Spades"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "2 of Spades",
+          "rank": "2",
+          "raw": "S-2-c_base-none-none",
+          "seal": null,
+          "suit": "Spades"
+        },
+        {
+          "edition": "foil",
+          "enhancement": "m_wild",
+          "name": "King of Hearts",
+          "rank": "King",
+          "raw": "H-K-m_wild-foil-Purple",
+          "seal": "Purple",
+          "suit": "Hearts"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "Jack of Hearts",
+          "rank": "Jack",
+          "raw": "H-J-c_base-none-none",
+          "seal": null,
+          "suit": "Hearts"
+        },
+        {
+          "edition": null,
+          "enhancement": "m_wild",
+          "name": "Jack of Hearts",
+          "rank": "Jack",
+          "raw": "H-J-m_wild-none-none",
+          "seal": null,
+          "suit": "Hearts"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "10 of Hearts",
+          "rank": "10",
+          "raw": "H-T-c_base-none-none",
+          "seal": null,
+          "suit": "Hearts"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "9 of Hearts",
+          "rank": "9",
+          "raw": "H-9-c_base-none-none",
+          "seal": null,
+          "suit": "Hearts"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "8 of Hearts",
+          "rank": "8",
+          "raw": "H-8-c_base-none-none",
+          "seal": null,
+          "suit": "Hearts"
+        },
+        {
+          "edition": null,
+          "enhancement": "m_mult",
+          "name": "7 of Hearts",
+          "rank": "7",
+          "raw": "H-7-m_mult-none-none",
+          "seal": null,
+          "suit": "Hearts"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "6 of Hearts",
+          "rank": "6",
+          "raw": "H-6-c_base-none-none",
+          "seal": null,
+          "suit": "Hearts"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "5 of Hearts",
+          "rank": "5",
+          "raw": "H-5-c_base-none-none",
+          "seal": null,
+          "suit": "Hearts"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "4 of Hearts",
+          "rank": "4",
+          "raw": "H-4-c_base-none-none",
+          "seal": null,
+          "suit": "Hearts"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "3 of Hearts",
+          "rank": "3",
+          "raw": "H-3-c_base-none-none",
+          "seal": null,
+          "suit": "Hearts"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "2 of Hearts",
+          "rank": "2",
+          "raw": "H-2-c_base-none-none",
+          "seal": null,
+          "suit": "Hearts"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "Ace of Clubs",
+          "rank": "Ace",
+          "raw": "C-A-c_base-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "Ace of Clubs",
+          "rank": "Ace",
+          "raw": "C-A-c_base-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": "foil",
+          "enhancement": "c_base",
+          "name": "King of Clubs",
+          "rank": "King",
+          "raw": "C-K-c_base-foil-Purple",
+          "seal": "Purple",
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "m_lucky",
+          "name": "King of Clubs",
+          "rank": "King",
+          "raw": "C-K-m_lucky-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "King of Clubs",
+          "rank": "King",
+          "raw": "C-K-c_base-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "m_bonus",
+          "name": "King of Clubs",
+          "rank": "King",
+          "raw": "C-K-m_bonus-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "m_lucky",
+          "name": "King of Clubs",
+          "rank": "King",
+          "raw": "C-K-m_lucky-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "m_lucky",
+          "name": "King of Clubs",
+          "rank": "King",
+          "raw": "C-K-m_lucky-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": "polychrome",
+          "enhancement": "m_lucky",
+          "name": "King of Clubs",
+          "rank": "King",
+          "raw": "C-K-m_lucky-polychrome-Gold",
+          "seal": "Gold",
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "m_lucky",
+          "name": "King of Clubs",
+          "rank": "King",
+          "raw": "C-K-m_lucky-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "m_lucky",
+          "name": "King of Clubs",
+          "rank": "King",
+          "raw": "C-K-m_lucky-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "m_wild",
+          "name": "King of Clubs",
+          "rank": "King",
+          "raw": "C-K-m_wild-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "Queen of Clubs",
+          "rank": "Queen",
+          "raw": "C-Q-c_base-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "Jack of Clubs",
+          "rank": "Jack",
+          "raw": "C-J-c_base-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "10 of Clubs",
+          "rank": "10",
+          "raw": "C-T-c_base-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "10 of Clubs",
+          "rank": "10",
+          "raw": "C-T-c_base-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "9 of Clubs",
+          "rank": "9",
+          "raw": "C-9-c_base-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "8 of Clubs",
+          "rank": "8",
+          "raw": "C-8-c_base-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "7 of Clubs",
+          "rank": "7",
+          "raw": "C-7-c_base-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "7 of Clubs",
+          "rank": "7",
+          "raw": "C-7-c_base-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "5 of Clubs",
+          "rank": "5",
+          "raw": "C-5-c_base-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "3 of Clubs",
+          "rank": "3",
+          "raw": "C-3-c_base-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "2 of Clubs",
+          "rank": "2",
+          "raw": "C-2-c_base-none-none",
+          "seal": null,
+          "suit": "Clubs"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "Ace of Diamonds",
+          "rank": "Ace",
+          "raw": "D-A-c_base-none-none",
+          "seal": null,
+          "suit": "Diamonds"
+        },
+        {
+          "edition": null,
+          "enhancement": "m_wild",
+          "name": "King of Diamonds",
+          "rank": "King",
+          "raw": "D-K-m_wild-none-none",
+          "seal": null,
+          "suit": "Diamonds"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "Queen of Diamonds",
+          "rank": "Queen",
+          "raw": "D-Q-c_base-none-none",
+          "seal": null,
+          "suit": "Diamonds"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "Jack of Diamonds",
+          "rank": "Jack",
+          "raw": "D-J-c_base-none-none",
+          "seal": null,
+          "suit": "Diamonds"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "9 of Diamonds",
+          "rank": "9",
+          "raw": "D-9-c_base-none-none",
+          "seal": null,
+          "suit": "Diamonds"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "8 of Diamonds",
+          "rank": "8",
+          "raw": "D-8-c_base-none-none",
+          "seal": null,
+          "suit": "Diamonds"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "7 of Diamonds",
+          "rank": "7",
+          "raw": "D-7-c_base-none-none",
+          "seal": null,
+          "suit": "Diamonds"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "6 of Diamonds",
+          "rank": "6",
+          "raw": "D-6-c_base-none-none",
+          "seal": null,
+          "suit": "Diamonds"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "4 of Diamonds",
+          "rank": "4",
+          "raw": "D-4-c_base-none-none",
+          "seal": null,
+          "suit": "Diamonds"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "3 of Diamonds",
+          "rank": "3",
+          "raw": "D-3-c_base-none-none",
+          "seal": null,
+          "suit": "Diamonds"
+        },
+        {
+          "edition": null,
+          "enhancement": "c_base",
+          "name": "2 of Diamonds",
+          "rank": "2",
+          "raw": "D-2-c_base-none-none",
+          "seal": null,
+          "suit": "Diamonds"
+        }
+      ]
+    },
+    "final_jokers": {
+      "jokers": [
+        {
+          "edition": null,
+          "enhancement": null,
+          "key": "j_trio",
+          "raw": "j_trio-none-none-none",
+          "seal": null
+        },
+        {
+          "edition": null,
+          "enhancement": null,
+          "key": "j_mp_lets_go_gambling",
+          "raw": "j_mp_lets_go_gambling-none-none-none",
+          "seal": null
+        },
+        {
+          "edition": null,
+          "enhancement": null,
+          "key": "j_brainstorm",
+          "raw": "j_brainstorm-none-none-none",
+          "seal": null
+        },
+        {
+          "edition": null,
+          "enhancement": null,
+          "key": "j_blackboard",
+          "raw": "j_blackboard-none-none-none",
+          "seal": null
+        },
+        {
+          "edition": null,
+          "enhancement": null,
+          "key": "j_drivers_license",
+          "raw": "j_drivers_license-none-none-none",
+          "seal": null
+        }
+      ],
+      "jokers_raw": ";j_trio-none-none-none;j_mp_lets_go_gambling-none-none-none;j_brainstorm-none-none-none;j_blackboard-none-none-none;j_drivers_license-none-none-none"
+    }
+  },
+  "privacy": {
+    "notes": [
+      "Local filesystem paths and non-game runtime lines were not copied into the extraction.",
+      "Usernames, lobby code, reconnect token, mod hashes, and large encoded key blobs were removed from event fields."
+    ],
+    "redacted_fields": {
+      "code": 2,
+      "guest": 3,
+      "guestHash": 3,
+      "host": 3,
+      "hostHash": 3,
+      "keys": 2,
+      "modHash": 1,
+      "reconnectToken": 1,
+      "username": 1
+    }
+  },
+  "sanitized_mod_version_sets": [
+    [
+      "Handy-1.5.1p",
+      "JokerDisplay-1.10.0",
+      "Lovely-0.9.0",
+      "Multiplayer-0.3.2~DEV",
+      "Steamodded-1.0.0~BETA-1503a"
+    ],
+    [
+      "JokerDisplay-1.10.1",
+      "Lovely-0.9.0",
+      "Multiplayer-0.3.3",
+      "Preview-MultiplayerIntegration",
+      "Steamodded-1.0.0~BETA-1503a",
+      "lovely-compat-BMM-Compat-0.0.0"
+    ]
+  ],
+  "source_file": "lovely-2026.05.04-09.46.17.log",
+  "source_file_size_bytes": 144728,
+  "start_timestamp": "2026-05-04T09:46:28"
+}

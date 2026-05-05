@@ -111,10 +111,13 @@
       }
     },
     {
-      "name": "obelisk_uses_visible_metadata_xmult",
+      "name": "obelisk_scales_visible_metadata_xmult_before_scoring",
       "kind": "score",
       "source": "synthetic visible-counter oracle candidate",
       "cards": "AS",
+      "played_hand_counts": {
+        "Pair": 1
+      },
       "jokers": [
         {
           "name": "Obelisk",
@@ -129,8 +132,8 @@
       ],
       "expected": {
         "hand_type": "High Card",
-        "xmult": 2.0,
-        "score": 32
+        "xmult": 2.2,
+        "score": 35
       }
     },
     {

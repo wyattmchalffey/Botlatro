@@ -2,16 +2,10 @@
   "schema": "balatro-ai.score-edge.v1",
   "cases": [
     {
-      "name": "obelisk_reset_and_current_xmult_needs_oracle",
+      "name": "visible_fractional_xmult_one_chip_floor_parity",
       "kind": "known_gap",
-      "source": "old replay corpus mismatch bucket",
-      "known_gap_reason": "Obelisk current XMult and reset timing must be captured from visible joker metadata or a real pre/post oracle row before exact validation."
-    },
-    {
-      "name": "certificate_generated_card_identity_needs_oracle",
-      "kind": "known_gap",
-      "source": "old replay corpus mismatch bucket",
-      "known_gap_reason": "Certificate creates a random sealed card at blind start; exact replay validation needs the generated card identity and deck/hand snapshot."
+      "source": "local sim replay validation residue",
+      "known_gap_reason": "Replay-visible fractional XMult values are rounded display strings; exact Lua floor parity can be one chip off when the hidden binary counter is not recoverable."
     },
     {
       "name": "the_hook_score_only_rows_need_post_hand_oracle",

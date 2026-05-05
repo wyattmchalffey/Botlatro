@@ -1,0 +1,19 @@
+Progress: 25/200
+Progress: 50/200
+Progress: 75/200
+Progress: 100/200
+Progress: 125/200
+Progress: 150/200
+Progress: 175/200
+Progress: 200/200
+Bot: search_bot_v1
+Stake: white
+Deck: unknown
+Profile: unknown
+Unlocks: unknown
+Runs: 200
+Win rate: 2.0%
+Average ante: 4.95
+Average final score: 17066.0
+Average final money: 25.6
+Average runtime: 108.29 sec/run

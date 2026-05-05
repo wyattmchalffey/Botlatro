@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
+from functools import lru_cache
 import json
 from pathlib import Path
 from random import Random
@@ -410,7 +411,14 @@ class ShopSampler:
 
 def load_shop_pool_data(path: Path | None = None) -> dict[str, Any]:
     data_path = path or SHOP_POOL_DATA_PATH
+    if path is None:
+        return _load_default_shop_pool_data()
     return json.loads(data_path.read_text(encoding="utf-8"))
+
+
+@lru_cache(maxsize=1)
+def _load_default_shop_pool_data() -> dict[str, Any]:
+    return json.loads(SHOP_POOL_DATA_PATH.read_text(encoding="utf-8"))
 
 
 def basic_strategy_shop_item_value(state: GameState, item: Mapping[str, Any]) -> float:

@@ -10,7 +10,16 @@ from balatro_ai.eval.compare import compare_paired_results, load_run_results
 from balatro_ai.eval.metrics import RunResult
 
 
-def result(seed: int, *, bot: str, won: bool, ante: int, score: int) -> RunResult:
+def result(
+    seed: int,
+    *,
+    bot: str,
+    won: bool,
+    ante: int,
+    score: int,
+    economy: dict[str, float] | None = None,
+    tarot_usage: dict[str, int] | None = None,
+) -> RunResult:
     return RunResult(
         bot_version=bot,
         seed=seed,
@@ -20,6 +29,8 @@ def result(seed: int, *, bot: str, won: bool, ante: int, score: int) -> RunResul
         final_score=score,
         final_money=0,
         runtime_seconds=1.0,
+        economy=economy or {},
+        tarot_usage=tarot_usage or {},
     )
 
 
@@ -55,6 +66,40 @@ class CompareTests(unittest.TestCase):
         self.assertIn("Wins flipped", comparison.to_text())
         self.assertEqual(comparison.to_json_dict()["win_rate"]["wins_flipped"], 2)
 
+    def test_compare_reports_paired_economy_deltas(self) -> None:
+        bot_a = (
+            result(1, bot="bot_a", won=False, ante=4, score=1000, economy={"money_spent_rerolls": 5}),
+            result(2, bot="bot_a", won=False, ante=4, score=1000, economy={"money_spent_rerolls": 10}),
+        )
+        bot_b = (
+            result(1, bot="bot_b", won=False, ante=4, score=1000, economy={"money_spent_rerolls": 0}),
+            result(2, bot="bot_b", won=False, ante=4, score=1000, economy={"money_spent_rerolls": 5}),
+        )
+
+        comparison = compare_paired_results(bot_a, bot_b, bootstrap_samples=10)
+
+        self.assertEqual(comparison.economy["money_spent_rerolls"]["bot_a_average"], 7.5)
+        self.assertEqual(comparison.economy["money_spent_rerolls"]["bot_b_average"], 2.5)
+        self.assertEqual(comparison.economy["money_spent_rerolls"]["average_delta"], -5.0)
+        self.assertIn("rerolls", comparison.to_text())
+
+    def test_compare_reports_paired_tarot_usage_deltas(self) -> None:
+        bot_a = (
+            result(1, bot="bot_a", won=False, ante=4, score=1000, tarot_usage={"The Hermit": 1}),
+            result(2, bot="bot_a", won=False, ante=4, score=1000, tarot_usage={"The Hermit": 2}),
+        )
+        bot_b = (
+            result(1, bot="bot_b", won=False, ante=4, score=1000, tarot_usage={"The Hermit": 3}),
+            result(2, bot="bot_b", won=False, ante=4, score=1000, tarot_usage={"Death": 1}),
+        )
+
+        comparison = compare_paired_results(bot_a, bot_b, bootstrap_samples=10)
+
+        self.assertEqual(comparison.tarot_usage["The Hermit"]["bot_a_average"], 1.5)
+        self.assertEqual(comparison.tarot_usage["The Hermit"]["bot_b_average"], 1.5)
+        self.assertEqual(comparison.tarot_usage["Death"]["average_delta"], 0.5)
+        self.assertIn("Tarot use deltas", comparison.to_text())
+
     def test_compare_uses_only_common_seeds(self) -> None:
         bot_a = (
             result(1, bot="bot_a", won=False, ante=1, score=100),
@@ -89,6 +134,8 @@ class CompareTests(unittest.TestCase):
                             "final_score": 12345,
                             "final_money": 67,
                             "runtime_seconds": 12.5,
+                            "economy": {"money_spent_jokers": 9, "ignored": "nope"},
+                            "tarot_usage": {"The Hermit": 2, "ignored": "nope"},
                         },
                     )
                 )
@@ -103,6 +150,8 @@ class CompareTests(unittest.TestCase):
         self.assertEqual(results[0].seed, 1)
         self.assertTrue(results[0].won)
         self.assertEqual(results[0].final_score, 12345)
+        self.assertEqual(results[0].economy, {"money_spent_jokers": 9.0})
+        self.assertEqual(results[0].tarot_usage, {"The Hermit": 2})
 
     def test_load_run_results_from_progress_log_keeps_retry_result(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

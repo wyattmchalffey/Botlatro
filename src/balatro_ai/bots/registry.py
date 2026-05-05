@@ -7,6 +7,7 @@ from balatro_ai.bots.base import Bot
 from balatro_ai.bots.greedy_bot import GreedyBot
 from balatro_ai.bots.random_bot import RandomBot
 from balatro_ai.bots.search_bot import SearchBot
+from balatro_ai.search.shop_search import ShopSearchConfig
 
 
 def create_bot(name: str, seed: int | None = None) -> Bot:
@@ -21,4 +22,11 @@ def create_bot(name: str, seed: int | None = None) -> Bot:
         return SearchBot(seed=seed)
     if normalized in {"search_bot_v1", "shop_search_bot"}:
         return SearchBot(seed=seed, enable_shop_search=True, name="search_bot_v1")
+    if normalized in {"search_bot_v1_trace", "shop_search_bot_trace"}:
+        return SearchBot(
+            seed=seed,
+            enable_shop_search=True,
+            shop_config=ShopSearchConfig(seed=seed or 0, reroll_samples=8, trace_top_paths=8),
+            name="search_bot_v1_trace",
+        )
     raise ValueError(f"Unknown bot: {name}")

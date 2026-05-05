@@ -12,9 +12,11 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass, replace
 from enum import StrEnum
+from functools import lru_cache
 from itertools import combinations
 import math
 import re
+from typing import Callable
 
 from balatro_ai.api.state import Card, Joker
 from balatro_ai.rules.joker_compat import is_blueprint_compatible
@@ -105,6 +107,8 @@ BLIND_DEBUFFED_SUITS = {
     "The Head": frozenset({"H", "Heart", "Hearts"}),
     "The Window": frozenset({"D", "Diamond", "Diamonds"}),
 }
+STONE_ENHANCEMENTS = frozenset({"stone", "stone card"})
+WILD_ENHANCEMENTS = frozenset({"wild", "wild card"})
 
 SUIT_ALIASES = {
     "C": "C",
@@ -127,6 +131,8 @@ SUIT_MULT_JOKERS = {
     "Wrathful Joker": ("S", 3),
     "Gluttonous Joker": ("C", 3),
 }
+_JOKER_EFFECT_TEXT_CACHE_LIMIT = 8192
+_JOKER_EFFECT_TEXT_CACHE: dict[int, tuple[Joker, str]] = {}
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,6 +170,20 @@ class HandEvaluation:
         return _score_floor(self.chips * self.mult * self.effect_xmult)
 
 
+@dataclass(slots=True)
+class _JokerEvaluationContext:
+    raw_jokers: tuple[Joker, ...]
+    ability_sources: tuple[int, ...]
+    ability_jokers: tuple[Joker, ...]
+    ability_pairs: tuple[tuple[Joker, Joker, int], ...]
+    active_ability_pairs: tuple[tuple[Joker, Joker, int], ...]
+    active_ability_jokers: tuple[Joker, ...]
+    active_ability_name_counts: Counter[str]
+    active_ability_names: frozenset[str]
+    joker_is_disabled: Callable[[Joker], bool]
+    disabled_joker_ids: frozenset[int]
+
+
 def evaluate_played_cards(
     cards: tuple[Card, ...] | list[Card],
     hand_levels: dict[str, int] | None = None,
@@ -178,18 +198,16 @@ def evaluate_played_cards(
     played_hand_types_this_round: tuple[HandType | str, ...] | list[HandType | str] = (),
     played_hand_counts: dict[str, int] | None = None,
     stochastic_outcomes: dict[str, object] | None = None,
+    _joker_context: _JokerEvaluationContext | None = None,
 ) -> HandEvaluation:
     """Evaluate a played hand without joker or enhancement effects."""
 
     original_cards = tuple(cards)
     outcomes = stochastic_outcomes or {}
     raw_jokers = tuple(jokers)
-    ability_jokers = _effective_ability_jokers(raw_jokers)
-    active_ability_jokers = tuple(
-        ability
-        for physical, ability in zip(raw_jokers, ability_jokers, strict=False)
-        if not _joker_is_disabled(physical) and not _joker_is_disabled(ability)
-    )
+    joker_context = _joker_context or _prepare_joker_evaluation_context(raw_jokers)
+    joker_is_disabled = joker_context.joker_is_disabled
+    active_ability_jokers = joker_context.active_ability_jokers
     hand_shape_cards = _cards_after_pre_score_transforms(original_cards, active_ability_jokers)
     if not hand_shape_cards:
         raise ValueError("Cannot evaluate an empty played hand")
@@ -208,6 +226,7 @@ def evaluate_played_cards(
         hand_shape_cards,
         raw_jokers,
         scoring_indices,
+        joker_is_disabled=joker_is_disabled,
     )
     base_level = max(1, int((hand_levels or {}).get(hand_type.value, 1)))
     space_joker_triggers = _outcome_int(outcomes, "space_joker_triggers") if _has_joker(active_ability_jokers, "Space Joker") else 0
@@ -250,6 +269,8 @@ def evaluate_played_cards(
         played_hand_counts=played_hand_counts or {},
         vampire_xmult_bonuses=vampire_xmult_bonuses,
         stochastic_outcomes=outcomes,
+        joker_is_disabled=joker_is_disabled,
+        joker_context=joker_context,
     )
 
     return HandEvaluation(
@@ -284,6 +305,7 @@ def best_play_from_hand(
     money: int = 0,
     played_hand_types_this_round: tuple[HandType | str, ...] | list[HandType | str] = (),
     played_hand_counts: dict[str, int] | None = None,
+    _joker_context: _JokerEvaluationContext | None = None,
 ) -> HandEvaluation:
     """Return the highest immediate-score play from the available hand."""
 
@@ -291,24 +313,28 @@ def best_play_from_hand(
     if not cards:
         raise ValueError("Cannot choose a best play from an empty hand")
 
+    joker_tuple = tuple(jokers)
+    joker_context = _joker_context or _prepare_joker_evaluation_context(joker_tuple)
     best: HandEvaluation | None = None
     max_size = min(max_cards, len(cards))
     for size in range(1, max_size + 1):
         for indexes in combinations(range(len(cards)), size):
             candidate_cards = tuple(cards[index] for index in indexes)
+            held_cards = tuple(cards[index] for index in range(len(cards)) if index not in indexes)
             evaluation = evaluate_played_cards(
                 candidate_cards,
                 hand_levels,
                 debuffed_suits=debuffed_suits,
                 blind_name=blind_name,
-                jokers=jokers,
+                jokers=joker_tuple,
                 discards_remaining=discards_remaining,
                 hands_remaining=hands_remaining,
-                held_cards=tuple(cards[index] for index in range(len(cards)) if index not in indexes),
+                held_cards=held_cards,
                 deck_size=deck_size,
                 money=money,
                 played_hand_types_this_round=played_hand_types_this_round,
                 played_hand_counts=played_hand_counts,
+                _joker_context=joker_context,
             )
             if best is None or _evaluation_sort_key(evaluation) > _evaluation_sort_key(best):
                 best = evaluation
@@ -323,12 +349,14 @@ def _identify_hand_type(cards: tuple[Card, ...], jokers: tuple[Joker, ...] = ())
     if not ranked_cards:
         return HandType.HIGH_CARD
 
+    joker_names = frozenset(joker.name for joker in jokers)
     rank_counts = Counter(card.rank for card in ranked_cards)
     counts = sorted(rank_counts.values())
-    straight_size = 4 if _has_joker(jokers, "Four Fingers") else 5
-    flush_size = 4 if _has_joker(jokers, "Four Fingers") else 5
-    is_flush = len(ranked_cards) >= flush_size and _flush_indices(ranked_cards, flush_size, jokers) != ()
-    is_straight = len(ranked_cards) >= straight_size and _straight_indices(ranked_cards, straight_size, jokers) != ()
+    four_fingers = "Four Fingers" in joker_names
+    straight_size = 4 if four_fingers else 5
+    flush_size = 4 if four_fingers else 5
+    is_flush = len(ranked_cards) >= flush_size and _flush_indices(ranked_cards, flush_size, jokers, joker_names=joker_names) != ()
+    is_straight = len(ranked_cards) >= straight_size and _straight_indices(ranked_cards, straight_size, jokers, joker_names=joker_names) != ()
     max_count = max(counts)
     pair_count = counts.count(2)
 
@@ -373,11 +401,13 @@ def _is_straight(cards: tuple[Card, ...], *, shortcut: bool = False) -> bool:
 
 
 def _scoring_indices(cards: tuple[Card, ...], hand_type: HandType, jokers: tuple[Joker, ...] = ()) -> tuple[int, ...]:
-    if _has_joker(jokers, "Splash"):
+    joker_names = frozenset(joker.name for joker in jokers)
+    if "Splash" in joker_names:
         return tuple(range(len(cards)))
 
-    stone_indices = tuple(index for index, card in enumerate(cards) if _is_stone_card(card))
-    ranked_indices = tuple(index for index, card in enumerate(cards) if not _is_stone_card(card))
+    stone_flags = _stone_mask(cards)
+    stone_indices = tuple(index for index, flag in enumerate(stone_flags) if flag)
+    ranked_indices = tuple(index for index, flag in enumerate(stone_flags) if not flag)
 
     if hand_type in {
         HandType.FULL_HOUSE,
@@ -388,19 +418,19 @@ def _scoring_indices(cards: tuple[Card, ...], hand_type: HandType, jokers: tuple
         return _with_stone_indices(ranked_indices, stone_indices, len(cards))
     if hand_type == HandType.STRAIGHT:
         return _with_stone_indices(
-            _five_or_four_fingers_indices(cards, jokers, _straight_indices),
+            _five_or_four_fingers_indices(cards, jokers, _straight_indices, joker_names=joker_names),
             stone_indices,
             len(cards),
         )
     if hand_type == HandType.FLUSH:
         return _with_stone_indices(
-            _five_or_four_fingers_indices(cards, jokers, _flush_indices),
+            _five_or_four_fingers_indices(cards, jokers, _flush_indices, joker_names=joker_names),
             stone_indices,
             len(cards),
         )
     if hand_type == HandType.STRAIGHT_FLUSH:
         return _with_stone_indices(
-            _five_or_four_fingers_straight_flush_indices(cards, jokers),
+            _five_or_four_fingers_straight_flush_indices(cards, jokers, joker_names=joker_names),
             stone_indices,
             len(cards),
         )
@@ -442,26 +472,36 @@ def _five_or_four_fingers_indices(
     cards: tuple[Card, ...],
     jokers: tuple[Joker, ...],
     finder,
+    *,
+    joker_names: frozenset[str] | None = None,
 ) -> tuple[int, ...]:
-    five_card_indices = finder(cards, 5, jokers)
-    if five_card_indices or not _has_joker(jokers, "Four Fingers"):
+    five_card_indices = finder(cards, 5, jokers, joker_names=joker_names)
+    if five_card_indices or not _joker_name_active(jokers, "Four Fingers", joker_names=joker_names):
         return five_card_indices
-    return finder(cards, 4, jokers)
+    return finder(cards, 4, jokers, joker_names=joker_names)
 
 
 def _five_or_four_fingers_straight_flush_indices(
     cards: tuple[Card, ...],
     jokers: tuple[Joker, ...],
+    *,
+    joker_names: frozenset[str] | None = None,
 ) -> tuple[int, ...]:
-    five_card_indices = _straight_flush_union_indices(cards, 5, jokers)
-    if five_card_indices or not _has_joker(jokers, "Four Fingers"):
+    five_card_indices = _straight_flush_union_indices(cards, 5, jokers, joker_names=joker_names)
+    if five_card_indices or not _joker_name_active(jokers, "Four Fingers", joker_names=joker_names):
         return five_card_indices
-    return _straight_flush_union_indices(cards, 4, jokers)
+    return _straight_flush_union_indices(cards, 4, jokers, joker_names=joker_names)
 
 
-def _straight_flush_union_indices(cards: tuple[Card, ...], size: int, jokers: tuple[Joker, ...]) -> tuple[int, ...]:
-    flush = _flush_indices(cards, size, jokers)
-    straight = _straight_indices(cards, size, jokers)
+def _straight_flush_union_indices(
+    cards: tuple[Card, ...],
+    size: int,
+    jokers: tuple[Joker, ...],
+    *,
+    joker_names: frozenset[str] | None = None,
+) -> tuple[int, ...]:
+    flush = _flush_indices(cards, size, jokers, joker_names=joker_names)
+    straight = _straight_indices(cards, size, jokers, joker_names=joker_names)
     if not flush or not straight:
         return ()
     selected = set(flush) | set(straight)
@@ -497,8 +537,14 @@ def _card_has_rank(card: Card, ranks: set[str]) -> bool:
     return not _is_stone_card(card) and card.rank in ranks
 
 
-def _card_has_suit(card: Card, suit: str, *, jokers: tuple[Joker, ...] = ()) -> bool:
-    return _card_is_suit_like_source(card, suit, jokers=jokers)
+def _card_has_suit(
+    card: Card,
+    suit: str,
+    *,
+    jokers: tuple[Joker, ...] = (),
+    joker_names: frozenset[str] | None = None,
+) -> bool:
+    return _card_is_suit_like_source(card, suit, jokers=jokers, joker_names=joker_names)
 
 
 def _card_is_suit_like_source(
@@ -506,6 +552,7 @@ def _card_is_suit_like_source(
     suit: str,
     *,
     jokers: tuple[Joker, ...] = (),
+    joker_names: frozenset[str] | None = None,
     bypass_debuff: bool = False,
     flush_calc: bool = False,
 ) -> bool:
@@ -514,7 +561,7 @@ def _card_is_suit_like_source(
             return False
         if _is_wild_enhancement(card) and not card.debuffed:
             return True
-        return _card_base_suit_matches(card, suit, jokers=jokers)
+        return _card_base_suit_matches(card, suit, jokers=jokers, joker_names=joker_names)
 
     if card.debuffed and not bypass_debuff:
         return False
@@ -522,13 +569,19 @@ def _card_is_suit_like_source(
         return False
     if _is_wild_enhancement(card):
         return True
-    return _card_base_suit_matches(card, suit, jokers=jokers)
+    return _card_base_suit_matches(card, suit, jokers=jokers, joker_names=joker_names)
 
 
-def _card_base_suit_matches(card: Card, suit: str, *, jokers: tuple[Joker, ...] = ()) -> bool:
+def _card_base_suit_matches(
+    card: Card,
+    suit: str,
+    *,
+    jokers: tuple[Joker, ...] = (),
+    joker_names: frozenset[str] | None = None,
+) -> bool:
     card_suit = _normalize_suit(card.suit)
     target_suit = _normalize_suit(suit)
-    if _has_joker(jokers, "Smeared Joker"):
+    if _joker_name_active(jokers, "Smeared Joker", joker_names=joker_names):
         return _smeared_suit_key(card_suit) == _smeared_suit_key(target_suit)
     return card_suit == target_suit
 
@@ -567,12 +620,15 @@ def _money_after_scoring_dollar_effects(
     scored_entries: tuple[tuple[int, Card], ...],
     trigger_counts: dict[int, int],
     ability_jokers: tuple[Joker, ...],
+    ability_name_counts: Counter[str] | None = None,
     blind_name: str,
     hand_type: HandType,
     played_hand_types_this_round: tuple[HandType | str, ...] | list[HandType | str] = (),
     stochastic_outcomes: dict[str, object] | None = None,
 ) -> int:
     outcomes = stochastic_outcomes or {}
+    name_counts = ability_name_counts if ability_name_counts is not None else Counter(joker.name for joker in ability_jokers)
+    joker_names = frozenset(name_counts)
     adjusted = money
     if blind_name == "The Tooth":
         adjusted -= len(played_cards)
@@ -583,28 +639,55 @@ def _money_after_scoring_dollar_effects(
     )
     adjusted += 3 * sum(1 for card in scoring_triggered_cards if _normalize_effect_name(card.seal) == "gold")
 
-    if _has_joker(ability_jokers, "Golden Ticket"):
+    if name_counts.get("Golden Ticket", 0):
         adjusted += 4 * sum(1 for card in scoring_triggered_cards if _normalize_effect_name(card.enhancement) in {"gold", "gold card"})
-    if _has_joker(ability_jokers, "Rough Gem"):
-        adjusted += sum(1 for card in scoring_triggered_cards if _card_has_suit(card, "D", jokers=ability_jokers))
+    if name_counts.get("Rough Gem", 0):
+        adjusted += sum(1 for card in scoring_triggered_cards if _card_has_suit(card, "D", jokers=ability_jokers, joker_names=joker_names))
     adjusted += 20 * max(0, _outcome_int(outcomes, "lucky_card_money_triggers"))
-    if _has_joker(ability_jokers, "Business Card"):
+    if name_counts.get("Business Card", 0):
         adjusted += 2 * max(0, _outcome_int(outcomes, "business_card_triggers"))
-    if _has_joker(ability_jokers, "Reserved Parking"):
+    if name_counts.get("Reserved Parking", 0):
         adjusted += max(0, _outcome_int(outcomes, "reserved_parking_triggers"))
-    if _has_joker(ability_jokers, "Matador") and _matador_triggered(
+    matador_count = name_counts.get("Matador", 0)
+    if matador_count and _matador_triggered(
         played_cards,
         blind_name=blind_name,
         hand_type=hand_type,
         played_hand_types_this_round=played_hand_types_this_round,
         stochastic_outcomes=outcomes,
     ):
-        adjusted += 8 * _joker_name_count(ability_jokers, "Matador")
+        adjusted += 8 * matador_count
     return adjusted
 
 
 def _supernova_current_mult(hand_type: HandType, played_hand_counts: dict[str, int]) -> int:
     return _int_or_zero(played_hand_counts.get(hand_type.value)) + 1
+
+
+def _obelisk_scoring_xmult(joker: Joker, hand_type: HandType, played_hand_counts: dict[str, int]) -> float:
+    current = _joker_current_xmult(joker)
+    played_after_this_hand = _int_or_zero(played_hand_counts.get(hand_type.value)) + 1
+    should_scale = any(
+        name != hand_type.value and _int_or_zero(played) >= played_after_this_hand
+        for name, played in played_hand_counts.items()
+    )
+    if not should_scale:
+        return 1.0
+    return current + _obelisk_xmult_gain(joker)
+
+
+def _obelisk_xmult_gain(joker: Joker) -> float:
+    for mapping in _metadata_numeric_sources(joker.metadata):
+        for key in ("xmult_gain", "x_mult_gain", "Xmult_mod", "extra"):
+            if key not in mapping:
+                continue
+            value = mapping[key]
+            if isinstance(value, dict):
+                continue
+            parsed = _float_or_none(value)
+            if parsed is not None:
+                return parsed
+    return 0.2
 
 
 def _matador_triggered(
@@ -683,16 +766,66 @@ def _effective_ability_jokers(jokers: tuple[Joker, ...]) -> tuple[Joker, ...]:
     return tuple(jokers[index] for index in _effective_ability_joker_indices(jokers))
 
 
+def _prepare_joker_evaluation_context(jokers: tuple[Joker, ...]) -> _JokerEvaluationContext:
+    raw_jokers = tuple(jokers)
+    ability_sources = _effective_ability_joker_indices(raw_jokers)
+    ability_jokers = tuple(raw_jokers[index] for index in ability_sources)
+    ability_pairs = tuple(zip(raw_jokers, ability_jokers, ability_sources, strict=False))
+    disabled_ids: set[int] = set()
+    for joker in raw_jokers:
+        if _joker_is_disabled(joker):
+            disabled_ids.add(id(joker))
+    for ability in ability_jokers:
+        if id(ability) not in disabled_ids and _joker_is_disabled(ability):
+            disabled_ids.add(id(ability))
+    disabled_joker_ids = frozenset(disabled_ids)
+    active_ability_pairs = tuple(
+        (physical, ability, source_index)
+        for physical, ability, source_index in ability_pairs
+        if id(physical) not in disabled_joker_ids and id(ability) not in disabled_joker_ids
+    )
+    active_ability_jokers = tuple(ability for _physical, ability, _source_index in active_ability_pairs)
+    active_ability_name_counts = Counter(joker.name for joker in active_ability_jokers)
+
+    def joker_is_disabled(joker: Joker, _ids: frozenset[int] = disabled_joker_ids) -> bool:
+        return id(joker) in _ids
+
+    return _JokerEvaluationContext(
+        raw_jokers=raw_jokers,
+        ability_sources=ability_sources,
+        ability_jokers=ability_jokers,
+        ability_pairs=ability_pairs,
+        active_ability_pairs=active_ability_pairs,
+        active_ability_jokers=active_ability_jokers,
+        active_ability_name_counts=active_ability_name_counts,
+        active_ability_names=frozenset(active_ability_name_counts),
+        joker_is_disabled=joker_is_disabled,
+        disabled_joker_ids=disabled_joker_ids,
+    )
+
+
 def _has_joker(jokers: tuple[Joker, ...], name: str) -> bool:
     return any(joker.name == name for joker in jokers)
+
+
+def _joker_name_active(jokers: tuple[Joker, ...], name: str, *, joker_names: frozenset[str] | None = None) -> bool:
+    if joker_names is not None:
+        return name in joker_names
+    return _has_joker(jokers, name)
 
 
 def _joker_name_count(jokers: tuple[Joker, ...], name: str) -> int:
     return sum(1 for joker in jokers if joker.name == name)
 
 
-def _straight_indices(cards: tuple[Card, ...], size: int, jokers: tuple[Joker, ...]) -> tuple[int, ...]:
-    shortcut = _has_joker(jokers, "Shortcut")
+def _straight_indices(
+    cards: tuple[Card, ...],
+    size: int,
+    jokers: tuple[Joker, ...],
+    *,
+    joker_names: frozenset[str] | None = None,
+) -> tuple[int, ...]:
+    shortcut = _joker_name_active(jokers, "Shortcut", joker_names=joker_names)
     best: tuple[int, ...] = ()
     for indexes in combinations(range(len(cards)), size):
         candidate = tuple(cards[index] for index in indexes)
@@ -702,12 +835,18 @@ def _straight_indices(cards: tuple[Card, ...], size: int, jokers: tuple[Joker, .
     return best
 
 
-def _flush_indices(cards: tuple[Card, ...], size: int, jokers: tuple[Joker, ...]) -> tuple[int, ...]:
+def _flush_indices(
+    cards: tuple[Card, ...],
+    size: int,
+    jokers: tuple[Joker, ...],
+    *,
+    joker_names: frozenset[str] | None = None,
+) -> tuple[int, ...]:
     groups: dict[str, list[int]] = {}
     for index, card in enumerate(cards):
         if _is_stone_card(card):
             continue
-        for suit_key in _flush_suit_keys(card, jokers):
+        for suit_key in _flush_suit_keys(card, jokers, joker_names=joker_names):
             groups.setdefault(suit_key, []).append(index)
     candidates = [tuple(indexes) for indexes in groups.values() if len(indexes) >= size]
     if not candidates:
@@ -715,34 +854,43 @@ def _flush_indices(cards: tuple[Card, ...], size: int, jokers: tuple[Joker, ...]
     return max(candidates, key=lambda indexes: _rank_sum(tuple(cards[index] for index in indexes)))
 
 
-def _straight_flush_indices(cards: tuple[Card, ...], size: int, jokers: tuple[Joker, ...]) -> tuple[int, ...]:
+def _straight_flush_indices(
+    cards: tuple[Card, ...],
+    size: int,
+    jokers: tuple[Joker, ...],
+    *,
+    joker_names: frozenset[str] | None = None,
+) -> tuple[int, ...]:
     best: tuple[int, ...] = ()
     for indexes in combinations(range(len(cards)), size):
         candidate = tuple(cards[index] for index in indexes)
         if any(_is_stone_card(card) for card in candidate):
             continue
-        same_suit = any(all(suit_key in _flush_suit_keys(card, jokers) for card in candidate) for suit_key in _possible_flush_keys(jokers))
-        if same_suit and _is_straight(candidate, shortcut=_has_joker(jokers, "Shortcut")):
+        same_suit = any(
+            all(suit_key in _flush_suit_keys(card, jokers, joker_names=joker_names) for card in candidate)
+            for suit_key in _possible_flush_keys(jokers, joker_names=joker_names)
+        )
+        if same_suit and _is_straight(candidate, shortcut=_joker_name_active(jokers, "Shortcut", joker_names=joker_names)):
             if not best or _rank_sum(candidate) > _rank_sum(tuple(cards[index] for index in best)):
                 best = tuple(indexes)
     return best
 
 
-def _flush_suit_keys(card: Card, jokers: tuple[Joker, ...]) -> tuple[str, ...]:
+def _flush_suit_keys(card: Card, jokers: tuple[Joker, ...], *, joker_names: frozenset[str] | None = None) -> tuple[str, ...]:
     if _is_wild_card(card):
-        return _possible_flush_keys(jokers)
-    return (_flush_suit_key(card.suit, jokers),)
+        return _possible_flush_keys(jokers, joker_names=joker_names)
+    return (_flush_suit_key(card.suit, jokers, joker_names=joker_names),)
 
 
-def _possible_flush_keys(jokers: tuple[Joker, ...]) -> tuple[str, ...]:
-    if _has_joker(jokers, "Smeared Joker"):
+def _possible_flush_keys(jokers: tuple[Joker, ...], *, joker_names: frozenset[str] | None = None) -> tuple[str, ...]:
+    if _joker_name_active(jokers, "Smeared Joker", joker_names=joker_names):
         return ("R", "B")
     return ("S", "H", "C", "D")
 
 
-def _flush_suit_key(suit: str, jokers: tuple[Joker, ...]) -> str:
+def _flush_suit_key(suit: str, jokers: tuple[Joker, ...], *, joker_names: frozenset[str] | None = None) -> str:
     normalized = _normalize_suit(suit)
-    if _has_joker(jokers, "Smeared Joker"):
+    if _joker_name_active(jokers, "Smeared Joker", joker_names=joker_names):
         return _smeared_suit_key(normalized)
     return normalized
 
@@ -766,26 +914,29 @@ def _scored_card_trigger_counts(
     scoring_indices: tuple[int, ...],
     cards: tuple[Card, ...],
     jokers: tuple[Joker, ...],
+    joker_name_counts: Counter[str] | None = None,
     hands_remaining: int,
 ) -> dict[int, int]:
     counts = {index: 1 for index, _ in scored_entries}
     if not scored_entries:
         return counts
 
+    name_counts = joker_name_counts if joker_name_counts is not None else Counter(joker.name for joker in jokers)
+    pareidolia_active = bool(name_counts.get("Pareidolia", 0))
     first_scored_index = scoring_indices[0] if scoring_indices else scored_entries[0][0]
     for index, card in scored_entries:
         extra = 0
         if card.seal and _normalize_effect_name(card.seal) == "red":
             extra += 1
         if _card_has_rank(card, {"2", "3", "4", "5"}):
-            extra += _joker_name_count(jokers, "Hack")
-        if _is_face_card(card, jokers):
-            extra += _joker_name_count(jokers, "Sock and Buskin")
+            extra += name_counts.get("Hack", 0)
+        if _is_face_card_with_pareidolia(card, pareidolia_active=pareidolia_active):
+            extra += name_counts.get("Sock and Buskin", 0)
         if hands_remaining == 1:
-            extra += _joker_name_count(jokers, "Dusk")
-        extra += _joker_name_count(jokers, "Seltzer")
+            extra += name_counts.get("Dusk", 0)
+        extra += name_counts.get("Seltzer", 0)
         if index == first_scored_index:
-            extra += 2 * _joker_name_count(jokers, "Hanging Chad")
+            extra += 2 * name_counts.get("Hanging Chad", 0)
         counts[index] += extra
     return counts
 
@@ -799,11 +950,15 @@ def _sum_triggers_for_cards(
 
 
 def _is_face_card(card: Card, jokers: tuple[Joker, ...]) -> bool:
+    return _is_face_card_with_pareidolia(card, pareidolia_active=_has_joker(jokers, "Pareidolia"))
+
+
+def _is_face_card_with_pareidolia(card: Card, *, pareidolia_active: bool) -> bool:
     if card.debuffed:
         return False
     if _is_stone_card(card):
         return False
-    return card.rank in {"J", "Q", "K"} or _has_joker(jokers, "Pareidolia")
+    return card.rank in {"J", "Q", "K"} or pareidolia_active
 
 
 def _effect_adjustments(
@@ -825,15 +980,32 @@ def _effect_adjustments(
     played_hand_counts: dict[str, int] | None = None,
     vampire_xmult_bonuses: tuple[float, ...] = (),
     stochastic_outcomes: dict[str, object] | None = None,
+    joker_is_disabled: Callable[[Joker], bool] | None = None,
+    ability_sources: tuple[int, ...] | None = None,
+    joker_context: _JokerEvaluationContext | None = None,
 ) -> tuple[int, int, float, int, int]:
     outcomes = stochastic_outcomes or {}
-    ability_sources = _effective_ability_joker_indices(jokers)
-    ability_pairs = tuple(zip(jokers, _effective_ability_jokers(jokers), ability_sources, strict=False))
-    ability_jokers = tuple(
-        ability
-        for physical, ability, _source_index in ability_pairs
-        if not _joker_is_disabled(physical) and not _joker_is_disabled(ability)
-    )
+    if joker_context is not None:
+        is_disabled = joker_context.joker_is_disabled
+        ability_pairs = joker_context.ability_pairs
+        active_ability_pairs = joker_context.active_ability_pairs
+        ability_jokers = joker_context.active_ability_jokers
+        ability_name_counts = joker_context.active_ability_name_counts
+        ability_names = joker_context.active_ability_names
+    else:
+        is_disabled = joker_is_disabled or _joker_disabled_checker()
+        resolved_sources = ability_sources if ability_sources is not None else _effective_ability_joker_indices(jokers)
+        effective_jokers = tuple(jokers[index] for index in resolved_sources)
+        ability_pairs = tuple(zip(jokers, effective_jokers, resolved_sources, strict=False))
+        active_ability_pairs = tuple(
+            (physical, ability, source_index)
+            for physical, ability, source_index in ability_pairs
+            if not is_disabled(physical) and not is_disabled(ability)
+        )
+        ability_jokers = tuple(ability for _physical, ability, _source_index in active_ability_pairs)
+        ability_name_counts = Counter(joker.name for joker in ability_jokers)
+        ability_names = frozenset(ability_name_counts)
+    pareidolia_active = "Pareidolia" in ability_names
     scored_entries = tuple(
         (index, cards[index])
         for index in scoring_indices
@@ -846,6 +1018,7 @@ def _effect_adjustments(
         scoring_indices=scoring_indices,
         cards=cards,
         jokers=ability_jokers,
+        joker_name_counts=ability_name_counts,
         hands_remaining=hands_remaining,
     )
     effect_chips = 0
@@ -859,6 +1032,7 @@ def _effect_adjustments(
         scored_entries=scored_entries,
         trigger_counts=trigger_counts,
         ability_jokers=ability_jokers,
+        ability_name_counts=ability_name_counts,
         blind_name=blind_name,
         hand_type=hand_type,
         played_hand_types_this_round=played_hand_types_this_round,
@@ -886,7 +1060,7 @@ def _effect_adjustments(
     hiker_chip_gain = 5 * sum(1 for joker in ability_jokers if joker.name == "Hiker")
     played_hand_types = _normalized_played_hand_types(played_hand_types_this_round)
     first_face_index = next(
-        (index for index, card in scored_entries if _is_face_card(card, ability_jokers)),
+        (index for index, card in scored_entries if _is_face_card_with_pareidolia(card, pareidolia_active=pareidolia_active)),
         None,
     )
 
@@ -898,34 +1072,34 @@ def _effect_adjustments(
             elif name == "Scholar" and _card_has_rank(card, {"A"}):
                 add_chips(20)
                 add_mult(4)
-            elif name == "Scary Face" and _is_face_card(card, ability_jokers):
+            elif name == "Scary Face" and _is_face_card_with_pareidolia(card, pareidolia_active=pareidolia_active):
                 add_chips(30)
-            elif name == "Arrowhead" and _card_has_suit(card, "S", jokers=ability_jokers):
+            elif name == "Arrowhead" and _card_has_suit(card, "S", jokers=ability_jokers, joker_names=ability_names):
                 add_chips(50)
             elif name == "Even Steven" and _card_has_rank(card, {"2", "4", "6", "8", "10", "T"}):
                 add_mult(4)
             elif name == "Odd Todd" and _card_has_rank(card, {"A", "3", "5", "7", "9"}):
                 add_chips(31)
-            elif name == "Smiley Face" and _is_face_card(card, ability_jokers):
+            elif name == "Smiley Face" and _is_face_card_with_pareidolia(card, pareidolia_active=pareidolia_active):
                 add_mult(5)
             elif name == "Walkie Talkie" and _card_has_rank(card, {"10", "T", "4"}):
                 add_chips(10)
                 add_mult(4)
-            elif name == "Onyx Agate" and _card_has_suit(card, "C", jokers=ability_jokers):
+            elif name == "Onyx Agate" and _card_has_suit(card, "C", jokers=ability_jokers, joker_names=ability_names):
                 add_mult(7)
             elif name in SUIT_MULT_JOKERS:
                 suit, mult = SUIT_MULT_JOKERS[name]
-                if _card_has_suit(card, suit, jokers=ability_jokers):
+                if _card_has_suit(card, suit, jokers=ability_jokers, joker_names=ability_names):
                     add_mult(mult)
             elif name == "Ancient Joker":
                 suit = _joker_target_suit(joker)
-                if suit and _card_has_suit(card, suit, jokers=ability_jokers):
+                if suit and _card_has_suit(card, suit, jokers=ability_jokers, joker_names=ability_names):
                     multiply_mult(1.5)
             elif name == "The Idol":
                 target = _joker_target_rank_suit(joker)
                 if target is not None:
                     rank, suit = target
-                    if _card_rank_matches(card, rank) and _card_has_suit(card, suit, jokers=ability_jokers):
+                    if _card_rank_matches(card, rank) and _card_has_suit(card, suit, jokers=ability_jokers, joker_names=ability_names):
                         multiply_mult(2)
             elif name == "Triboulet" and _card_has_rank(card, {"K", "Q"}):
                 multiply_mult(2)
@@ -950,11 +1124,11 @@ def _effect_adjustments(
             multiply_mult(_edition_xmult(card.edition))
             apply_scored_card_jokers(index, card)
 
-    if _has_joker(ability_jokers, "Bloodstone"):
+    if "Bloodstone" in ability_names:
         for _ in range(max(0, _outcome_int(outcomes, "bloodstone_triggers"))):
             multiply_mult(1.5)
 
-    mime_retrigger_count = _joker_name_count(ability_jokers, "Mime")
+    mime_retrigger_count = ability_name_counts.get("Mime", 0)
     lowest_held = _raised_fist_card(held_cards)
     for card in held_cards:
         held_effects = _held_card_effects(
@@ -972,9 +1146,7 @@ def _effect_adjustments(
                 add_mult(mult_delta)
                 multiply_mult(xmult_delta)
 
-    for physical_joker, ability_joker, source_index in ability_pairs:
-        if _joker_is_disabled(physical_joker) or _joker_is_disabled(ability_joker):
-            continue
+    for physical_joker, ability_joker, source_index in active_ability_pairs:
         name = ability_joker.name
         add_chips(_edition_chips(physical_joker.edition))
         add_mult(_edition_mult(physical_joker.edition))
@@ -1037,11 +1209,11 @@ def _effect_adjustments(
             multiply_mult(2)
         elif name == "Acrobat" and hands_remaining == 1:
             multiply_mult(3)
-        elif name == "Seeing Double" and _contains_scored_club_and_other_suit(scored_cards, ability_jokers):
+        elif name == "Seeing Double" and _contains_scored_club_and_other_suit(scored_cards, ability_jokers, joker_names=ability_names):
             multiply_mult(2)
-        elif name == "Flower Pot" and _contains_all_suits(scoring_cards, ability_jokers):
+        elif name == "Flower Pot" and _contains_all_suits(scoring_cards, ability_jokers, joker_names=ability_names):
             multiply_mult(3)
-        elif name == "Blackboard" and _blackboard_active(held_cards, ability_jokers):
+        elif name == "Blackboard" and _blackboard_active(held_cards, ability_jokers, joker_names=ability_names):
             multiply_mult(3)
         elif name == "Blue Joker":
             current_chips = 0 if _joker_is_hidden(ability_joker) else _joker_current_plus(ability_joker, suffix="chips")
@@ -1056,7 +1228,7 @@ def _effect_adjustments(
         elif name == "Green Joker":
             add_mult(_joker_current_plus(ability_joker, suffix="mult") + 1)
         elif name == "Ride the Bus":
-            if not any(_is_face_card(card, ability_jokers) for card in scored_cards):
+            if not any(_is_face_card_with_pareidolia(card, pareidolia_active=pareidolia_active) for card in scored_cards):
                 add_mult(_joker_current_plus(ability_joker, suffix="mult"))
                 add_mult(1)
         elif name == "Spare Trousers":
@@ -1080,8 +1252,10 @@ def _effect_adjustments(
         elif name == "Vampire":
             bonus = vampire_xmult_bonuses[source_index] if source_index < len(vampire_xmult_bonuses) else 0.0
             multiply_mult(_joker_current_xmult(ability_joker) + bonus)
-        elif name in {"Constellation", "Madness", "Hologram", "Obelisk"}:
+        elif name in {"Constellation", "Madness", "Hologram"}:
             multiply_mult(_joker_current_xmult(ability_joker))
+        elif name == "Obelisk":
+            multiply_mult(_obelisk_scoring_xmult(ability_joker, hand_type, played_counts))
         elif name == "Lucky Cat":
             current = _joker_current_xmult(ability_joker)
             current += 0.25 * max(0, _outcome_int(outcomes, "lucky_card_triggers"))
@@ -1116,10 +1290,7 @@ def _effect_adjustments(
 
 
 def _score_floor(value: float) -> int:
-    nearest = round(value)
-    if abs(value - nearest) <= 1e-12:
-        return int(nearest)
-    return int(value)
+    return math.floor(value)
 
 
 def _cards_after_pre_score_transforms(cards: tuple[Card, ...], ability_jokers: tuple[Joker, ...]) -> tuple[Card, ...]:
@@ -1135,14 +1306,17 @@ def _cards_after_vampire_transforms(
     cards: tuple[Card, ...],
     jokers: tuple[Joker, ...],
     scoring_indices: tuple[int, ...],
+    *,
+    joker_is_disabled: Callable[[Joker], bool] | None = None,
 ) -> tuple[tuple[Card, ...], tuple[float, ...]]:
-    if not any(joker.name == "Vampire" and not _joker_is_disabled(joker) for joker in jokers):
+    is_disabled = joker_is_disabled or _joker_disabled_checker()
+    if not any(joker.name == "Vampire" and not is_disabled(joker) for joker in jokers):
         return cards, tuple(0.0 for _ in jokers)
 
     updated = list(cards)
     bonuses = [0.0 for _ in jokers]
     for joker_index, joker in enumerate(jokers):
-        if joker.name != "Vampire" or _joker_is_disabled(joker):
+        if joker.name != "Vampire" or is_disabled(joker):
             continue
         stripped = 0
         for card_index in scoring_indices:
@@ -1225,23 +1399,51 @@ def _raised_fist_card(held_cards: tuple[Card, ...]) -> Card | None:
     return next(card for card in reversed(candidates) if STRAIGHT_VALUES[card.rank] == lowest_rank)
 
 
-def _blackboard_active(held_cards: tuple[Card, ...], jokers: tuple[Joker, ...]) -> bool:
-    return bool(held_cards) and all(_blackboard_card_is_black(card, jokers) for card in held_cards)
+def _blackboard_active(
+    held_cards: tuple[Card, ...],
+    jokers: tuple[Joker, ...],
+    *,
+    joker_names: frozenset[str] | None = None,
+) -> bool:
+    return bool(held_cards) and all(_blackboard_card_is_black(card, jokers, joker_names=joker_names) for card in held_cards)
 
 
-def _blackboard_card_is_black(card: Card, jokers: tuple[Joker, ...]) -> bool:
+def _blackboard_card_is_black(card: Card, jokers: tuple[Joker, ...], *, joker_names: frozenset[str] | None = None) -> bool:
     if _is_stone_card(card):
         return False
-    return _card_is_suit_like_source(card, "S", jokers=jokers, flush_calc=True) or _card_is_suit_like_source(
+    return _card_is_suit_like_source(card, "S", jokers=jokers, joker_names=joker_names, flush_calc=True) or _card_is_suit_like_source(
         card,
         "C",
         jokers=jokers,
+        joker_names=joker_names,
         flush_calc=True,
     )
 
 
+_STONE_ENHANCEMENT_FLAG_CACHE: dict[str | None, bool] = {None: False}
+
+
 def _is_stone_card(card: Card) -> bool:
-    return _normalize_effect_name(card.enhancement) in {"stone", "stone card"}
+    enh = card.enhancement
+    cache = _STONE_ENHANCEMENT_FLAG_CACHE
+    flag = cache.get(enh)
+    if flag is None:
+        flag = _normalize_effect_name(enh) in STONE_ENHANCEMENTS
+        cache[enh] = flag
+    return flag
+
+
+def _stone_mask(cards: tuple[Card, ...]) -> tuple[bool, ...]:
+    cache = _STONE_ENHANCEMENT_FLAG_CACHE
+    mask: list[bool] = []
+    for card in cards:
+        enh = card.enhancement
+        flag = cache.get(enh)
+        if flag is None:
+            flag = _normalize_effect_name(enh) in STONE_ENHANCEMENTS
+            cache[enh] = flag
+        mask.append(flag)
+    return tuple(mask)
 
 
 def _is_wild_card(card: Card) -> bool:
@@ -1249,7 +1451,7 @@ def _is_wild_card(card: Card) -> bool:
 
 
 def _is_wild_enhancement(card: Card) -> bool:
-    return _normalize_effect_name(card.enhancement) in {"wild", "wild card"}
+    return _is_wild_enhancement_name(card.enhancement)
 
 
 def _card_is_debuffed_by_suit(card: Card, debuffed_suits: frozenset[str]) -> bool:
@@ -1375,10 +1577,21 @@ def _edition_xmult(edition: str | None) -> float:
     return 1.0
 
 
+@lru_cache(maxsize=128)
 def _normalize_effect_name(name: str | None) -> str:
     if name is None:
         return ""
     return name.removeprefix("m_").replace("_", " ").lower()
+
+
+@lru_cache(maxsize=32)
+def _is_stone_enhancement(name: str | None) -> bool:
+    return _normalize_effect_name(name) in STONE_ENHANCEMENTS
+
+
+@lru_cache(maxsize=32)
+def _is_wild_enhancement_name(name: str | None) -> bool:
+    return _normalize_effect_name(name) in WILD_ENHANCEMENTS
 
 
 def _joker_current_plus(joker: Joker, *, suffix: str) -> int:
@@ -1396,12 +1609,28 @@ def _joker_current_xmult(joker: Joker) -> float:
     match = re.search(r"currently\s+x\s*([0-9]+(?:\.[0-9]+)?)", effect, flags=re.IGNORECASE)
     if match:
         visible = float(match.group(1))
-        return _ramen_internal_xmult_from_visible(visible) if joker.name == "Ramen" else visible
+        return _internal_xmult_from_visible(joker, visible)
     match = re.search(r"\bx\s*([0-9]+(?:\.[0-9]+)?)\s*mult", effect, flags=re.IGNORECASE)
     if match:
         visible = float(match.group(1))
-        return _ramen_internal_xmult_from_visible(visible) if joker.name == "Ramen" else visible
+        return _internal_xmult_from_visible(joker, visible)
     return _metadata_current_xmult(joker)
+
+
+def _internal_xmult_from_visible(joker: Joker, visible: float) -> float:
+    if joker.name == "Ramen":
+        return _ramen_internal_xmult_from_visible(visible)
+    if joker.name == "Constellation":
+        return _incremented_xmult_from_visible(visible, step=0.1)
+    return visible
+
+
+def _incremented_xmult_from_visible(visible: float, *, step: float) -> float:
+    increments = max(0, round((visible - 1.0) / step))
+    current = 1.0
+    for _ in range(increments):
+        current += step
+    return current
 
 
 def _ramen_internal_xmult_from_visible(visible: float) -> float:
@@ -1413,10 +1642,32 @@ def _ramen_internal_xmult_from_visible(visible: float) -> float:
 
 
 def _joker_effect_text(joker: Joker) -> str:
+    cached = _JOKER_EFFECT_TEXT_CACHE.get(id(joker))
+    if cached is not None and cached[0] is joker:
+        return cached[1]
     value = joker.metadata.get("value")
     if isinstance(value, dict):
-        return str(value.get("effect", ""))
-    return str(joker.metadata.get("effect", ""))
+        text = str(value.get("effect", ""))
+    else:
+        text = str(joker.metadata.get("effect", ""))
+    if len(_JOKER_EFFECT_TEXT_CACHE) >= _JOKER_EFFECT_TEXT_CACHE_LIMIT:
+        _JOKER_EFFECT_TEXT_CACHE.clear()
+    _JOKER_EFFECT_TEXT_CACHE[id(joker)] = (joker, text)
+    return text
+
+
+def _joker_disabled_checker() -> Callable[[Joker], bool]:
+    cache: dict[int, tuple[Joker, bool]] = {}
+
+    def is_disabled(joker: Joker) -> bool:
+        cached = cache.get(id(joker))
+        if cached is not None and cached[0] is joker:
+            return cached[1]
+        value = _joker_is_disabled(joker)
+        cache[id(joker)] = (joker, value)
+        return value
+
+    return is_disabled
 
 
 def _joker_is_disabled(joker: Joker) -> bool:
@@ -1476,7 +1727,7 @@ def _metadata_current_xmult(joker: Joker) -> float:
 
 
 def _metadata_current_xmult_or_none(joker: Joker) -> float | None:
-    keys = ("current_xmult", "xmult", "current_x_mult", "x_mult")
+    keys = ("current_xmult", "xmult", "current_x_mult", "x_mult", "Xmult", "X_mult")
     for mapping in _metadata_numeric_sources(joker.metadata):
         for key in keys:
             if key in mapping:
@@ -1827,38 +2078,48 @@ def _normalize_joker_rarity(candidate: object) -> str:
     }.get(text, text)
 
 
-def _contains_scored_club_and_other_suit(cards: tuple[Card, ...], jokers: tuple[Joker, ...]) -> bool:
+def _contains_scored_club_and_other_suit(
+    cards: tuple[Card, ...],
+    jokers: tuple[Joker, ...],
+    *,
+    joker_names: frozenset[str] | None = None,
+) -> bool:
     suits = {suit: 0 for suit in ("H", "D", "S", "C")}
     for card in cards:
         if _is_wild_enhancement(card):
             continue
         for suit in suits:
-            if _card_is_suit_like_source(card, suit, jokers=jokers):
+            if _card_is_suit_like_source(card, suit, jokers=jokers, joker_names=joker_names):
                 suits[suit] += 1
     for card in cards:
         if not _is_wild_enhancement(card):
             continue
         for suit in ("C", "D", "S", "H"):
-            if _card_is_suit_like_source(card, suit, jokers=jokers) and suits[suit] == 0:
+            if _card_is_suit_like_source(card, suit, jokers=jokers, joker_names=joker_names) and suits[suit] == 0:
                 suits[suit] += 1
                 break
     return (suits["H"] > 0 or suits["D"] > 0 or suits["S"] > 0) and suits["C"] > 0
 
 
-def _contains_all_suits(cards: tuple[Card, ...], jokers: tuple[Joker, ...]) -> bool:
+def _contains_all_suits(
+    cards: tuple[Card, ...],
+    jokers: tuple[Joker, ...],
+    *,
+    joker_names: frozenset[str] | None = None,
+) -> bool:
     suits = {suit: 0 for suit in ("H", "D", "S", "C")}
     for card in cards:
         if _is_wild_enhancement(card):
             continue
         for suit in ("H", "D", "S", "C"):
-            if _card_is_suit_like_source(card, suit, jokers=jokers, bypass_debuff=True) and suits[suit] == 0:
+            if _card_is_suit_like_source(card, suit, jokers=jokers, joker_names=joker_names, bypass_debuff=True) and suits[suit] == 0:
                 suits[suit] += 1
                 break
     for card in cards:
         if not _is_wild_enhancement(card):
             continue
         for suit in ("H", "D", "S", "C"):
-            if _card_is_suit_like_source(card, suit, jokers=jokers) and suits[suit] == 0:
+            if _card_is_suit_like_source(card, suit, jokers=jokers, joker_names=joker_names) and suits[suit] == 0:
                 suits[suit] += 1
                 break
     return all(count > 0 for count in suits.values())
@@ -1900,6 +2161,7 @@ def _contains_flush(hand_type: HandType) -> bool:
     }
 
 
+@lru_cache(maxsize=32)
 def debuffed_suits_for_blind(blind_name: str) -> frozenset[str]:
     return _normalize_suits(BLIND_DEBUFFED_SUITS.get(blind_name, frozenset()))
 
@@ -1908,5 +2170,6 @@ def _normalize_suits(suits: set[str] | frozenset[str]) -> frozenset[str]:
     return frozenset(_normalize_suit(suit) for suit in suits)
 
 
+@lru_cache(maxsize=32)
 def _normalize_suit(suit: str) -> str:
     return SUIT_ALIASES.get(suit, suit)

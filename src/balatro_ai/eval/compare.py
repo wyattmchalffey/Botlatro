@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 from math import comb, erf, sqrt
 from pathlib import Path
@@ -26,6 +26,22 @@ PROGRESS_RESULT_PATTERN = re.compile(
     r"runtime=(?P<runtime>[0-9]+(?:\.[0-9]+)?)s"
     r"(?:\s+death=(?P<death>.*))?$"
 )
+_DISPLAY_ECONOMY_KEYS = (
+    "money_effective_purchase_power",
+    "money_income_total",
+    "money_income_cash_out",
+    "money_income_sell",
+    "money_spent_total",
+    "money_spent_jokers",
+    "money_spent_consumables",
+    "money_spent_booster_packs",
+    "money_spent_vouchers",
+    "money_spent_rerolls",
+    "money_spent_playing_cards",
+    "money_spent_blind_effects",
+    "money_unspent_final",
+)
+_DISPLAY_TAROT_LIMIT = 24
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,35 +65,61 @@ class ComparisonSummary:
     average_score_delta: float
     score_delta_ci_low: float
     score_delta_ci_high: float
+    economy: dict[str, dict[str, float]] = field(default_factory=dict)
+    tarot_usage: dict[str, dict[str, float]] = field(default_factory=dict)
 
     def to_text(self) -> str:
-        return "\n".join(
-            (
-                "Paired bot comparison",
-                f"Bot A: {self.bot_a}",
-                f"Bot B: {self.bot_b}",
-                f"Stake: {self.stake}",
-                f"Paired seeds: {self.seed_count}",
-                "",
-                f"Bot A win rate: {self.bot_a_win_rate:.1%}",
-                f"Bot B win rate: {self.bot_b_win_rate:.1%}",
-                f"Win rate delta: {self.win_rate_delta:+.1%}",
-                f"Wins flipped (A lost, B won): {self.wins_flipped}",
-                f"Wins lost (A won, B lost): {self.wins_lost}",
-                f"McNemar p-value: {self.mcnemar_p_value:.6g}",
-                "",
-                f"Bot A average ante: {self.bot_a_average_ante:.2f}",
-                f"Bot B average ante: {self.bot_b_average_ante:.2f}",
-                f"Average ante delta: {self.average_ante_delta:+.2f}",
-                f"Wilcoxon signed-rank p-value: {self.wilcoxon_ante_p_value:.6g}",
-                "",
-                f"Bot A average score: {self.bot_a_average_score:.1f}",
-                f"Bot B average score: {self.bot_b_average_score:.1f}",
-                f"Average score delta: {self.average_score_delta:+.1f}",
-                "Score delta bootstrap 95% CI: "
-                f"[{self.score_delta_ci_low:+.1f}, {self.score_delta_ci_high:+.1f}]",
+        lines = [
+            "Paired bot comparison",
+            f"Bot A: {self.bot_a}",
+            f"Bot B: {self.bot_b}",
+            f"Stake: {self.stake}",
+            f"Paired seeds: {self.seed_count}",
+            "",
+            f"Bot A win rate: {self.bot_a_win_rate:.1%}",
+            f"Bot B win rate: {self.bot_b_win_rate:.1%}",
+            f"Win rate delta: {self.win_rate_delta:+.1%}",
+            f"Wins flipped (A lost, B won): {self.wins_flipped}",
+            f"Wins lost (A won, B lost): {self.wins_lost}",
+            f"McNemar p-value: {self.mcnemar_p_value:.6g}",
+            "",
+            f"Bot A average ante: {self.bot_a_average_ante:.2f}",
+            f"Bot B average ante: {self.bot_b_average_ante:.2f}",
+            f"Average ante delta: {self.average_ante_delta:+.2f}",
+            f"Wilcoxon signed-rank p-value: {self.wilcoxon_ante_p_value:.6g}",
+            "",
+            f"Bot A average score: {self.bot_a_average_score:.1f}",
+            f"Bot B average score: {self.bot_b_average_score:.1f}",
+            f"Average score delta: {self.average_score_delta:+.1f}",
+            "Score delta bootstrap 95% CI: "
+            f"[{self.score_delta_ci_low:+.1f}, {self.score_delta_ci_high:+.1f}]",
+        ]
+        if self.economy:
+            lines.extend(("", "Economy deltas"))
+            for key in _DISPLAY_ECONOMY_KEYS:
+                if key not in self.economy:
+                    continue
+                item = self.economy[key]
+                label = key.removeprefix("money_").replace("_", " ")
+                lines.append(
+                    f"{label}: A={item['bot_a_average']:.1f}, "
+                    f"B={item['bot_b_average']:.1f}, delta={item['average_delta']:+.1f}"
+                )
+        if self.tarot_usage:
+            lines.extend(("", "Tarot use deltas"))
+            total_a = sum(item["bot_a_average"] for item in self.tarot_usage.values())
+            total_b = sum(item["bot_b_average"] for item in self.tarot_usage.values())
+            lines.append(f"total: A={total_a:.2f}, B={total_b:.2f}, delta={total_b - total_a:+.2f}")
+            ordered = sorted(
+                self.tarot_usage.items(),
+                key=lambda item: (-abs(item[1]["average_delta"]), item[0]),
             )
-        )
+            for name, item in ordered[:_DISPLAY_TAROT_LIMIT]:
+                lines.append(
+                    f"{name}: A={item['bot_a_average']:.2f}, "
+                    f"B={item['bot_b_average']:.2f}, delta={item['average_delta']:+.2f}"
+                )
+        return "\n".join(lines)
 
     def to_json_dict(self) -> dict[str, object]:
         return {
@@ -105,6 +147,8 @@ class ComparisonSummary:
                 "average_delta": self.average_score_delta,
                 "bootstrap_95_ci": [self.score_delta_ci_low, self.score_delta_ci_high],
             },
+            "economy": self.economy,
+            "tarot_usage": self.tarot_usage,
         }
 
 
@@ -152,6 +196,8 @@ def compare_paired_results(
         average_score_delta=mean(score_deltas),
         score_delta_ci_low=score_low,
         score_delta_ci_high=score_high,
+        economy=_economy_comparison(paired_a, paired_b),
+        tarot_usage=_tarot_usage_comparison(paired_a, paired_b),
     )
 
 
@@ -204,6 +250,8 @@ def _load_jsonl_results(path: Path, *, default_bot: str, default_stake: str) -> 
                     final_money=_int_value(row.get("final_money")),
                     runtime_seconds=_float_value(row.get("runtime_seconds")),
                     death_reason=_optional_string(row.get("death_reason")),
+                    economy=_economy_payload(row.get("economy")),
+                    tarot_usage=_tarot_usage_payload(row.get("tarot_usage", row.get("tarot_cards_used"))),
                 )
             )
     return tuple(results)
@@ -307,6 +355,42 @@ def _bootstrap_mean_ci(
     return (float(means[low_index]), float(means[high_index]))
 
 
+def _economy_comparison(paired_a: tuple[RunResult, ...], paired_b: tuple[RunResult, ...]) -> dict[str, dict[str, float]]:
+    keys = sorted({key for result in paired_a + paired_b for key in result.economy})
+    if not keys:
+        return {}
+    return {
+        key: {
+            "bot_a_average": mean(float(result.economy.get(key, 0.0)) for result in paired_a),
+            "bot_b_average": mean(float(result.economy.get(key, 0.0)) for result in paired_b),
+            "average_delta": mean(
+                float(b.economy.get(key, 0.0)) - float(a.economy.get(key, 0.0))
+                for a, b in zip(paired_a, paired_b, strict=True)
+            ),
+        }
+        for key in keys
+    }
+
+
+def _tarot_usage_comparison(
+    paired_a: tuple[RunResult, ...], paired_b: tuple[RunResult, ...]
+) -> dict[str, dict[str, float]]:
+    keys = sorted({key for result in paired_a + paired_b for key in result.tarot_usage})
+    if not keys:
+        return {}
+    return {
+        key: {
+            "bot_a_average": mean(float(result.tarot_usage.get(key, 0)) for result in paired_a),
+            "bot_b_average": mean(float(result.tarot_usage.get(key, 0)) for result in paired_b),
+            "average_delta": mean(
+                float(b.tarot_usage.get(key, 0)) - float(a.tarot_usage.get(key, 0))
+                for a, b in zip(paired_a, paired_b, strict=True)
+            ),
+        }
+        for key in keys
+    }
+
+
 def _int_value(value: object) -> int:
     try:
         return int(value)
@@ -326,6 +410,34 @@ def _optional_string(value: object) -> str | None:
         return None
     text = str(value)
     return text if text else None
+
+
+def _economy_payload(value: object) -> dict[str, float]:
+    if not isinstance(value, dict):
+        return {}
+    payload: dict[str, float] = {}
+    for key, raw in value.items():
+        if isinstance(raw, bool):
+            continue
+        if isinstance(raw, int | float):
+            payload[str(key)] = float(raw)
+    return payload
+
+
+def _tarot_usage_payload(value: object) -> dict[str, int]:
+    if not isinstance(value, dict):
+        return {}
+    payload: dict[str, int] = {}
+    for key, raw in value.items():
+        if isinstance(raw, bool):
+            continue
+        try:
+            count = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if count > 0:
+            payload[str(key)] = count
+    return payload
 
 
 def _filter_seed_values(results: tuple[RunResult, ...], seed_values: tuple[int, ...]) -> tuple[RunResult, ...]:

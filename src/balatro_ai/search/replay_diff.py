@@ -8,6 +8,7 @@ from dataclasses import dataclass, field, replace
 from itertools import combinations
 import json
 from pathlib import Path
+import re
 from typing import Iterable
 
 from balatro_ai.api.actions import Action, ActionType
@@ -42,16 +43,7 @@ SUPPORTED_ACTIONS = frozenset(
         ActionType.SELECT_BLIND,
     }
 )
-KNOWN_GAP_JOKERS = {
-    "Bloodstone": "Bloodstone has probabilistic XMult triggers",
-    "Business Card": "Business Card has probabilistic money triggers",
-    "Ceremonial Dagger": "Ceremonial Dagger current mult is dynamic",
-    "Certificate": "Certificate-created cards can differ in older replay hand/deck snapshots",
-    "Misprint": "Misprint has random mult",
-    "Obelisk": "Obelisk depends on prior hand-type history and reset timing",
-    "Ramen": "Ramen fractional XMult can differ by Lua rounding",
-    "Space Joker": "Space Joker can randomly upgrade hand level before scoring",
-}
+KNOWN_GAP_JOKERS: dict[str, str] = {}
 KNOWN_GAP_BLINDS = {
     "The Pillar": "The Pillar debuffs previously played cards not always represented in card state",
 }
@@ -486,6 +478,45 @@ def _simulate_play_transition(pre_state: GameState, post_state: GameState, actio
     drawn_cards = _drawn_cards_from_post_state(held_cards_after_hook, post_state.hand)
     if hook_discarded_cards:
         stochastic_outcomes["hook_discarded_cards"] = hook_discarded_cards
+    space_joker_triggers = _infer_play_outcome_int(
+        pre_state,
+        post_state,
+        action,
+        drawn_cards,
+        created_consumables,
+        stochastic_outcomes,
+        key="space_joker_triggers",
+        max_count=_first_draw_effective_joker_count(pre_state.jokers, "Space Joker"),
+        fields=("current_score", "phase", "hand_levels"),
+    )
+    if space_joker_triggers is not None:
+        stochastic_outcomes["space_joker_triggers"] = space_joker_triggers
+    bloodstone_triggers = _infer_play_outcome_int(
+        pre_state,
+        post_state,
+        action,
+        drawn_cards,
+        created_consumables,
+        stochastic_outcomes,
+        key="bloodstone_triggers",
+        max_count=40 if _first_draw_effective_joker_count(pre_state.jokers, "Bloodstone") else 0,
+        fields=("current_score", "phase"),
+    )
+    if bloodstone_triggers is not None:
+        stochastic_outcomes["bloodstone_triggers"] = bloodstone_triggers
+    business_card_triggers = _infer_play_outcome_int(
+        pre_state,
+        post_state,
+        action,
+        drawn_cards,
+        created_consumables,
+        stochastic_outcomes,
+        key="business_card_triggers",
+        max_count=40 if _first_draw_effective_joker_count(pre_state.jokers, "Business Card") else 0,
+        fields=("current_score", "money", "phase"),
+    )
+    if business_card_triggers is not None:
+        stochastic_outcomes["business_card_triggers"] = business_card_triggers
     misprint_mult = _infer_misprint_mult(
         pre_state,
         post_state,
@@ -516,6 +547,20 @@ def _simulate_play_transition(pre_state: GameState, post_state: GameState, actio
             stochastic_outcomes,
         )
     )
+    if "business_card_triggers" not in stochastic_outcomes:
+        business_card_triggers = _infer_play_outcome_int(
+            pre_state,
+            post_state,
+            action,
+            drawn_cards,
+            created_consumables,
+            stochastic_outcomes,
+            key="business_card_triggers",
+            max_count=40 if _first_draw_effective_joker_count(pre_state.jokers, "Business Card") else 0,
+            fields=("current_score", "money", "phase"),
+        )
+        if business_card_triggers is not None:
+            stochastic_outcomes["business_card_triggers"] = business_card_triggers
     simulated = simulate_play(
         pre_state,
         action,
@@ -567,6 +612,37 @@ def _infer_lucky_card_outcomes(
                     "lucky_card_triggers": max(mult_triggers, money_triggers),
                 }
     return {}
+
+
+def _infer_play_outcome_int(
+    pre_state: GameState,
+    post_state: GameState,
+    action: Action,
+    drawn_cards: tuple[Card, ...],
+    created_consumables: tuple[str, ...],
+    stochastic_outcomes: dict[str, object],
+    *,
+    key: str,
+    max_count: int,
+    fields: tuple[str, ...],
+) -> int | None:
+    if key in stochastic_outcomes or max_count <= 0:
+        return None
+    for amount in range(1, max_count + 1):
+        candidate_outcomes = {**stochastic_outcomes, key: amount}
+        try:
+            candidate = simulate_play(
+                pre_state,
+                action,
+                drawn_cards,
+                created_consumables=created_consumables,
+                stochastic_outcomes=candidate_outcomes,
+            )
+        except ValueError:
+            continue
+        if all(getattr(candidate, field) == getattr(post_state, field) for field in fields):
+            return amount
+    return None
 
 
 def _action_stochastic_outcomes(action: Action) -> dict[str, object]:
@@ -814,10 +890,6 @@ def _buy_surface_injections(pre_state: GameState, post_state: GameState, action:
 
 def _play_stochastic_outcomes_from_post_state(pre_state: GameState, post_state: GameState) -> dict[str, object]:
     outcomes: dict[str, object] = {"removed_jokers": _removed_joker_names(pre_state.jokers, post_state.jokers)}
-    if any(joker.name == "Business Card" for joker in pre_state.jokers):
-        money_delta = post_state.money - pre_state.money
-        if money_delta > 0:
-            outcomes["business_card_triggers"] = money_delta // 2
     crimson_disabled_index = _crimson_heart_disabled_joker_index_from_post_state(pre_state, post_state)
     if crimson_disabled_index is not None:
         outcomes["crimson_heart_disabled_joker_index"] = crimson_disabled_index
@@ -1213,6 +1285,8 @@ def _known_gap_reason(
 ) -> str | None:
     if _crimson_heart_hidden_card_metadata_gap(state, action, mismatch_details):
         return "Crimson Heart score depends on hidden card metadata missing from older replay logs"
+    if _visible_fractional_xmult_floor_gap(state, action, mismatch_details):
+        return "Visible fractional XMult can land one chip off Lua floor"
     if state.blind in KNOWN_GAP_BLINDS:
         return KNOWN_GAP_BLINDS[state.blind]
     for joker in state.jokers:
@@ -1232,6 +1306,38 @@ def _crimson_heart_hidden_card_metadata_gap(
     if not any(getattr(detail, "field", None) == "current_score" for detail in mismatch_details):
         return False
     return True
+
+
+def _visible_fractional_xmult_floor_gap(
+    state: GameState,
+    action: Action | None,
+    mismatch_details: Iterable[object],
+) -> bool:
+    if action is None or action.action_type != ActionType.PLAY_HAND:
+        return False
+    details = tuple(mismatch_details)
+    if len(details) != 1 or getattr(details[0], "field", None) != "current_score":
+        return False
+    simulated = getattr(details[0], "simulated", None)
+    actual = getattr(details[0], "actual", None)
+    if not isinstance(simulated, int | float) or not isinstance(actual, int | float):
+        return False
+    if abs(int(simulated) - int(actual)) != 1:
+        return False
+    return any(_joker_has_visible_fractional_xmult(joker) for joker in state.jokers)
+
+
+def _joker_has_visible_fractional_xmult(joker: Joker) -> bool:
+    for source in _metadata_sources(joker.metadata):
+        effect = source.get("effect")
+        if isinstance(effect, str) and re.search(r"\bx\s*\d+\.\d+", effect, flags=re.IGNORECASE):
+            return True
+    value = joker.metadata.get("value")
+    if isinstance(value, dict):
+        effect = value.get("effect")
+        if isinstance(effect, str) and re.search(r"\bx\s*\d+\.\d+", effect, flags=re.IGNORECASE):
+            return True
+    return False
 
 
 def _joker_names_from_row(row: dict[str, object]) -> set[str]:
@@ -1393,10 +1499,14 @@ def _joker_has_current_value(joker: Joker, suffix: str) -> bool:
         effect = source.get("effect")
         if isinstance(effect, str) and "currently" in effect.lower():
             return True
+        if suffix == "xmult" and isinstance(effect, str) and re.search(r"\bx\s*\d", effect, flags=re.IGNORECASE):
+            return True
     value = joker.metadata.get("value")
     if isinstance(value, dict):
         effect = value.get("effect")
         if isinstance(effect, str) and "currently" in effect.lower():
+            return True
+        if suffix == "xmult" and isinstance(effect, str) and re.search(r"\bx\s*\d", effect, flags=re.IGNORECASE):
             return True
     return False
 

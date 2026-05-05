@@ -161,6 +161,113 @@ class LocalSimOptions:
 
 
 @dataclass(slots=True)
+class EconomyLedger:
+    """Run-level money ledger for local-sim purchasing power analysis."""
+
+    totals: dict[str, float] = field(default_factory=dict)
+
+    def reset(self, starting_money: int) -> None:
+        self.totals = {
+            "money_start": float(starting_money),
+            "money_income_total": 0.0,
+            "money_income_cash_out": 0.0,
+            "money_income_sell": 0.0,
+            "money_income_consumables": 0.0,
+            "money_income_discards": 0.0,
+            "money_income_play": 0.0,
+            "money_income_skip": 0.0,
+            "money_income_other": 0.0,
+            "money_spent_total": 0.0,
+            "money_spent_jokers": 0.0,
+            "money_spent_consumables": 0.0,
+            "money_spent_vouchers": 0.0,
+            "money_spent_booster_packs": 0.0,
+            "money_spent_rerolls": 0.0,
+            "money_spent_playing_cards": 0.0,
+            "money_spent_blind_effects": 0.0,
+            "money_spent_other": 0.0,
+            "count_buy_jokers": 0.0,
+            "count_buy_consumables": 0.0,
+            "count_buy_vouchers": 0.0,
+            "count_buy_playing_cards": 0.0,
+            "count_open_booster_packs": 0.0,
+            "count_rerolls": 0.0,
+            "count_boss_rerolls": 0.0,
+            "count_sell_jokers": 0.0,
+            "count_sell_consumables": 0.0,
+        }
+
+    def record(self, state: GameState, action: Action, next_state: GameState) -> None:
+        if not self.totals:
+            self.reset(state.money)
+
+        delta = next_state.money - state.money
+        if action.action_type == ActionType.BUY:
+            category = _buy_spend_category(state, action)
+            self._count(f"count_buy_{category}")
+            if delta < 0:
+                self._spend(category, -delta)
+            elif delta > 0:
+                self._income("other", delta)
+            return
+
+        if action.action_type == ActionType.OPEN_PACK:
+            self._count("count_open_booster_packs")
+            if delta < 0:
+                self._spend("booster_packs", -delta)
+            elif delta > 0:
+                self._income("other", delta)
+            return
+
+        if action.action_type == ActionType.REROLL:
+            self._count("count_rerolls")
+            if state.phase == GamePhase.BLIND_SELECT or str(action.metadata.get("kind", "")) == "boss":
+                self._count("count_boss_rerolls")
+            if delta < 0:
+                self._spend("rerolls", -delta)
+            elif delta > 0:
+                self._income("other", delta)
+            return
+
+        if action.action_type == ActionType.SELL:
+            sell_category = _sell_income_category(action)
+            self._count(f"count_sell_{sell_category}")
+            if delta > 0:
+                self._income("sell", delta)
+            elif delta < 0:
+                self._spend("other", -delta)
+            return
+
+        if delta > 0:
+            self._income(_income_category(action), delta)
+        elif delta < 0:
+            self._spend(_non_shop_spend_category(action), -delta)
+
+    def to_payload(self, *, final_money: int) -> dict[str, float]:
+        payload = dict(self.totals)
+        payload["money_net"] = payload.get("money_income_total", 0.0) - payload.get("money_spent_total", 0.0)
+        payload["money_effective_purchase_power"] = payload.get("money_start", 0.0) + payload.get(
+            "money_income_total",
+            0.0,
+        )
+        payload["money_unspent_final"] = float(final_money)
+        return payload
+
+    def _income(self, category: str, amount: int | float) -> None:
+        value = float(amount)
+        self.totals["money_income_total"] += value
+        self.totals[f"money_income_{category}"] = self.totals.get(f"money_income_{category}", 0.0) + value
+
+    def _spend(self, category: str, amount: int | float) -> None:
+        value = float(amount)
+        self.totals["money_spent_total"] += value
+        self.totals[f"money_spent_{category}"] = self.totals.get(f"money_spent_{category}", 0.0) + value
+
+    def _count(self, key: str) -> None:
+        self.totals[key] = self.totals.get(key, 0.0) + 1.0
+
+
+@dataclass(slots=True)
 class LocalBalatroSimulator:
     """Small stateful simulator with an env-like reset/step API."""
 
@@ -174,6 +281,7 @@ class LocalBalatroSimulator:
     _boss_by_ante: dict[int, str] = field(default_factory=dict, init=False, repr=False)
     _boss_use_count: dict[str, int] = field(default_factory=dict, init=False, repr=False)
     _tag_by_blind: dict[tuple[int, str], str] = field(default_factory=dict, init=False, repr=False)
+    _economy: EconomyLedger = field(default_factory=EconomyLedger, init=False, repr=False)
 
     def __post_init__(self) -> None:
         self._rng = Random(self.seed)
@@ -201,6 +309,7 @@ class LocalBalatroSimulator:
             hand_levels=_base_hand_levels(),
             modifiers=_base_modifiers(),
         )
+        self._economy.reset(state.money)
         self.state = self._with_tagged_blind_selection_surface(
             state,
             ante=1,
@@ -289,8 +398,30 @@ class LocalBalatroSimulator:
             raise RuntimeError("Call reset() before step().")
         state = self.state
         next_state = self._apply_action(state, action)
+        self._economy.record(state, action, next_state)
         self.state = _with_local_legal_actions(next_state)
         return self.state
+
+    def economy_payload(self) -> dict[str, float]:
+        state = self.state
+        return self._economy.to_payload(final_money=state.money if state is not None else 0)
+
+    def tarot_usage_payload(self) -> dict[str, int]:
+        state = self.state
+        if state is None:
+            return {}
+        usage = state.modifiers.get("tarot_cards_used")
+        if not isinstance(usage, Mapping):
+            return {}
+        payload: dict[str, int] = {}
+        for name, raw_count in usage.items():
+            try:
+                count = int(raw_count)
+            except (TypeError, ValueError):
+                continue
+            if count > 0:
+                payload[str(name)] = count
+        return payload
 
     def _apply_action(self, state: GameState, action: Action) -> GameState:
         if action.action_type == ActionType.SELECT_BLIND:
@@ -1203,6 +1334,8 @@ def run_local_seed(*, bot: Bot, options: LocalSimOptions) -> RunResult:
         final_money=state.money,
         runtime_seconds=runtime,
         death_reason=death_reason,
+        economy=simulator.economy_payload(),
+        tarot_usage=simulator.tarot_usage_payload(),
     )
 
 
@@ -1889,6 +2022,64 @@ def _item_buy_cost(item: object) -> int:
     if isinstance(cost, Mapping):
         return _int_value(cost.get("buy", cost.get("cost", 0)))
     return _int_value(cost)
+
+
+def _buy_spend_category(state: GameState, action: Action) -> str:
+    kind = str(action.metadata.get("kind", action.target_id or "card"))
+    index = _action_index(action)
+    if kind == "voucher":
+        return "vouchers"
+    if kind != "card" or index is None:
+        return "other"
+    items = _modifier_items(state.modifiers, "shop_cards")
+    if not 0 <= index < len(items):
+        return "other"
+    item = items[index]
+    set_name = _item_set(item)
+    if set_name == "JOKER":
+        return "jokers"
+    if set_name in {"TAROT", "PLANET", "SPECTRAL"}:
+        return "consumables"
+    if set_name == "VOUCHER":
+        return "vouchers"
+    if _looks_like_playing_card_item(item):
+        return "playing_cards"
+    return "other"
+
+
+def _looks_like_playing_card_item(item: Mapping[str, Any]) -> bool:
+    if "rank" in item or "suit" in item:
+        return True
+    set_name = _item_set(item)
+    if set_name in {"BASE", "ENHANCED", "PLAYING_CARD", "CARD"}:
+        return True
+    key = str(item.get("key", "")).lower()
+    return key.startswith(("c_base", "m_"))
+
+
+def _sell_income_category(action: Action) -> str:
+    kind = str(action.metadata.get("kind", action.target_id or "joker"))
+    return "consumables" if kind == "consumable" else "jokers"
+
+
+def _income_category(action: Action) -> str:
+    if action.action_type == ActionType.CASH_OUT:
+        return "cash_out"
+    if action.action_type == ActionType.USE_CONSUMABLE:
+        return "consumables"
+    if action.action_type == ActionType.DISCARD:
+        return "discards"
+    if action.action_type == ActionType.PLAY_HAND:
+        return "play"
+    if action.action_type == ActionType.SKIP_BLIND:
+        return "skip"
+    return "other"
+
+
+def _non_shop_spend_category(action: Action) -> str:
+    if action.action_type == ActionType.PLAY_HAND:
+        return "blind_effects"
+    return "other"
 
 
 def _last_tarot_planet_label(state: GameState) -> str:

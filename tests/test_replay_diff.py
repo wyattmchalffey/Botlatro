@@ -727,6 +727,45 @@ class ReplayDiffTests(unittest.TestCase):
         self.assertEqual(summary.exact_counts["play_hand"], 1)
         self.assertEqual(summary.field_mismatches, {})
 
+    def test_diff_replays_infers_business_card_triggers_from_post_score_and_money(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            replay_path = Path(directory) / "run.jsonl"
+            rows = [
+                {
+                    "seed": 1,
+                    "state_detail": state_detail(
+                        current_score=0,
+                        required_score=9999,
+                        hands_remaining=4,
+                        money=4,
+                        deck_size=0,
+                        hand=["KS"],
+                        jokers=[{"name": "Business Card"}, {"name": "Bootstraps"}],
+                    ),
+                    "chosen_action": {"type": "play_hand", "card_indices": [0]},
+                },
+                {
+                    "seed": 1,
+                    "state_detail": state_detail(
+                        current_score=45,
+                        required_score=9999,
+                        hands_remaining=3,
+                        money=6,
+                        deck_size=0,
+                        hand=[],
+                        jokers=[{"name": "Business Card"}, {"name": "Bootstraps"}],
+                    ),
+                    "chosen_action": {"type": "play_hand", "card_indices": [0]},
+                },
+            ]
+            replay_path.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+
+            summary = diff_replays((replay_path,))
+
+        self.assertEqual(summary.compared_transitions, 1)
+        self.assertEqual(summary.exact_counts["play_hand"], 1)
+        self.assertEqual(summary.field_mismatches, {})
+
     def test_diff_replays_reconstructs_visible_scaling_joker_counters(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             replay_path = Path(directory) / "run.jsonl"

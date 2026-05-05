@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from collections import Counter
+from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from itertools import permutations
 from math import ceil, comb
 import re
+from threading import local
 from typing import Any
 
 from balatro_ai.api.actions import Action, ActionType
@@ -16,6 +18,7 @@ from balatro_ai.rules.hand_evaluator import (
     HandType,
     RANK_VALUES,
     STRAIGHT_VALUES,
+    _prepare_joker_evaluation_context,
     best_play_from_hand,
     debuffed_suits_for_blind,
     evaluate_played_cards,
@@ -202,6 +205,121 @@ TWO_PAIR_SUPPORT_JOKERS = {
     "Mad Joker",
     "Clever Joker",
 }
+_DECISION_CACHE_LOCAL = local()
+
+
+def _decision_cached(key: tuple[object, ...], factory):
+    cache = _current_decision_cache()
+    if cache is None:
+        return factory()
+    if key not in cache:
+        cache[key] = factory()
+    return cache[key]
+
+
+def _current_decision_cache() -> dict[tuple[object, ...], object] | None:
+    return getattr(_DECISION_CACHE_LOCAL, "cache", None)
+
+
+@contextmanager
+def decision_cache_scope():
+    previous_cache = _current_decision_cache()
+    _DECISION_CACHE_LOCAL.cache = {}
+    try:
+        yield
+    finally:
+        if previous_cache is None:
+            try:
+                del _DECISION_CACHE_LOCAL.cache
+            except AttributeError:
+                pass
+        else:
+            _DECISION_CACHE_LOCAL.cache = previous_cache
+
+
+def _sample_build_score_cache_key(state: GameState, jokers: tuple[Joker, ...]) -> tuple[object, ...]:
+    state_key = _identity_cached_value(
+        "sample_build_score_state_key",
+        state,
+        lambda: (
+            state.ante,
+            state.blind,
+            state.hands_remaining,
+            state.discards_remaining,
+            state.money,
+            state.deck_size,
+            _freeze_for_cache(state.hand_levels),
+            _freeze_for_cache(state.modifiers.get("hands", state.modifiers.get("hand_stats", {}))),
+            _freeze_for_cache(state.hand),
+            _freeze_for_cache(state.known_deck),
+            tuple(state.consumables),
+        ),
+    )
+    jokers_key = tuple(_joker_cache_key(joker) for joker in jokers)
+    return ("sample_build_score", state_key, jokers_key)
+
+
+def _joker_cache_key(joker: Joker) -> object:
+    return _identity_cached_value("joker_content_key", joker, lambda: _freeze_for_cache(joker))
+
+
+def _card_cache_key(card: Card) -> object:
+    return _identity_cached_value(
+        "card_content_key",
+        card,
+        lambda: (
+            "Card",
+            card.rank,
+            card.suit,
+            card.enhancement,
+            card.seal,
+            card.edition,
+            card.debuffed,
+            _freeze_for_cache(card.metadata),
+        ),
+    )
+
+
+def _identity_cached_value(kind: str, obj: object, factory):
+    cache = _current_decision_cache()
+    if cache is None:
+        return factory()
+    key = (kind, id(obj))
+    cached = cache.get(key)
+    if isinstance(cached, tuple) and len(cached) == 2 and cached[0] is obj:
+        return cached[1]
+    value = factory()
+    cache[key] = (obj, value)
+    return value
+
+
+def _state_scoped_cache(kind: str, state: GameState) -> dict[tuple[object, ...], object] | None:
+    cache = _current_decision_cache()
+    if cache is None:
+        return None
+    return _identity_cached_value(kind, state, dict)
+
+
+def _freeze_for_cache(value: object) -> object:
+    if isinstance(value, Card):
+        return _card_cache_key(value)
+    if isinstance(value, Joker):
+        return (
+            "Joker",
+            value.name,
+            value.edition,
+            value.sell_value,
+            _freeze_for_cache(value.metadata),
+        )
+    if isinstance(value, dict):
+        return tuple(sorted((str(key), _freeze_for_cache(item)) for key, item in value.items()))
+    if isinstance(value, list | tuple):
+        return tuple(_freeze_for_cache(item) for item in value)
+    if isinstance(value, set | frozenset):
+        return tuple(sorted(_freeze_for_cache(item) for item in value))
+    if value is None or isinstance(value, str | int | float | bool):
+        return value
+    return repr(value)
 
 
 @dataclass(slots=True)
@@ -228,6 +346,10 @@ class BasicStrategyBot:
         self._fallback = RandomBot(seed=self.seed)
 
     def choose_action(self, state: GameState) -> Action:
+        with decision_cache_scope():
+            return self._choose_action_uncached(state)
+
+    def _choose_action_uncached(self, state: GameState) -> Action:
         self._sync_shop_memory(state)
         self._sync_blind_memory(state)
 
@@ -1082,6 +1204,10 @@ def _replacement_role_upgrade_bonus(
 
 
 def _shop_pressure(state: GameState) -> _ShopPressure:
+    return _identity_cached_value("shop_pressure", state, lambda: _shop_pressure_uncached(state))
+
+
+def _shop_pressure_uncached(state: GameState) -> _ShopPressure:
     boss_name = _upcoming_boss_blind_name(state)
     boss_target_multiplier = _effective_boss_target_multiplier(state, boss_name)
     boss_capacity_factor = _weighted_boss_capacity_factor(state, boss_name)
@@ -1412,6 +1538,7 @@ def _joker_card_value(state: GameState, card: object) -> float:
         value -= 18
     if _normal_joker_slots_used(state) == 0 and value < 35:
         value += 10
+    value = _capped_red_card_candidate_value(state, joker, value)
     return value
 
 
@@ -1425,6 +1552,7 @@ def _candidate_joker_value_for_replacement(state: GameState, joker: Joker) -> fl
     value -= _unsupported_two_pair_joker_penalty(state, joker.name)
     value -= _unsupported_rare_joker_extra_penalty(state, joker.name)
     value += _edition_bonus(joker.edition)
+    value = _capped_red_card_candidate_value(state, joker, value)
     if any(existing.name == joker.name for existing in state.jokers):
         value -= 18
     return value
@@ -1443,6 +1571,24 @@ def _owned_joker_value(state: GameState, joker: Joker, *, remove_index: int) -> 
     if joker.name in TWO_PAIR_SUPPORT_JOKERS and not _has_dedicated_two_pair_plan(state):
         value -= 45
     return value
+
+
+def _capped_red_card_candidate_value(state: GameState, joker: Joker, value: float) -> float:
+    if joker.name != "Red Card" or _joker_current_plus_value(joker, suffix="mult") > 0:
+        return value
+    cap = 24.0
+    if _red_card_has_visible_skip_plan(state):
+        cap += 16.0
+    if state.ante <= 1:
+        cap += 4.0
+    return min(value, cap)
+
+
+def _red_card_has_visible_skip_plan(state: GameState) -> bool:
+    return any(
+        _card_cost(pack) <= max(0, state.money - 4)
+        for pack in state.modifiers.get("booster_packs", ())
+    )
 
 
 def _sample_score_gain_for_joker(state: GameState, joker: Joker) -> float:
@@ -1600,6 +1746,10 @@ def _joker_current_xmult_value(joker: Joker) -> float:
 
 
 def _joker_effect_text(joker: Joker) -> str:
+    return _identity_cached_value("bot_joker_effect_text", joker, lambda: _joker_effect_text_uncached(joker))
+
+
+def _joker_effect_text_uncached(joker: Joker) -> str:
     value = joker.metadata.get("value")
     if isinstance(value, dict):
         return str(value.get("effect", ""))
@@ -1611,32 +1761,26 @@ def _format_xmult(value: float) -> str:
 
 
 def _sample_build_score(state: GameState, jokers: tuple[Joker, ...]) -> float:
+    return _decision_cached(
+        _sample_build_score_cache_key(state, jokers),
+        lambda: _sample_build_score_uncached(state, jokers),
+    )
+
+
+def _sample_build_score_uncached(state: GameState, jokers: tuple[Joker, ...]) -> float:
     scoring_state = replace(state, jokers=jokers)
+    joker_context = _prepare_joker_evaluation_context(jokers)
     weighted_total = 0.0
     total_weight = 0.0
     raw_scores: list[float] = []
 
     for sample in _score_samples_for_state(scoring_state):
-        score = float(
-            evaluate_played_cards(
-                sample.cards,
-                scoring_state.hand_levels,
-                debuffed_suits=debuffed_suits_for_blind(scoring_state.blind),
-                blind_name=scoring_state.blind,
-                jokers=jokers,
-                discards_remaining=scoring_state.discards_remaining,
-                hands_remaining=max(1, scoring_state.hands_remaining),
-                held_cards=sample.held_cards,
-                deck_size=max(30, scoring_state.deck_size),
-                money=scoring_state.money,
-                played_hand_counts=_played_hand_counts(scoring_state),
-            ).score
-        )
+        score = _sample_hand_build_score(scoring_state, jokers, sample, joker_context=joker_context)
         weighted_total += score * sample.weight
         total_weight += sample.weight
         raw_scores.append(score)
 
-    visible_score = _visible_hand_sample_score(scoring_state, jokers)
+    visible_score = _visible_hand_sample_score(scoring_state, jokers, joker_context=joker_context)
     if visible_score > 0:
         weighted_total += visible_score * 1.15
         total_weight += 1.15
@@ -1647,6 +1791,74 @@ def _sample_build_score(state: GameState, jokers: tuple[Joker, ...]) -> float:
     expected = weighted_total / total_weight
     average_top = sum(sorted(raw_scores, reverse=True)[:3]) / min(3, len(raw_scores))
     return (expected * 0.78) + (average_top * 0.22)
+
+
+def _sample_hand_build_score(
+    state: GameState,
+    jokers: tuple[Joker, ...],
+    sample: "_SampleHand",
+    *,
+    joker_context,
+) -> float:
+    played_types = _played_hand_types_this_round(state)
+    evaluation = evaluate_played_cards(
+        sample.cards,
+        state.hand_levels,
+        debuffed_suits=debuffed_suits_for_blind(state.blind),
+        blind_name=state.blind,
+        jokers=jokers,
+        discards_remaining=state.discards_remaining,
+        hands_remaining=max(1, state.hands_remaining),
+        held_cards=sample.held_cards,
+        deck_size=max(30, state.deck_size),
+        money=state.money,
+        played_hand_types_this_round=played_types,
+        played_hand_counts=_played_hand_counts(state),
+        _joker_context=joker_context,
+    )
+    score = float(evaluation.score)
+    if not _should_project_card_sharp_repeat_value(state, joker_context, played_types):
+        return score
+
+    repeated_evaluation = evaluate_played_cards(
+        sample.cards,
+        state.hand_levels,
+        debuffed_suits=debuffed_suits_for_blind(state.blind),
+        blind_name=state.blind,
+        jokers=jokers,
+        discards_remaining=state.discards_remaining,
+        hands_remaining=max(1, state.hands_remaining),
+        held_cards=sample.held_cards,
+        deck_size=max(30, state.deck_size),
+        money=state.money,
+        played_hand_types_this_round=(evaluation.hand_type,),
+        played_hand_counts=_played_hand_counts(state),
+        _joker_context=joker_context,
+    )
+    active_weight = _card_sharp_repeat_projection_weight(state)
+    return (score * (1.0 - active_weight)) + (float(repeated_evaluation.score) * active_weight)
+
+
+def _should_project_card_sharp_repeat_value(
+    state: GameState,
+    joker_context,
+    played_types: tuple[HandType, ...],
+) -> bool:
+    if "Card Sharp" not in joker_context.active_ability_names:
+        return False
+    if played_types:
+        return False
+    if state.blind == "The Eye":
+        return False
+    return _card_sharp_repeat_projection_weight(state) > 0.0
+
+
+def _card_sharp_repeat_projection_weight(state: GameState) -> float:
+    hands = max(1, int(state.hands_remaining or 4))
+    if hands <= 1:
+        return 0.0
+    setup_discount = 0.85 if state.blind == "The Mouth" else 0.78
+    return min(0.82, ((hands - 1) / hands) * setup_discount)
 
 
 def _score_samples_for_state(state: GameState) -> tuple["_SampleHand", ...]:
@@ -1732,7 +1944,7 @@ def _archetype_score_samples(state: GameState, preferred: HandType | None) -> tu
     return ()
 
 
-def _visible_hand_sample_score(state: GameState, jokers: tuple[Joker, ...]) -> int:
+def _visible_hand_sample_score(state: GameState, jokers: tuple[Joker, ...], *, joker_context=None) -> int:
     if not state.hand:
         return 0
     return best_play_from_hand(
@@ -1745,6 +1957,7 @@ def _visible_hand_sample_score(state: GameState, jokers: tuple[Joker, ...]) -> i
         hands_remaining=max(1, state.hands_remaining),
         deck_size=max(30, state.deck_size),
         money=state.money,
+        _joker_context=joker_context,
     ).score
 
 
@@ -1754,7 +1967,10 @@ def _joker_heuristic_value(state: GameState, joker: Joker) -> float:
         return 0.0
     value = 0.0
     value += JOKER_BASE_VALUES.get(name, 0)
-    value += JOKER_SCALING_VALUES.get(name, 0) * (1 + max(0, 4 - state.ante) * 0.15)
+    if name == "Red Card":
+        value += _red_card_heuristic_value(state, joker)
+    else:
+        value += JOKER_SCALING_VALUES.get(name, 0) * (1 + max(0, 4 - state.ante) * 0.15)
     value += JOKER_ECONOMY_VALUES.get(name, 0)
     if name == "Hallucination":
         value += _hallucination_utility_bonus(state)
@@ -1786,6 +2002,18 @@ def _hallucination_utility_bonus(state: GameState) -> float:
     return bonus
 
 
+def _red_card_heuristic_value(state: GameState, joker: Joker) -> float:
+    """Red Card is only real scaling once the bot is actually skipping packs."""
+
+    current_mult = _joker_current_plus_value(joker, suffix="mult")
+    if current_mult <= 0:
+        return 4.0
+    scaled_value = min(42.0, current_mult * 2.4)
+    if state.ante <= 2:
+        scaled_value += min(10.0, current_mult * 0.8)
+    return 6.0 + scaled_value
+
+
 def _joker_stencil_would_fill_slots(state: GameState, joker: Joker) -> bool:
     return joker.name == "Joker Stencil" and _normal_joker_open_slots(state) <= 1
 
@@ -1802,6 +2030,10 @@ def _joker_sample_reliability(state: GameState, joker: Joker) -> float:
 
 
 def _build_profile(state: GameState) -> _BuildProfile:
+    return _identity_cached_value("build_profile", state, lambda: _build_profile_uncached(state))
+
+
+def _build_profile_uncached(state: GameState) -> _BuildProfile:
     joker_roles = [_joker_roles(joker) for joker in state.jokers]
     preferred = _preferred_hand_type(state)
     role_scores = _build_role_scores(state)
@@ -1908,6 +2140,12 @@ def _joker_role_scores(joker: Joker) -> dict[str, float]:
     if current_xmult > 1.0:
         scores["xmult"] += (current_xmult - 1.0) * 42.0
 
+    if name == "Red Card":
+        current_mult = _joker_current_plus_value(joker, suffix="mult")
+        if current_mult > 0:
+            scores["scaling"] += min(30.0, current_mult * 1.5)
+        return scores
+
     scores["chips"] += _static_chip_role_score(name)
     scores["mult"] += _static_mult_role_score(name)
     scores["xmult"] += _static_xmult_role_score(name)
@@ -1972,7 +2210,11 @@ def _joker_roles(joker: Joker) -> frozenset[str]:
         roles.add("mult")
     if name in XMULT_JOKERS and name != "Loyalty Card":
         roles.add("xmult")
-    if name in JOKER_SCALING_VALUES or name in SCALING_JOKERS:
+    if name == "Red Card":
+        if _joker_current_plus_value(joker, suffix="mult") > 0:
+            roles.add("mult")
+            roles.add("scaling")
+    elif name in JOKER_SCALING_VALUES or name in SCALING_JOKERS:
         roles.add("scaling")
     if name in JOKER_ECONOMY_VALUES:
         roles.add("economy")
@@ -2490,6 +2732,12 @@ def _tarot_card_value(state: GameState, card: object) -> float:
         value += 12
     if state.money < 8 and name in {"Temperance", "The Hermit"}:
         value += 12
+    if name == "The Hermit":
+        value += 8
+        if state.money >= 10:
+            value += 5
+    elif name == "Temperance" and state.ante <= 2:
+        value -= 3
     if profile.rich and profile.ante >= 4 and name in {"Death", "The Hanged Man", "Strength"}:
         value += 10
     if not profile.has_economy and name in {"The Hermit", "Temperance"}:
@@ -2732,7 +2980,27 @@ def _cost_penalty(state: GameState, card: object, pressure: _ShopPressure) -> fl
     profile = _build_profile(state)
     if _urgent_late_role_hunt(state, pressure, profile):
         cost_weight = max(0.75, cost_weight - 0.35)
-    return cost * cost_weight + _money_after_spend_penalty(state, cost, pressure)
+    money_penalty = _money_after_spend_penalty(state, cost, pressure)
+    if _is_joker_card(card):
+        money_penalty *= _economy_joker_interest_penalty_scale(state, _joker_from_shop_card(card), pressure)
+    return cost * cost_weight + money_penalty
+
+
+def _economy_joker_interest_penalty_scale(state: GameState, joker: Joker, pressure: _ShopPressure) -> float:
+    """Strong econ buys can dip below interest when the build is already safe."""
+
+    economy_value = JOKER_ECONOMY_VALUES.get(joker.name, 0)
+    if economy_value <= 0:
+        return 1.0
+    if state.ante <= 1 and not _has_real_scoring_joker(state):
+        return 1.0
+    if pressure.raw_ratio >= 1.0 or pressure.ratio >= 0.95:
+        return 1.0
+    if economy_value >= 24:
+        return 0.25
+    if economy_value >= 18:
+        return 0.40
+    return 0.60
 
 
 def _money_after_spend_penalty(state: GameState, cost: int, pressure: _ShopPressure) -> float:
@@ -3064,12 +3332,19 @@ def _play_candidates(state: GameState, context: _BlindContext | None = None) -> 
         for action in state.legal_actions
         if action.action_type == ActionType.PLAY_HAND and action.card_indices
     ]
-    return [_play_candidate(state, action, context) for action in play_actions]
+    joker_context = _prepare_joker_evaluation_context(state.jokers)
+    return [_play_candidate(state, action, context, joker_context=joker_context) for action in play_actions]
 
 
-def _play_candidate(state: GameState, action: Action, context: _BlindContext | None = None) -> _PlayCandidate:
+def _play_candidate(
+    state: GameState,
+    action: Action,
+    context: _BlindContext | None = None,
+    *,
+    joker_context=None,
+) -> _PlayCandidate:
     context = context or _BlindContext()
-    evaluation = _evaluate_play_action(state, action, context)
+    evaluation = _evaluate_play_action(state, action, context, joker_context=joker_context)
     scoring_card_indices = tuple(action.card_indices[index] for index in evaluation.scoring_indices)
     cycle_value = _cycle_value_for_play(state, action, scoring_card_indices)
     cycle_count = sum(1 for index in action.card_indices if index not in scoring_card_indices)
@@ -3225,9 +3500,15 @@ def _action_index_sum(action: Action) -> int:
     return sum(action.card_indices)
 
 
-def _score_play_action(state: GameState, action: Action, context: _BlindContext | None = None) -> int:
+def _score_play_action(
+    state: GameState,
+    action: Action,
+    context: _BlindContext | None = None,
+    *,
+    joker_context=None,
+) -> int:
     context = context or _BlindContext()
-    evaluation = _evaluate_play_action(state, action, context)
+    evaluation = _evaluate_play_action(state, action, context, joker_context=joker_context)
     return _boss_adjusted_score(state, evaluation.hand_type, evaluation.score, context)
 
 
@@ -3235,6 +3516,8 @@ def _evaluate_play_action(
     state: GameState,
     action: Action,
     context: _BlindContext | None = None,
+    *,
+    joker_context=None,
 ):
     context = context or _BlindContext()
     cards = tuple(state.hand[index] for index in action.card_indices)
@@ -3252,6 +3535,7 @@ def _evaluate_play_action(
         money=state.money,
         played_hand_types_this_round=context.played_hand_types,
         played_hand_counts=_played_hand_counts(state),
+        _joker_context=joker_context,
     )
 
 
@@ -3299,6 +3583,10 @@ def _played_hand_types_this_round(state: GameState) -> tuple[HandType, ...]:
 
 
 def _played_hand_counts(state: GameState) -> dict[str, int]:
+    return _identity_cached_value("played_hand_counts", state, lambda: _played_hand_counts_uncached(state))
+
+
+def _played_hand_counts_uncached(state: GameState) -> dict[str, int]:
     hands = state.modifiers.get("hands", state.modifiers.get("hand_stats", {}))
     if not isinstance(hands, dict):
         return {}
@@ -3903,6 +4191,15 @@ def _projected_score_after_discard(
     context: _BlindContext | None = None,
 ) -> int:
     context = context or _BlindContext()
+    cache = _state_scoped_cache("projected_score_after_discard", state)
+    cache_key = (
+        tuple(action.card_indices),
+        context.played_hand_types,
+        context.discards_taken,
+    )
+    if cache is not None and cache_key in cache:
+        return cache[cache_key]
+
     kept_cards = tuple(card for index, card in enumerate(state.hand) if index not in action.card_indices)
     discarded_cards = tuple(state.hand[index] for index in action.card_indices)
     projected_state = replace(state, jokers=_jokers_after_discard_for_scoring(state, discarded_cards))
@@ -3910,12 +4207,18 @@ def _projected_score_after_discard(
 
     if state.known_deck and draw_count > 0:
         known_draw = tuple(state.known_deck[:draw_count])
-        return _best_score_from_cards(projected_state, (*kept_cards, *known_draw), context)
+        score = _best_score_from_cards(projected_state, (*kept_cards, *known_draw), context)
+        if cache is not None:
+            cache[cache_key] = score
+        return score
 
     kept_score = _best_score_from_cards(projected_state, kept_cards, context)
     optimistic_score = _optimistic_completion_score(projected_state, kept_cards, draw_count, context)
     realism = _discard_realism_factor(projected_state, kept_cards, draw_count)
-    return int(max(kept_score, (optimistic_score * realism) + (kept_score * (1.0 - realism))))
+    score = int(max(kept_score, (optimistic_score * realism) + (kept_score * (1.0 - realism))))
+    if cache is not None:
+        cache[cache_key] = score
+    return score
 
 
 def _jokers_after_discard_for_scoring(state: GameState, discarded_cards: tuple[Card, ...]) -> tuple[Joker, ...]:
@@ -3954,6 +4257,15 @@ def _best_score_from_cards(
     context = context or _BlindContext()
     if not cards:
         return 0
+    cache = _state_scoped_cache("best_score_from_cards", state)
+    cache_key = (
+        _freeze_for_cache(cards),
+        context.played_hand_types,
+        context.discards_taken,
+    )
+    if cache is not None and cache_key in cache:
+        return cache[cache_key]
+
     evaluation = best_play_from_hand(
         cards,
         state.hand_levels,
@@ -3967,7 +4279,10 @@ def _best_score_from_cards(
         played_hand_types_this_round=context.played_hand_types,
         played_hand_counts=_played_hand_counts(state),
     )
-    return _boss_adjusted_score(state, evaluation.hand_type, evaluation.score, context)
+    score = _boss_adjusted_score(state, evaluation.hand_type, evaluation.score, context)
+    if cache is not None:
+        cache[cache_key] = score
+    return score
 
 
 def _optimistic_completion_score(
@@ -4232,6 +4547,10 @@ def _first_blind_discard_reason(
 def _kept_hand_potential(state: GameState, kept_cards: tuple[Card, ...]) -> float:
     if not kept_cards:
         return 0.0
+    cache = _state_scoped_cache("kept_hand_potential", state)
+    cache_key = (_freeze_for_cache(kept_cards),)
+    if cache is not None and cache_key in cache:
+        return cache[cache_key]
 
     cheap_potential = _cheap_kept_hand_potential(kept_cards, _preferred_hand_type(state))
     immediate_score = best_play_from_hand(
@@ -4246,7 +4565,10 @@ def _kept_hand_potential(state: GameState, kept_cards: tuple[Card, ...]) -> floa
         money=state.money,
     ).score
 
-    return cheap_potential + (immediate_score * 0.03)
+    potential = cheap_potential + (immediate_score * 0.03)
+    if cache is not None:
+        cache[cache_key] = potential
+    return potential
 
 
 def _cheap_kept_hand_potential(kept_cards: tuple[Card, ...], preferred: HandType | None = None) -> float:
@@ -4602,6 +4924,10 @@ def _early_power_bonus(name: str) -> float:
 
 
 def _preferred_hand_type(state: GameState) -> HandType | None:
+    return _identity_cached_value("preferred_hand_type", state, lambda: _preferred_hand_type_uncached(state))
+
+
+def _preferred_hand_type_uncached(state: GameState) -> HandType | None:
     joker_votes: Counter[HandType] = Counter()
     for joker in state.jokers:
         primary = JOKER_PRIMARY_HAND.get(joker.name)
@@ -5263,17 +5589,17 @@ TAROT_VALUES = {
     "The Magician": 24,
     "The High Priestess": 22,
     "The Empress": 22,
-    "The Emperor": 20,
+    "The Emperor": 16,
     "The Hierophant": 18,
     "The Lovers": 20,
     "The Chariot": 24,
-    "Justice": 22,
-    "The Hermit": 30,
+    "Justice": 32,
+    "The Hermit": 34,
     "The Wheel of Fortune": 16,
     "Strength": 28,
     "The Hanged Man": 28,
     "Death": 34,
-    "Temperance": 28,
+    "Temperance": 26,
     "The Devil": 20,
     "The Tower": 18,
     "The Star": 22,

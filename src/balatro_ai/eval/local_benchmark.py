@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from dataclasses import asdict
+import json
+from pathlib import Path
 
 from balatro_ai.bots.registry import create_bot
-from balatro_ai.eval.metrics import summarize_runs
+from balatro_ai.eval.metrics import RunResult, summarize_runs
 from balatro_ai.eval.seed_sets import make_explicit_seed_set, make_seed_set, parse_seed_values
 from balatro_ai.sim.local_runner import LocalSimOptions, run_local_seed
 
@@ -19,7 +23,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--label", default="local", help="Seed-set label.")
     parser.add_argument("--max-steps", type=int, default=1000, help="Maximum simulator steps per run.")
     parser.add_argument("--progress-every", type=int, default=25, help="Print progress every N seeds; 0 disables.")
+    parser.add_argument("--workers", type=int, default=1, help="Parallel local simulator workers; 1 keeps serial behavior.")
+    parser.add_argument("--jsonl-out", type=Path, help="Optional path for per-seed run_summary JSONL output.")
     return parser
+
+
+def _run_seed_worker(payload: tuple[int, str, int, str, int]) -> tuple[int, RunResult]:
+    index, bot_name, seed, stake, max_steps = payload
+    result = run_local_seed(
+        bot=create_bot(bot_name, seed=seed),
+        options=LocalSimOptions(seed=seed, stake=stake, max_steps=max_steps),
+    )
+    return index, result
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -30,19 +45,56 @@ def main(argv: list[str] | None = None) -> int:
         if seed_values
         else make_seed_set(label=f"{args.stake}:{args.label}", size=args.seeds)
     )
-    results = []
-    for index, seed in enumerate(seed_set.seeds, start=1):
-        results.append(
-            run_local_seed(
-                bot=create_bot(args.bot, seed=seed),
-                options=LocalSimOptions(seed=seed, stake=args.stake, max_steps=args.max_steps),
-            )
+    indexed_results: dict[int, RunResult] = {}
+    worker_count = max(1, int(args.workers))
+    if args.jsonl_out is not None:
+        args.jsonl_out.parent.mkdir(parents=True, exist_ok=True)
+        args.jsonl_out.write_text("", encoding="utf-8")
+    if worker_count == 1:
+        for index, seed in enumerate(seed_set.seeds, start=1):
+            _, result = _run_seed_worker((index, args.bot, seed, args.stake, args.max_steps))
+            indexed_results[index] = result
+            if args.jsonl_out is not None:
+                _append_result_json(args.jsonl_out, result)
+            if args.progress_every > 0 and (index % args.progress_every == 0 or index == len(seed_set.seeds)):
+                print(f"Progress: {index}/{len(seed_set.seeds)}")
+    else:
+        payloads = [
+            (index, args.bot, seed, args.stake, args.max_steps)
+            for index, seed in enumerate(seed_set.seeds, start=1)
+        ]
+        completed = 0
+        with ProcessPoolExecutor(max_workers=worker_count) as executor:
+            futures = [executor.submit(_run_seed_worker, payload) for payload in payloads]
+            for future in as_completed(futures):
+                index, result = future.result()
+                indexed_results[index] = result
+                if args.jsonl_out is not None:
+                    _append_result_json(args.jsonl_out, result)
+                completed += 1
+                if args.progress_every > 0 and (completed % args.progress_every == 0 or completed == len(seed_set.seeds)):
+                    print(f"Progress: {completed}/{len(seed_set.seeds)}")
+    results = [indexed_results[index] for index in range(1, len(seed_set.seeds) + 1)]
+    if args.jsonl_out is not None:
+        args.jsonl_out.write_text(
+            "\n".join(_result_json(result) for result in results) + ("\n" if results else ""),
+            encoding="utf-8",
         )
-        if args.progress_every > 0 and (index % args.progress_every == 0 or index == len(seed_set.seeds)):
-            print(f"Progress: {index}/{len(seed_set.seeds)}")
     summary = summarize_runs(tuple(results))
     print(summary.to_text())
     return 0
+
+
+def _result_json(result: RunResult) -> str:
+    payload = asdict(result)
+    payload["record_type"] = "run_summary"
+    payload["ante"] = result.ante_reached
+    return json.dumps(payload, sort_keys=True)
+
+
+def _append_result_json(path: Path, result: RunResult) -> None:
+    with path.open("a", encoding="utf-8") as file:
+        file.write(_result_json(result) + "\n")
 
 
 if __name__ == "__main__":

@@ -1306,6 +1306,23 @@ class HandEvaluatorTests(unittest.TestCase):
         self.assertEqual(bloodstone.score, 24)
         self.assertEqual(space.score, 52)
 
+    def test_obelisk_updates_before_scoring_from_play_counts(self) -> None:
+        scaled = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(Joker("Obelisk", metadata={"current_xmult": 1.0}),),
+            played_hand_counts={"Pair": 1},
+        )
+        reset = evaluate_played_cards(
+            cards(["AS"]),
+            jokers=(Joker("Obelisk", metadata={"current_xmult": 2.0}),),
+            played_hand_counts={"High Card": 2, "Pair": 1},
+        )
+
+        self.assertAlmostEqual(scaled.effect_xmult, 1.2)
+        self.assertEqual(scaled.score, 19)
+        self.assertAlmostEqual(reset.effect_xmult, 1.0)
+        self.assertEqual(reset.score, 16)
+
     def test_lucky_cat_uses_same_hand_lucky_card_trigger(self) -> None:
         result = evaluate_played_cards(
             (Card("A", "S", enhancement="LUCKY"),),

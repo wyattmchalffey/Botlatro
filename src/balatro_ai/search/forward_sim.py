@@ -248,6 +248,7 @@ def simulate_play(
         selected_cards,
         evaluation,
         hands_remaining=state.hands_remaining,
+        played_hand_counts=_played_hand_counts(state),
         stochastic_outcomes=outcome_map,
     )
     next_hand_levels = _hand_levels_after_play(state.hand_levels, evaluation, stochastic_outcomes=outcome_map)
@@ -2950,6 +2951,7 @@ def _jokers_after_play(
     evaluation,
     *,
     hands_remaining: int,
+    played_hand_counts: dict[str, int],
     stochastic_outcomes: dict[str, object],
 ) -> tuple[Joker, ...]:
     updated: list[Joker] = []
@@ -2998,6 +3000,18 @@ def _jokers_after_play(
             current = _joker_float(joker, keys=("current_xmult", "xmult", "current_x_mult", "x_mult"), default=1.0)
             gain = vampire_gains[joker_index] if joker_index < len(vampire_gains) else 0.0
             updated.append(_with_joker_metadata(joker, {"current_xmult": current + gain}))
+        elif joker.name == "Obelisk":
+            current = _joker_float(
+                joker,
+                keys=("current_xmult", "xmult", "current_x_mult", "x_mult", "Xmult", "X_mult"),
+                default=1.0,
+            )
+            next_xmult = (
+                current + _obelisk_xmult_gain(joker)
+                if _obelisk_should_scale(evaluation.hand_type, played_hand_counts)
+                else 1.0
+            )
+            updated.append(_with_joker_metadata(joker, {"current_xmult": next_xmult}))
         elif joker.name == "Lucky Cat":
             current = _joker_float(joker, keys=("current_xmult", "xmult", "current_x_mult", "x_mult"), default=1.0)
             gain = 0.25 * max(0, _outcome_int(stochastic_outcomes, "lucky_card_triggers"))
@@ -3061,6 +3075,28 @@ def _vampire_xmult_gains_after_play(
                     stripped += 1
             gains[joker_index] = 0.1 * stripped
     return tuple(gains)
+
+
+def _obelisk_should_scale(hand_type: HandType, played_hand_counts: dict[str, int]) -> bool:
+    played_after_this_hand = _int_value(played_hand_counts.get(hand_type.value)) + 1
+    return any(
+        name != hand_type.value and _int_value(played) >= played_after_this_hand
+        for name, played in played_hand_counts.items()
+    )
+
+
+def _obelisk_xmult_gain(joker: Joker) -> float:
+    for source in _metadata_sources(joker.metadata):
+        for key in ("xmult_gain", "x_mult_gain", "Xmult_mod", "extra"):
+            if key not in source:
+                continue
+            value = source[key]
+            if isinstance(value, dict):
+                continue
+            parsed = _float_value_or_none(value)
+            if parsed is not None:
+                return parsed
+    return 0.2
 
 
 def _jokers_after_discard(jokers: tuple[Joker, ...], discarded_cards: tuple[Card, ...]) -> tuple[Joker, ...]:
@@ -3886,7 +3922,31 @@ def _current_xmult_from_effect(joker: Joker) -> float | None:
     match = re.search(r"currently\s+x\s*([0-9]+(?:\.[0-9]+)?)", effect, flags=re.IGNORECASE)
     if not match:
         match = re.search(r"\bx\s*([0-9]+(?:\.[0-9]+)?)\s*mult", effect, flags=re.IGNORECASE)
-    return float(match.group(1)) if match else None
+    return _internal_xmult_from_visible(joker, float(match.group(1))) if match else None
+
+
+def _internal_xmult_from_visible(joker: Joker, visible: float) -> float:
+    if joker.name == "Ramen":
+        return _ramen_internal_xmult_from_visible(visible)
+    if joker.name == "Constellation":
+        return _incremented_xmult_from_visible(visible, step=0.1)
+    return visible
+
+
+def _incremented_xmult_from_visible(visible: float, *, step: float) -> float:
+    increments = max(0, round((visible - 1.0) / step))
+    current = 1.0
+    for _ in range(increments):
+        current += step
+    return current
+
+
+def _ramen_internal_xmult_from_visible(visible: float) -> float:
+    discards = max(0, round((2.0 - visible) / 0.01))
+    current = 2.0
+    for _ in range(discards):
+        current -= 0.01
+    return max(1.0, current)
 
 
 def _joker_effect_text(joker: Joker) -> str:
@@ -4271,6 +4331,13 @@ def _int_value(value: object) -> int:
         return int(value)
     except (TypeError, ValueError):
         return 0
+
+
+def _float_value_or_none(value: object) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _outcome_int(outcomes: dict[str, object], key: str, default: int = 0) -> int:

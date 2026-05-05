@@ -1,0 +1,283 @@
+{
+  "ante": {
+    "average_delta": 0.55,
+    "bot_a_average": 4.94,
+    "bot_b_average": 5.49,
+    "wilcoxon_signed_rank_p_value": 0.0011354511047863003
+  },
+  "bot_a": "basic_strategy_bot",
+  "bot_b": "search_bot_v1",
+  "economy": {
+    "count_boss_rerolls": {
+      "average_delta": 0.0,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.0
+    },
+    "count_buy_consumables": {
+      "average_delta": 4.455,
+      "bot_a_average": 1.04,
+      "bot_b_average": 5.495
+    },
+    "count_buy_jokers": {
+      "average_delta": 1.175,
+      "bot_a_average": 6.58,
+      "bot_b_average": 7.755
+    },
+    "count_buy_playing_cards": {
+      "average_delta": 0.255,
+      "bot_a_average": 0.035,
+      "bot_b_average": 0.29
+    },
+    "count_buy_vouchers": {
+      "average_delta": 1.565,
+      "bot_a_average": 1.915,
+      "bot_b_average": 3.48
+    },
+    "count_open_booster_packs": {
+      "average_delta": 4.725,
+      "bot_a_average": 5.23,
+      "bot_b_average": 9.955
+    },
+    "count_rerolls": {
+      "average_delta": -1.925,
+      "bot_a_average": 4.1,
+      "bot_b_average": 2.175
+    },
+    "count_sell_consumables": {
+      "average_delta": -0.08,
+      "bot_a_average": 0.32,
+      "bot_b_average": 0.24
+    },
+    "count_sell_jokers": {
+      "average_delta": 0.895,
+      "bot_a_average": 2.56,
+      "bot_b_average": 3.455
+    },
+    "money_effective_purchase_power": {
+      "average_delta": 29.03,
+      "bot_a_average": 135.965,
+      "bot_b_average": 164.995
+    },
+    "money_income_cash_out": {
+      "average_delta": 17.71,
+      "bot_a_average": 124.69,
+      "bot_b_average": 142.4
+    },
+    "money_income_consumables": {
+      "average_delta": 7.49,
+      "bot_a_average": 0.0,
+      "bot_b_average": 7.49
+    },
+    "money_income_discards": {
+      "average_delta": 0.05,
+      "bot_a_average": 0.695,
+      "bot_b_average": 0.745
+    },
+    "money_income_other": {
+      "average_delta": 0.7,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.7
+    },
+    "money_income_play": {
+      "average_delta": 0.545,
+      "bot_a_average": 0.35,
+      "bot_b_average": 0.895
+    },
+    "money_income_sell": {
+      "average_delta": 2.285,
+      "bot_a_average": 6.23,
+      "bot_b_average": 8.515
+    },
+    "money_income_skip": {
+      "average_delta": 0.25,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.25
+    },
+    "money_income_total": {
+      "average_delta": 29.03,
+      "bot_a_average": 131.965,
+      "bot_b_average": 160.995
+    },
+    "money_net": {
+      "average_delta": -9.99,
+      "bot_a_average": 28.845,
+      "bot_b_average": 18.855
+    },
+    "money_spent_blind_effects": {
+      "average_delta": 0.7,
+      "bot_a_average": 1.16,
+      "bot_b_average": 1.86
+    },
+    "money_spent_booster_packs": {
+      "average_delta": 20.22,
+      "bot_a_average": 23.91,
+      "bot_b_average": 44.13
+    },
+    "money_spent_consumables": {
+      "average_delta": 12.025,
+      "bot_a_average": 3.05,
+      "bot_b_average": 15.075
+    },
+    "money_spent_jokers": {
+      "average_delta": 4.82,
+      "bot_a_average": 34.225,
+      "bot_b_average": 39.045
+    },
+    "money_spent_other": {
+      "average_delta": 0.0,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.0
+    },
+    "money_spent_playing_cards": {
+      "average_delta": 0.26,
+      "bot_a_average": 0.035,
+      "bot_b_average": 0.295
+    },
+    "money_spent_rerolls": {
+      "average_delta": -12.685,
+      "bot_a_average": 22.6,
+      "bot_b_average": 9.915
+    },
+    "money_spent_total": {
+      "average_delta": 39.02,
+      "bot_a_average": 103.12,
+      "bot_b_average": 142.14
+    },
+    "money_spent_vouchers": {
+      "average_delta": 13.68,
+      "bot_a_average": 18.14,
+      "bot_b_average": 31.82
+    },
+    "money_start": {
+      "average_delta": 0.0,
+      "bot_a_average": 4.0,
+      "bot_b_average": 4.0
+    },
+    "money_unspent_final": {
+      "average_delta": -9.99,
+      "bot_a_average": 32.845,
+      "bot_b_average": 22.855
+    }
+  },
+  "score": {
+    "average_delta": 6478.49,
+    "bootstrap_95_ci": [
+      2139.42,
+      11121.12
+    ],
+    "bot_a_average": 16600.965,
+    "bot_b_average": 23079.455
+  },
+  "seed_count": 200,
+  "stake": "white",
+  "tarot_usage": {
+    "Death": {
+      "average_delta": 0.205,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.205
+    },
+    "Judgement": {
+      "average_delta": 0.215,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.215
+    },
+    "Justice": {
+      "average_delta": 0.025,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.025
+    },
+    "Strength": {
+      "average_delta": 0.165,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.165
+    },
+    "Temperance": {
+      "average_delta": 0.34,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.34
+    },
+    "The Chariot": {
+      "average_delta": 0.045,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.045
+    },
+    "The Emperor": {
+      "average_delta": 0.3,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.3
+    },
+    "The Empress": {
+      "average_delta": 0.025,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.025
+    },
+    "The Fool": {
+      "average_delta": 0.29,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.29
+    },
+    "The Hanged Man": {
+      "average_delta": 0.24,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.24
+    },
+    "The Hermit": {
+      "average_delta": 0.25,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.25
+    },
+    "The Hierophant": {
+      "average_delta": 0.035,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.035
+    },
+    "The High Priestess": {
+      "average_delta": 0.275,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.275
+    },
+    "The Lovers": {
+      "average_delta": 0.035,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.035
+    },
+    "The Moon": {
+      "average_delta": 0.085,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.085
+    },
+    "The Star": {
+      "average_delta": 0.075,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.075
+    },
+    "The Sun": {
+      "average_delta": 0.04,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.04
+    },
+    "The Tower": {
+      "average_delta": 0.065,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.065
+    },
+    "The Wheel of Fortune": {
+      "average_delta": 0.325,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.325
+    },
+    "The World": {
+      "average_delta": 0.055,
+      "bot_a_average": 0.0,
+      "bot_b_average": 0.055
+    }
+  },
+  "win_rate": {
+    "bot_a": 0.04,
+    "bot_b": 0.035,
+    "delta": -0.005,
+    "mcnemar_p_value": 1.0,
+    "wins_flipped": 6,
+    "wins_lost": 7
+  }
+}

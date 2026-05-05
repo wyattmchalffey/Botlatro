@@ -10,7 +10,7 @@ from balatro_ai.api.actions import Action, ActionType
 from balatro_ai.api.state import Card, GameState
 from balatro_ai.search.deck_model import DeckModel
 from balatro_ai.search.forward_sim import simulate_discard
-from balatro_ai.search.state_value import state_value
+from balatro_ai.search.state_value import _best_immediate_score, clear_probability, future_value
 
 ValueFn = Callable[[GameState], float]
 
@@ -188,13 +188,26 @@ def _rank_value(card: Card) -> int:
 
 def _default_value_fn(config: DiscardSearchConfig, *, action_index: int) -> ValueFn:
     def evaluate(state: GameState) -> float:
-        return state_value(
+        clear = clear_probability(
             state,
             samples=config.leaf_samples,
             seed=config.seed + (action_index * 10_007),
         )
+        future = future_value(state)
+        one_hand = _one_hand_clear_value(state)
+        return (one_hand * 0.70) + (clear * 0.25) + (clear * future * 0.05)
 
     return evaluate
+
+
+def _one_hand_clear_value(state: GameState) -> float:
+    remaining_score = max(0, state.required_score - state.current_score)
+    if remaining_score <= 0:
+        return 1.0
+    best_score = _best_immediate_score(state)
+    if best_score <= 0:
+        return 0.0
+    return min(1.0, best_score / remaining_score)
 
 
 def _annotated_action(action: Action, *, search_value: float) -> Action:
