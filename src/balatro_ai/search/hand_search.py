@@ -42,6 +42,10 @@ def best_hand_action(
     if not play_actions and not discard_actions:
         return None
 
+    opening_hunt = _opening_first_blind_hunt_action(state, discard_actions, blind_context)
+    if opening_hunt is not None:
+        return _annotated_action(opening_hunt, search_value=128.0, reason="first_blind_hunt hand_search_discard")
+
     ranked_plays = _candidate_play_actions(state, play_actions, blind_context, limit=search_config.max_play_actions)
     ranked_discards = _candidate_discard_actions(state, discard_actions, limit=search_config.max_discard_actions)
     evaluator = value_fn or _default_value_fn(search_config)
@@ -228,6 +232,7 @@ def _discard_action_bonus(state: GameState, action: Action, *, context) -> float
         state.ante == 1
         and state.blind == "Small Blind"
         and not state.jokers
+        and getattr(context, "discards_taken", 0) == 0
         and remaining_score > 0
         and _best_play_score(state, context) < remaining_score
     ):
@@ -244,6 +249,33 @@ def _discard_action_bonus(state: GameState, action: Action, *, context) -> float
     if "Hit the Road" in names:
         bonus += 5.0 * sum(1 for card in selected if card.rank == "J")
     return bonus
+
+
+def _opening_first_blind_hunt_action(
+    state: GameState,
+    discard_actions: tuple[Action, ...],
+    context,
+) -> Action | None:
+    if (
+        state.ante != 1
+        or state.blind != "Small Blind"
+        or state.current_score != 0
+        or state.hands_remaining < 3
+        or state.discards_remaining <= 0
+        or state.jokers
+        or getattr(context, "discards_taken", 0) != 0
+    ):
+        return None
+    remaining_score = max(0, state.required_score - state.current_score)
+    if remaining_score <= 0 or _best_play_score(state, context) >= remaining_score:
+        return None
+    action = _basic_best_discard_action(state, current_best_score=_best_play_score(state, context), context=context)
+    if action is None:
+        return None
+    for legal_action in discard_actions:
+        if legal_action.card_indices == action.card_indices:
+            return legal_action
+    return action
 
 
 def _best_play_score(state: GameState, context) -> int:
@@ -296,6 +328,12 @@ def _estimated_hands_needed(remaining_score: int, score: int | float) -> int:
     from balatro_ai.bots.basic_strategy_bot import _estimated_hands_needed as basic_estimated_hands_needed
 
     return basic_estimated_hands_needed(remaining_score, score)
+
+
+def _basic_best_discard_action(state: GameState, *, current_best_score: int, context):
+    from balatro_ai.bots.basic_strategy_bot import _best_discard_action as basic_best_discard_action
+
+    return basic_best_discard_action(state, current_best_score=current_best_score, context=context)
 
 
 def _annotated_action(action: Action, *, search_value: float, reason: str) -> Action:

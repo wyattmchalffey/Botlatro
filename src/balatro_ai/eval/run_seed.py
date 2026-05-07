@@ -448,8 +448,17 @@ def _int_value(value: object) -> int:
 
 
 def _is_recoverable_step_error(exc: Exception) -> bool:
-    return isinstance(exc, ConnectionError) or (
-        isinstance(exc, BalatroBridgeError) and exc.name == "INVALID_STATE"
+    if isinstance(exc, ConnectionError):
+        return True
+    if not isinstance(exc, BalatroBridgeError):
+        return False
+    if exc.name == "INVALID_STATE":
+        return True
+    message = exc.message
+    return (
+        exc.name == "BAD_REQUEST"
+        and "Card index out of range" in message
+        and "Available cards: 0" in message
     )
 
 

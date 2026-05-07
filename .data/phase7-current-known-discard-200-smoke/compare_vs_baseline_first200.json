@@ -1,0 +1,200 @@
+{
+  "baseline": {
+    "average_ante": 4.74,
+    "average_final_money": 45.415,
+    "average_final_score": 20341.105,
+    "average_runtime_seconds": 750.024013209999,
+    "errors": 0,
+    "normal_count": 200,
+    "normal_win_rate": 0.05,
+    "normal_wins": 10,
+    "win_rate": 0.05,
+    "wins": 10
+  },
+  "bridge_action_fixes_used_for_rerun": [
+    "Sanitize malformed bridge legal actions and augment missing consumable/pack targets from state.",
+    "Send choose_pack_card target card indices as bridge params.targets instead of params.cards."
+  ],
+  "combined_replay": ".data/phase7-current-known-discard-200-smoke/search_bot_v1.jsonl",
+  "current": {
+    "average_ante": 4.3,
+    "average_final_money": 28.135,
+    "average_final_score": 18048.225,
+    "average_runtime_seconds": 159.91110571300058,
+    "errors": 0,
+    "normal_count": 200,
+    "normal_win_rate": 0.045,
+    "normal_wins": 9,
+    "win_rate": 0.045,
+    "wins": 9
+  },
+  "current_error_seeds": [],
+  "paired_normal": {
+    "average_ante_delta_current_minus_baseline": -0.44,
+    "average_money_delta_current_minus_baseline": -17.28,
+    "average_score_delta_current_minus_baseline": -2292.88,
+    "both_won": [
+      2078566267,
+      847910560
+    ],
+    "count": 200,
+    "wins_flipped": [
+      1358050382,
+      1062307830,
+      290344638,
+      1665990098,
+      922933749,
+      1421419275,
+      717950687
+    ],
+    "wins_lost": [
+      1522815768,
+      519744964,
+      1625296097,
+      93680211,
+      745875321,
+      176970671,
+      864513115,
+      1294971832
+    ]
+  },
+  "rerun_13": [
+    {
+      "ante": 6,
+      "death_reason": "Big Blind",
+      "final_money": 45,
+      "final_score": 21461,
+      "outcome": "loss",
+      "runtime_seconds": 421.70572349999566,
+      "seed": 30549315,
+      "won": false
+    },
+    {
+      "ante": 8,
+      "death_reason": "Big Blind",
+      "final_money": 17,
+      "final_score": 54389,
+      "outcome": "loss",
+      "runtime_seconds": 641.2716137000243,
+      "seed": 155197761,
+      "won": false
+    },
+    {
+      "ante": 4,
+      "death_reason": "The Head",
+      "final_money": 25,
+      "final_score": 3550,
+      "outcome": "loss",
+      "runtime_seconds": 202.25164070003666,
+      "seed": 319203084,
+      "won": false
+    },
+    {
+      "ante": 6,
+      "death_reason": "The Flint",
+      "final_money": 103,
+      "final_score": 9068,
+      "outcome": "loss",
+      "runtime_seconds": 237.4770688000135,
+      "seed": 496170469,
+      "won": false
+    },
+    {
+      "ante": 7,
+      "death_reason": "Small Blind",
+      "final_money": 52,
+      "final_score": 29707,
+      "outcome": "loss",
+      "runtime_seconds": 483.78672200004803,
+      "seed": 606126815,
+      "won": false
+    },
+    {
+      "ante": 4,
+      "death_reason": "The Water",
+      "final_money": 32,
+      "final_score": 7206,
+      "outcome": "loss",
+      "runtime_seconds": 162.64095680002356,
+      "seed": 773421322,
+      "won": false
+    },
+    {
+      "ante": 3,
+      "death_reason": "The Arm",
+      "final_money": 10,
+      "final_score": 1902,
+      "outcome": "loss",
+      "runtime_seconds": 113.9553396999836,
+      "seed": 904222046,
+      "won": false
+    },
+    {
+      "ante": 6,
+      "death_reason": "Small Blind",
+      "final_money": 37,
+      "final_score": 15546,
+      "outcome": "loss",
+      "runtime_seconds": 225.12094829999842,
+      "seed": 999412105,
+      "won": false
+    },
+    {
+      "ante": 5,
+      "death_reason": "The Needle",
+      "final_money": 36,
+      "final_score": 8505,
+      "outcome": "loss",
+      "runtime_seconds": 434.4062392000342,
+      "seed": 1113118548,
+      "won": false
+    },
+    {
+      "ante": 5,
+      "death_reason": "The Wall",
+      "final_money": 40,
+      "final_score": 32810,
+      "outcome": "loss",
+      "runtime_seconds": 423.30191999999806,
+      "seed": 1227824131,
+      "won": false
+    },
+    {
+      "ante": 6,
+      "death_reason": "Small Blind",
+      "final_money": 27,
+      "final_score": 19873,
+      "outcome": "loss",
+      "runtime_seconds": 369.2385539000388,
+      "seed": 1304973826,
+      "won": false
+    },
+    {
+      "ante": 5,
+      "death_reason": "The Needle",
+      "final_money": 2,
+      "final_score": 3240,
+      "outcome": "loss",
+      "runtime_seconds": 329.55850020004436,
+      "seed": 1985050397,
+      "won": false
+    },
+    {
+      "ante": 7,
+      "death_reason": "Small Blind",
+      "final_money": 57,
+      "final_score": 30089,
+      "outcome": "loss",
+      "runtime_seconds": 466.53136550000636,
+      "seed": 2128450903,
+      "won": false
+    }
+  ],
+  "rerun_logs": [
+    ".data/phase7-current-known-discard-200-smoke/error-rerun-13.log",
+    ".data/phase7-current-known-discard-200-smoke/error-rerun-remaining-2.log",
+    ".data/phase7-current-known-discard-200-smoke/error-rerun-remaining-2-pack-target-fix.log"
+  ],
+  "seed_count": 200,
+  "seed_source": "first 200 seeds from label white:basic-strategy-2026-04-30-1000"
+}

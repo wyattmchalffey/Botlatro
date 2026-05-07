@@ -663,7 +663,7 @@ class LocalRunnerTests(unittest.TestCase):
         self.assertIn(next_state.jokers[0].edition, {"FOIL", "HOLOGRAPHIC", "POLYCHROME"})
         self.assertEqual(next_state.modifiers["tarot_cards_used"]["The Wheel of Fortune"], 1)
 
-    def test_derived_actions_allow_stored_tarot_use_and_consumable_sell_in_blind_and_pack(self) -> None:
+    def test_derived_actions_allow_stored_tarot_use_in_blind_and_sell_in_pack(self) -> None:
         blind_state = with_derived_legal_actions(
             GameState(
                 phase=GamePhase.SELECTING_HAND,
@@ -691,8 +691,14 @@ class LocalRunnerTests(unittest.TestCase):
             )
         )
         pack_use_actions = [action for action in pack_state.legal_actions if action.action_type == ActionType.USE_CONSUMABLE]
+        pack_sell_actions = [
+            action
+            for action in pack_state.legal_actions
+            if action.action_type == ActionType.SELL and action.metadata.get("kind") == "consumable"
+        ]
 
-        self.assertIn((0, 1), {action.card_indices for action in pack_use_actions})
+        self.assertEqual(pack_use_actions, [])
+        self.assertEqual(len(pack_sell_actions), 1)
         self.assertTrue(any(action.action_type == ActionType.CHOOSE_PACK_CARD for action in pack_state.legal_actions))
 
     def test_wheel_of_fortune_edition_poll_uses_source_truth_guaranteed_odds(self) -> None:

@@ -1,0 +1,68 @@
+Bot: search_bot_v1
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Seeds: 33
+First seed: 621610528
+Bot: search_bot_v1
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Seeds: 33
+Seed label: white:phase7-current-known-discard-200-worker5:explicit
+First seed: 621610528
+Endpoints: http://127.0.0.1:12351
+Replay mode: summary
+Start retries: 1
+Failed seed retries: 1
+Run timeout: 1800.0s
+[1/33] seed=621610528 won=False ante=3 score=1687 money=2 runtime=137.69s
+[2/33] seed=764603188 won=False ante=2 score=1598 money=0 runtime=65.28s
+[3/33] seed=2106762186 won=False ante=3 score=2282 money=34 runtime=66.75s
+[4/33] seed=1829019919 won=False ante=7 score=20496 money=154 runtime=146.34s
+[5/33] seed=1221240697 won=False ante=4 score=7595 money=30 runtime=144.68s
+[6/33] seed=1634823255 won=False ante=1 score=228 money=15 runtime=46.93s
+[7/33] seed=1687178883 won=False ante=1 score=248 money=4 runtime=43.20s
+[8/33] seed=654748727 won=False ante=4 score=3631 money=27 runtime=61.74s
+[9/33] seed=1673947902 won=False ante=3 score=4630 money=3 runtime=140.01s
+[10/33] seed=1309184972 won=False ante=7 score=28908 money=5 runtime=256.21s
+[11/33] seed=923087636 won=False ante=7 score=18000 money=90 runtime=154.36s
+[12/33] seed=999412105 won=False ante=0 score=0 money=0 runtime=104.03s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'BAD_REQUEST'}, 'code': -32001, 'message': "Card 'c_trance' requires exact
+[13/33] seed=936519821 won=False ante=6 score=31666 money=26 runtime=212.68s
+[14/33] seed=1839256564 won=False ante=6 score=29331 money=1 runtime=145.58s
+[15/33] seed=1454589852 won=False ante=7 score=22364 money=22 runtime=223.02s
+[16/33] seed=1697055794 won=False ante=4 score=7628 money=27 runtime=153.14s
+[17/33] seed=34722517 won=False ante=6 score=29726 money=25 runtime=178.51s
+[18/33] seed=2039822081 won=False ante=1 score=412 money=4 runtime=34.98s
+[19/33] seed=2031653433 won=False ante=2 score=2024 money=9 runtime=76.16s
+[20/33] seed=2037838209 won=False ante=3 score=3246 money=25 runtime=174.29s
+[21/33] seed=1669507811 won=False ante=6 score=21238 money=25 runtime=340.54s
+[22/33] seed=563908765 won=False ante=7 score=37140 money=64 runtime=222.79s
+[23/33] seed=537091696 won=False ante=5 score=14918 money=27 runtime=121.62s
+[24/33] seed=1819586782 won=False ante=7 score=48700 money=29 runtime=260.46s
+[25/33] seed=496170469 won=False ante=0 score=0 money=0 runtime=296.94s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'BAD_REQUEST'}, 'code': -32001, 'message': 'Card index out of range. Index
+[26/33] seed=1036744755 won=False ante=7 score=14436 money=56 runtime=299.07s
+[27/33] seed=1300205254 won=False ante=2 score=828 money=14 runtime=68.87s
+[28/33] seed=1325660117 won=False ante=2 score=2516 money=25 runtime=94.97s
+[29/33] seed=422382623 won=False ante=4 score=5600 money=22 runtime=132.51s
+[30/33] seed=703723382 won=False ante=1 score=400 money=3 runtime=22.71s
+[31/33] seed=1983266728 won=False ante=1 score=527 money=3 runtime=30.89s
+[32/33] seed=1294971832 won=False ante=1 score=252 money=4 runtime=14.87s
+[33/33] seed=717950687 won=True ante=8 score=119799 money=159 runtime=229.07s
+Retry 1: rerunning 2 failed seed(s) on healthy endpoint(s).
+[retry 1] seed=496170469 won=False ante=0 score=0 money=0 runtime=277.08s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'BAD_REQUEST'}, 'code': -32001, 'message': 'Card index out of range. Index
+[retry 1] seed=999412105 won=False ante=0 score=0 money=0 runtime=103.01s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'BAD_REQUEST'}, 'code': -32001, 'message': "Card 'c_trance' requires exact
+
+Bot: search_bot_v1
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Runs: 33
+Win rate: 3.0%
+Average ante: 3.88
+Average final score: 14607.7
+Average final money: 28.3
+Average runtime: 141.82 sec/run

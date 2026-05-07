@@ -23,6 +23,11 @@ from balatro_ai.rules.hand_evaluator import (
     debuffed_suits_for_blind,
     evaluate_played_cards,
 )
+from balatro_ai.search.hand_viability import (
+    ADVANCED_HAND_TYPES,
+    hand_type_is_viable,
+    hand_type_viability_multiplier,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1887,7 +1892,7 @@ def _archetype_score_samples(state: GameState, preferred: HandType | None) -> tu
             _SampleHand((Card("6", "S"), Card("6", "H"), Card("6", "D"), Card("J", "S"), Card("J", "C")), weight=0.8),
             _SampleHand((Card("5", "S"), Card("5", "H")), (Card("Q", "D"), Card("4", "C")), weight=0.8),
         )
-    if preferred in {HandType.FLUSH, HandType.STRAIGHT_FLUSH, HandType.FLUSH_HOUSE, HandType.FLUSH_FIVE}:
+    if preferred in {HandType.FLUSH, HandType.FLUSH_HOUSE, HandType.FLUSH_FIVE}:
         dominant = _dominant_suit(state) or "H"
         samples = [
             _SampleHand(
@@ -1911,7 +1916,7 @@ def _archetype_score_samples(state: GameState, preferred: HandType | None) -> tu
                 weight=1.0,
             ),
         ]
-        if _rare_hand_deck_manipulation_need(state, preferred) <= 0:
+        if preferred in {HandType.FLUSH_HOUSE, HandType.FLUSH_FIVE} and _rare_hand_deck_manipulation_need(state, preferred) <= 0:
             samples.append(
                 _SampleHand(
                     (
@@ -1926,11 +1931,26 @@ def _archetype_score_samples(state: GameState, preferred: HandType | None) -> tu
             )
         return tuple(samples)
     if preferred in {HandType.STRAIGHT, HandType.STRAIGHT_FLUSH}:
-        return (
+        samples = [
             _SampleHand((Card("9", "S"), Card("8", "H"), Card("7", "D"), Card("6", "C"), Card("5", "S")), weight=1.35),
             _SampleHand((Card("A", "S"), Card("K", "H"), Card("Q", "D"), Card("J", "C"), Card("10", "S")), weight=0.9),
             _SampleHand((Card("6", "S"), Card("6", "H")), (Card("Q", "D"), Card("4", "C")), weight=0.6),
-        )
+        ]
+        if preferred == HandType.STRAIGHT_FLUSH and hand_type_is_viable(state, HandType.STRAIGHT_FLUSH):
+            dominant = _dominant_suit(state) or "H"
+            samples.append(
+                _SampleHand(
+                    (
+                        Card("9", dominant),
+                        Card("8", dominant),
+                        Card("7", dominant),
+                        Card("6", dominant),
+                        Card("5", dominant),
+                    ),
+                    weight=0.55,
+                )
+            )
+        return tuple(samples)
     if preferred in {HandType.FOUR_OF_A_KIND, HandType.FIVE_OF_A_KIND}:
         if _rare_hand_deck_manipulation_need(state, preferred) > 0:
             return (
@@ -2649,6 +2669,11 @@ def _planet_card_value(state: GameState, card: object) -> float:
         value += min(6.0, capacity_gain / 36.0)
     if hand_type in RARE_HAND_TYPES:
         value -= _rare_hand_investment_penalty(state, hand_type) * 0.8
+    if hand_type in ADVANCED_HAND_TYPES:
+        viability = hand_type_viability_multiplier(state, hand_type)
+        if viability < 1.0:
+            value *= 0.20 + (0.80 * viability)
+            value -= (1.0 - viability) * 18.0
     value -= _weak_hand_plan_penalty(state, hand_type)
     if hand_type == preferred:
         value += 24
@@ -3846,11 +3871,13 @@ def _should_chase_discard(
     remaining_score: int,
     context: _BlindContext | None = None,
 ) -> bool:
-    if state.known_deck:
-        return True
-
     kept_cards = tuple(card for index, card in enumerate(state.hand) if index not in action.card_indices)
     projected_score = _projected_score_after_discard(state, action, context)
+    if state.known_deck:
+        current_hands_needed = _estimated_hands_needed(remaining_score, current_score)
+        projected_hands_needed = _estimated_hands_needed(remaining_score, projected_score)
+        return projected_score > current_score and projected_hands_needed <= current_hands_needed
+
     return _unknown_discard_projection_is_trustworthy(
         state,
         kept_cards=kept_cards,
@@ -3899,6 +3926,8 @@ def _should_safety_discard(
         return False
 
     projected_score = _projected_score_after_discard(state, action, context)
+    if state.discards_remaining <= 1 and projected_score < current_score:
+        return False
     if (
         state.ante >= 3
         and state.discards_remaining <= 1
@@ -4980,11 +5009,21 @@ def _primary_hand_vote_weight(state: GameState, joker_name: str, hand_type: Hand
 
 def _hand_level_vote(state: GameState, hand_type: HandType) -> int:
     level = max(0, state.hand_levels.get(hand_type.value, 1) - 1)
+    if level > 0 and hand_type in ADVANCED_HAND_TYPES and not _advanced_hand_level_is_playable(state, hand_type):
+        return 0
     if hand_type == HandType.PAIR and not _has_dedicated_pair_plan(state):
         return max(0, level - 1)
     if hand_type == HandType.TWO_PAIR and not _has_dedicated_two_pair_plan(state):
         return max(0, level - 1)
     return level
+
+
+def _advanced_hand_level_is_playable(state: GameState, hand_type: HandType) -> bool:
+    if _hand_archetype_support_count(state, hand_type) > 0:
+        return True
+    if any(RARE_HAND_JOKER_TARGETS.get(joker.name) == hand_type for joker in state.jokers):
+        return True
+    return hand_type_is_viable(state, hand_type)
 
 
 def _single_narrow_chip_signal_is_noise(state: GameState, hand_type: HandType, score: int) -> bool:
@@ -5493,6 +5532,7 @@ XMULT_JOKERS = {
     "Blueprint",
     "Brainstorm",
     "Cavendish",
+    "Photograph",
     "Ramen",
     "Acrobat",
     "Blackboard",

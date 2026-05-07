@@ -9,9 +9,7 @@ from random import Random
 from balatro_ai.api.actions import Action, ActionType
 from balatro_ai.api.state import GameState
 from balatro_ai.search.consumable_search import (
-    consumable_action_is_supported,
     sample_consumable_injections,
-    simulate_consumable_action,
 )
 from balatro_ai.search.forward_sim import (
     PLANET_TO_HAND,
@@ -78,16 +76,6 @@ def best_pack_action(
     )
     if sell_action is not None and sell_value > best_value:
         return sell_action
-    use_action, use_value = _best_use_then_pick_action(
-        state,
-        choose_actions,
-        config=search_config,
-        value_fn=evaluator,
-        include_item_value=include_item_value,
-        sampler=shop_sampler,
-    )
-    if use_action is not None and use_value > best_value:
-        return use_action
     if best_action is None:
         return None
     return _annotated_action(best_action, search_value=best_value)
@@ -169,99 +157,6 @@ def _best_sell_then_pick_action(
                 best_action = _annotated_sequence_sell_action(sell_action, choose_action, value)
                 best_value = value
     return best_action, best_value
-
-
-def _best_use_then_pick_action(
-    state: GameState,
-    choose_actions: tuple[Action, ...],
-    *,
-    config: PackSearchConfig,
-    value_fn: ValueFn,
-    include_item_value: bool,
-    sampler: ShopSampler,
-) -> tuple[Action | None, float]:
-    use_actions = tuple(
-        action
-        for action in state.legal_actions
-        if action.action_type == ActionType.USE_CONSUMABLE and consumable_action_is_supported(state, action)
-    )
-    if not use_actions or not choose_actions:
-        return None, float("-inf")
-
-    best_action: Action | None = None
-    best_sequence: tuple[Action, Action] | None = None
-    best_value = float("-inf")
-    for use_index, use_action in enumerate(use_actions):
-        outcomes = _stored_consumable_outcomes(state, use_action, config=config, sampler=sampler, action_index=use_index)
-        if not outcomes:
-            continue
-        value_total = 0.0
-        sequence_pick: Action | None = None
-        valid_outcomes = 0
-        for outcome in outcomes:
-            best_pick_value = float("-inf")
-            best_pick: Action | None = None
-            for choose_action in choose_actions:
-                if not _pack_action_is_legal(outcome, choose_action) or not _pack_action_is_searchable(outcome, choose_action):
-                    continue
-                try:
-                    pick_value = pack_action_value(
-                        outcome,
-                        choose_action,
-                        config=config,
-                        value_fn=value_fn,
-                        include_item_value=include_item_value,
-                        sampler=sampler,
-                    )
-                except (ValueError, IndexError, TypeError, AttributeError):
-                    continue
-                if pick_value > best_pick_value:
-                    best_pick_value = pick_value
-                    best_pick = choose_action
-            if best_pick is None:
-                continue
-            valid_outcomes += 1
-            value_total += best_pick_value
-            sequence_pick = best_pick
-        if valid_outcomes <= 0 or sequence_pick is None:
-            continue
-        value = value_total / valid_outcomes
-        if value > best_value:
-            best_action = use_action
-            best_sequence = (use_action, sequence_pick)
-            best_value = value
-
-    if best_action is None or best_sequence is None:
-        return None, float("-inf")
-    return _annotated_action(best_action, search_value=best_value, sequence=tuple(_action_summary(action) for action in best_sequence)), best_value
-
-
-def _stored_consumable_outcomes(
-    state: GameState,
-    action: Action,
-    *,
-    config: PackSearchConfig,
-    sampler: ShopSampler,
-    action_index: int,
-) -> tuple[GameState, ...]:
-    outcomes: list[GameState] = []
-    for sample_index in range(max(1, config.stochastic_samples)):
-        rng = Random(_sample_seed(config.seed ^ (action_index * 1_000_003), action, sample_index=sample_index))
-        try:
-            outcomes.append(simulate_consumable_action(state, action, sampler=sampler, rng=rng))
-        except (ValueError, IndexError, TypeError, AttributeError):
-            continue
-        if len(outcomes) == 1 and _stored_consumable_is_deterministic_enough(state, action):
-            break
-    return tuple(outcomes)
-
-
-def _stored_consumable_is_deterministic_enough(state: GameState, action: Action) -> bool:
-    index = _action_index(action)
-    if index is None or not 0 <= index < len(state.consumables):
-        return False
-    name = state.consumables[index]
-    return not _pack_consumable_needs_injections(name)
 
 
 def _pack_action_is_legal(state: GameState, action: Action) -> bool:

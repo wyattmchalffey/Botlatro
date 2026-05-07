@@ -5,7 +5,8 @@ from random import Random
 import unittest
 
 import context  # noqa: F401
-from balatro_ai.api.state import GameState, Joker
+from balatro_ai.api.state import Card, GameState, Joker
+from balatro_ai.search.consumable_search import sample_consumable_injections
 from balatro_ai.search.shop_sampler import ShopSampler, load_shop_pool_data
 
 
@@ -73,6 +74,89 @@ class ShopSamplerTests(unittest.TestCase):
         self.assertGreater(counts["Tarot"] / 5000, 0.11)
         self.assertGreater(counts["Planet"] / 5000, 0.11)
         self.assertEqual(counts["Spectral"], 0)
+
+    def test_secret_planets_require_corresponding_played_hand(self) -> None:
+        data = tiny_shop_data()
+        data["planets"] = [
+            {"key": "c_jupiter", "name": "Jupiter", "set": "Planet", "cost": 3, "config": {"hand_type": "Flush"}},
+            {"key": "c_planet_x", "name": "Planet X", "set": "Planet", "cost": 3, "config": {"hand_type": "Five of a Kind"}},
+            {"key": "c_ceres", "name": "Ceres", "set": "Planet", "cost": 3, "config": {"hand_type": "Flush House"}},
+            {"key": "c_eris", "name": "Eris", "set": "Planet", "cost": 3, "config": {"hand_type": "Flush Five"}},
+        ]
+        sampler = ShopSampler(data)
+
+        locked_names = {record["name"] for record in sampler._pool_records("Planet", GameState())}
+        played_names = {
+            record["name"]
+            for record in sampler._pool_records(
+                "Planet",
+                GameState(modifiers={"hands": {"Flush House": {"played": 1}}}),
+            )
+        }
+
+        self.assertEqual(locked_names, {"Jupiter"})
+        self.assertEqual(played_names, {"Jupiter", "Ceres"})
+
+    def test_secret_planets_accept_explicit_unlock_metadata(self) -> None:
+        data = tiny_shop_data()
+        data["planets"] = [
+            {"key": "c_ceres", "name": "Ceres", "set": "Planet", "cost": 3, "config": {"hand_type": "Flush House"}},
+        ]
+        sampler = ShopSampler(data)
+
+        records = sampler._pool_records("Planet", GameState(modifiers={"unlocked_keys": ("c_ceres",)}))
+
+        self.assertEqual([record["name"] for record in records], ["Ceres"])
+
+    def test_enhancement_gated_jokers_require_matching_deck_card(self) -> None:
+        data = tiny_shop_data()
+        data["jokers"] = [
+            {"key": "j_other", "name": "Other Joker", "set": "Joker", "cost": 5, "rarity_name": "common"},
+            {"key": "j_ticket", "name": "Golden Ticket", "set": "Joker", "cost": 5, "rarity_name": "common", "enhancement_gate": "m_gold"},
+            {"key": "j_steel_joker", "name": "Steel Joker", "set": "Joker", "cost": 7, "rarity_name": "uncommon", "enhancement_gate": "m_steel"},
+        ]
+        sampler = ShopSampler(data)
+
+        locked_names = {record["name"] for record in sampler._pool_records("Joker", GameState())}
+        gold_names = {
+            record["name"]
+            for record in sampler._pool_records(
+                "Joker",
+                GameState(known_deck=(Card("A", "D", enhancement="Gold Card"),)),
+            )
+        }
+        steel_names = {
+            record["name"]
+            for record in sampler._pool_records(
+                "Joker",
+                GameState(modifiers={"discard_pile": (Card("K", "S", enhancement="steel"),)}),
+            )
+        }
+
+        self.assertEqual(locked_names, {"Other Joker"})
+        self.assertEqual(gold_names, {"Other Joker", "Golden Ticket"})
+        self.assertEqual(steel_names, {"Other Joker", "Steel Joker"})
+
+    def test_judgement_created_joker_uses_enhancement_gated_pool(self) -> None:
+        data = tiny_shop_data()
+        data["joker_rarity_rates"] = {"common": 1.0, "uncommon": 0.0, "rare": 0.0, "legendary": 0.0}
+        data["jokers"] = [
+            {"key": "j_other", "name": "Other Joker", "set": "Joker", "cost": 5, "rarity_name": "rare"},
+            {"key": "j_ticket", "name": "Golden Ticket", "set": "Joker", "cost": 5, "rarity_name": "common", "enhancement_gate": "m_gold"},
+        ]
+        sampler = ShopSampler(data)
+
+        locked = sample_consumable_injections(GameState(), "Judgement", sampler=sampler, rng=Random(3), storage_use=False)
+        unlocked = sample_consumable_injections(
+            GameState(known_deck=(Card("A", "D", enhancement="GOLD"),)),
+            "Judgement",
+            sampler=sampler,
+            rng=Random(3),
+            storage_use=False,
+        )
+
+        self.assertEqual(locked["created_jokers"][0]["name"], "Other Joker")
+        self.assertEqual(unlocked["created_jokers"][0]["name"], "Golden Ticket")
 
     def test_joker_rarity_distribution_matches_source_thresholds(self) -> None:
         sampler = ShopSampler.from_default_data()

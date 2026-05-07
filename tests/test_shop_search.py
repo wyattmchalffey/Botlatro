@@ -36,8 +36,42 @@ def shop_card(name: str, *, cost: int = 4, edition: str | None = None) -> dict[s
     return payload
 
 
+def planet_card(name: str, *, cost: int = 3) -> dict[str, object]:
+    return {
+        "key": f"c_{name.lower().replace(' ', '_')}",
+        "name": name,
+        "label": name,
+        "set": "PLANET",
+        "cost": {"buy": cost, "base": cost},
+    }
+
+
+def voucher_card(name: str, *, cost: int = 10) -> dict[str, object]:
+    return {
+        "key": f"v_{name.lower().replace(' ', '_')}",
+        "name": name,
+        "label": name,
+        "set": "VOUCHER",
+        "cost": {"buy": cost, "base": cost},
+    }
+
+
+def booster_pack(name: str, *, cost: int = 4) -> dict[str, object]:
+    return {
+        "key": f"p_{name.lower().replace(' ', '_')}",
+        "name": name,
+        "label": name,
+        "set": "BOOSTER",
+        "cost": {"buy": cost, "base": cost},
+    }
+
+
 def joker_effect(effect: str) -> dict[str, object]:
     return {"value": {"effect": effect}}
+
+
+def _path_key(path: tuple[dict[str, object], ...]) -> tuple[tuple[object, object, object], ...]:
+    return tuple((step.get("type"), step.get("kind"), step.get("index")) for step in path)
 
 
 def tiny_sampler() -> ShopSampler:
@@ -150,6 +184,7 @@ class ShopSearchTests(unittest.TestCase):
         self.assertGreaterEqual(len(candidates), 1)
         self.assertIn("leaf_terms", candidates[0])
         self.assertIn("survival", candidates[0]["leaf_terms"])
+        self.assertIn("clear_gate_penalty", candidates[0]["leaf_terms"])
 
     def test_best_shop_action_can_sell_then_buy_upgrade(self) -> None:
         state = GameState(
@@ -381,13 +416,13 @@ class ShopSearchTests(unittest.TestCase):
         self.assertIsNotNone(action)
         self.assertEqual(action.action_type, ActionType.END_SHOP)
 
-    def test_sell_is_not_used_just_to_fund_reroll_or_pack(self) -> None:
+    def test_sell_can_fund_non_joker_line_when_evaluator_prefers_it(self) -> None:
         state = GameState(
             phase=GamePhase.SHOP,
             money=3,
             jokers=(Joker("Useful Joker", sell_value=4),),
             modifiers={
-                "booster_packs": ({"key": "p_arcana_normal_1", "name": "Arcana Pack", "set": "BOOSTER", "cost": {"buy": 4}},),
+                "shop_cards": ({"key": "c_hermit", "name": "The Hermit", "set": "TAROT", "cost": {"buy": 4}},),
                 "reroll_cost": 5,
             },
             legal_actions=(
@@ -404,23 +439,26 @@ class ShopSearchTests(unittest.TestCase):
         )
 
         self.assertIsNotNone(action)
-        self.assertEqual(action.action_type, ActionType.END_SHOP)
+        self.assertEqual(action.action_type, ActionType.SELL)
+        self.assertEqual(action.amount, 0)
 
-    def test_sell_must_be_followed_by_visible_joker_buy(self) -> None:
+    def test_sell_can_fund_visible_non_joker_without_forcing_joker_buy(self) -> None:
         state = GameState(
             phase=GamePhase.SHOP,
             money=5,
             jokers=(Joker("Useful Joker", sell_value=5),),
             modifiers={
                 "joker_slots": 1,
-                "shop_cards": (shop_card("Great Joker", cost=10),),
-                "booster_packs": ({"key": "p_arcana_normal_1", "name": "Arcana Pack", "set": "BOOSTER", "cost": {"buy": 8}},),
+                "shop_cards": (
+                    shop_card("Great Joker", cost=10),
+                    {"key": "c_hermit", "name": "The Hermit", "set": "TAROT", "cost": {"buy": 8}},
+                ),
                 "reroll_cost": 99,
             },
         )
 
         def action_value(_state: GameState, candidate: Action) -> float:
-            if candidate.action_type == ActionType.OPEN_PACK:
+            if candidate.action_type == ActionType.BUY and candidate.amount == 1:
                 return 20.0
             if candidate.action_type == ActionType.END_SHOP:
                 return 1.0
@@ -434,10 +472,10 @@ class ShopSearchTests(unittest.TestCase):
         )
 
         self.assertIsNotNone(action)
-        if action.action_type == ActionType.SELL:
-            self.assertNotEqual(action.amount, 0)
+        self.assertEqual(action.action_type, ActionType.SELL)
+        self.assertEqual(action.amount, 0)
 
-    def test_default_replacement_gate_allows_large_dynamic_upgrade(self) -> None:
+    def test_default_shop_search_allows_large_dynamic_replacement(self) -> None:
         state = GameState(
             phase=GamePhase.SHOP,
             ante=2,
@@ -460,37 +498,139 @@ class ShopSearchTests(unittest.TestCase):
         self.assertEqual(action.action_type, ActionType.SELL)
         self.assertEqual(action.amount, 0)
 
-    def test_default_replacement_gate_rejects_low_dynamic_upgrade(self) -> None:
+    def test_default_shop_search_allows_clear_capacity_replacement(self) -> None:
         state = GameState(
             phase=GamePhase.SHOP,
-            ante=2,
-            money=1,
+            ante=5,
+            blind="Small Blind",
+            required_score=11000,
+            hands_remaining=4,
+            discards_remaining=3,
+            deck_size=40,
+            money=81,
             jokers=(
-                Joker("Photograph", sell_value=2, metadata=joker_effect("First played face card gives X2 Mult when scored")),
-                Joker("Card Sharp", sell_value=3, metadata=joker_effect("X3 Mult if played poker hand has already been played this round")),
-                Joker(
-                    "Swashbuckler",
-                    sell_value=2,
-                    metadata=joker_effect("Adds the sell value of all other owned Jokers to Mult (Currently +11 Mult)"),
-                ),
-                Joker("Mr. Bones", edition="HOLO", sell_value=4),
-                Joker("Popcorn", sell_value=2),
+                Joker("Green Joker", sell_value=4),
+                Joker("Walkie Talkie", sell_value=4),
+                Joker("Swashbuckler", sell_value=4),
+                Joker("Smiley Face", sell_value=4),
+                Joker("Red Card", edition="FOIL", sell_value=5),
             ),
             modifiers={
                 "joker_slots": 5,
-                "shop_cards": (shop_card("Credit Card", cost=1),),
+                "shop_cards": (planet_card("Venus", cost=3), shop_card("Bootstraps", cost=6)),
+                "voucher_cards": (voucher_card("Clearance Sale", cost=10),),
+                "booster_packs": (booster_pack("Jumbo Celestial Pack", cost=6),),
+                "reroll_cost": 5,
+            },
+        )
+
+        action = best_shop_action(
+            state,
+            config=ShopSearchConfig(depth=3, beam_width=8),
+            sampler=tiny_sampler(),
+        )
+
+        self.assertIsNotNone(action)
+        self.assertEqual(action.action_type, ActionType.SELL)
+        self.assertIn(action.amount, (0, 1, 2, 3))
+
+    def test_discount_voucher_line_beats_reversed_discounted_shop_card_line(self) -> None:
+        state = GameState(
+            phase=GamePhase.SHOP,
+            ante=2,
+            blind="Small Blind",
+            required_score=800,
+            hands_remaining=4,
+            deck_size=40,
+            money=30,
+            jokers=(Joker("Joker", sell_value=1),),
+            modifiers={
+                "joker_slots": 5,
+                "shop_cards": (shop_card("Gros Michel", cost=4),),
+                "voucher_cards": (voucher_card("Clearance Sale", cost=10),),
+                "reroll_cost": 99,
+            },
+            legal_actions=(
+                Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),
+                Action(ActionType.BUY, target_id="voucher", amount=0, metadata={"kind": "voucher", "index": 0}),
+            ),
+        )
+
+        action = best_shop_action(
+            state,
+            config=ShopSearchConfig(depth=2, beam_width=8, min_search_value=-1000.0, trace_top_paths=20),
+            sampler=tiny_sampler(),
+        )
+
+        self.assertIsNotNone(action)
+        paths = {_path_key(candidate["path"]): candidate for candidate in action.metadata["search_candidates"]}
+        voucher_first = paths[(("buy", "voucher", 0), ("buy", "card", 0))]
+        card_first = paths[(("buy", "card", 0), ("buy", "voucher", 0))]
+
+        self.assertGreater(voucher_first["result"]["money"], card_first["result"]["money"])
+        self.assertGreater(voucher_first["score"], card_first["score"])
+
+    def test_sell_can_bridge_through_discount_voucher_before_joker_buy(self) -> None:
+        state = GameState(
+            phase=GamePhase.SHOP,
+            ante=2,
+            blind="Small Blind",
+            required_score=800,
+            hands_remaining=4,
+            deck_size=40,
+            money=9,
+            jokers=(Joker("Credit Card", sell_value=5),),
+            modifiers={
+                "joker_slots": 1,
+                "shop_cards": (shop_card("Gros Michel", cost=6),),
+                "voucher_cards": (voucher_card("Clearance Sale", cost=10),),
                 "reroll_cost": 99,
             },
         )
 
         action = best_shop_action(
             state,
-            config=ShopSearchConfig(depth=2, beam_width=8),
+            config=ShopSearchConfig(depth=3, beam_width=8, min_search_value=-1000.0, trace_top_paths=20),
             sampler=tiny_sampler(),
         )
 
         self.assertIsNotNone(action)
-        self.assertEqual(action.action_type, ActionType.END_SHOP)
+        candidate_paths = {_path_key(candidate["path"]) for candidate in action.metadata["search_candidates"]}
+        self.assertIn(
+            (("sell", "joker", 0), ("buy", "voucher", 0), ("buy", "card", 0)),
+            candidate_paths,
+        )
+
+    def test_overstock_revealed_slots_are_not_spent_against_speculatively(self) -> None:
+        state = GameState(
+            phase=GamePhase.SHOP,
+            ante=3,
+            blind="Small Blind",
+            required_score=2000,
+            hands_remaining=4,
+            deck_size=40,
+            money=15,
+            jokers=(Joker("Credit Card", sell_value=5),),
+            modifiers={
+                "joker_slots": 1,
+                "shop_cards": (),
+                "voucher_cards": (voucher_card("Overstock", cost=10),),
+                "reroll_cost": 99,
+            },
+        )
+
+        action = best_shop_action(
+            state,
+            config=ShopSearchConfig(depth=3, beam_width=12, min_search_value=-1000.0, trace_top_paths=30),
+            sampler=tiny_sampler(),
+        )
+
+        self.assertIsNotNone(action)
+        for candidate in action.metadata["search_candidates"]:
+            path = _path_key(candidate["path"])
+            for index, step in enumerate(path):
+                if step == ("buy", "voucher", 0):
+                    self.assertNotIn(("buy", "card", 0), path[index + 1 :])
 
     def test_open_pack_leaf_value_pays_pack_cost(self) -> None:
         state = GameState(
@@ -670,6 +810,47 @@ class ShopSearchTests(unittest.TestCase):
         self.assertIn("total", terms.to_trace_dict())
         self.assertIn("build_score", terms.to_trace_dict())
         self.assertIn("capacity_ratio", terms.to_trace_dict())
+        self.assertIn("clear_gate_penalty", terms.to_trace_dict())
+
+    def test_shop_leaf_clear_gate_penalizes_value_before_capacity(self) -> None:
+        root = GameState(
+            phase=GamePhase.SHOP,
+            ante=3,
+            blind="Small Blind",
+            required_score=2000,
+            hands_remaining=4,
+            deck_size=40,
+            money=15,
+            jokers=(Joker("Joker"),),
+        )
+        value_leaf = GameState(
+            phase=GamePhase.SHOP,
+            ante=3,
+            blind="Small Blind",
+            required_score=2000,
+            hands_remaining=4,
+            deck_size=40,
+            money=12,
+            jokers=(Joker("Joker"),),
+            consumables=("Justice",),
+        )
+        scoring_leaf = GameState(
+            phase=GamePhase.SHOP,
+            ante=3,
+            blind="Small Blind",
+            required_score=2000,
+            hands_remaining=4,
+            deck_size=40,
+            money=11,
+            jokers=(Joker("Joker"), Joker("Card Sharp")),
+        )
+
+        value_terms = shop_leaf_terms(value_leaf, root_state=root)
+        scoring_terms = shop_leaf_terms(scoring_leaf, root_state=root)
+
+        self.assertGreater(value_terms.clear_gate_penalty, 50.0)
+        self.assertLess(scoring_terms.clear_gate_penalty, value_terms.clear_gate_penalty)
+        self.assertGreater(scoring_terms.total, value_terms.total)
 
     def test_shop_leaf_values_held_justice_above_emperor(self) -> None:
         justice = GameState(
@@ -780,6 +961,60 @@ class ShopSearchTests(unittest.TestCase):
 
         self.assertIn("owned_raw", trace)
         self.assertGreaterEqual(trace["owned_raw"], trace["owned"])
+
+    def test_shop_leaf_penalizes_conditional_chip_stack_without_stable_mult(self) -> None:
+        weak = GameState(
+            phase=GamePhase.SHOP,
+            ante=2,
+            blind="Big Blind",
+            required_score=1200,
+            hands_remaining=4,
+            discards_remaining=3,
+            money=8,
+            jokers=(Joker("Clever Joker"), Joker("Square Joker")),
+            modifiers={"boss": {"name": "The Water", "score": 1600}},
+        )
+        supported = GameState(
+            phase=GamePhase.SHOP,
+            ante=2,
+            blind="Big Blind",
+            required_score=1200,
+            hands_remaining=4,
+            discards_remaining=3,
+            money=8,
+            jokers=(Joker("Clever Joker"), Joker("Square Joker"), Joker("Gros Michel")),
+            modifiers={"boss": {"name": "The Water", "score": 1600}},
+        )
+
+        weak_terms = shop_leaf_terms(weak)
+        supported_terms = shop_leaf_terms(supported)
+
+        self.assertIn("conditional_penalty", weak_terms.to_trace_dict())
+        self.assertGreater(weak_terms.conditional_penalty, 80.0)
+        self.assertLess(supported_terms.conditional_penalty, weak_terms.conditional_penalty)
+
+    def test_shop_action_value_prefers_stable_mult_to_more_conditional_chips(self) -> None:
+        state = GameState(
+            phase=GamePhase.SHOP,
+            ante=2,
+            blind="Small Blind",
+            required_score=1200,
+            hands_remaining=4,
+            discards_remaining=3,
+            money=10,
+            jokers=(Joker("Square Joker"),),
+            modifiers={
+                "boss": {"name": "The Water", "score": 1600},
+                "shop_cards": (shop_card("Crafty Joker", cost=4), shop_card("Gros Michel", cost=4)),
+            },
+        )
+        crafty = Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0})
+        gros_michel = Action(ActionType.BUY, target_id="card", amount=1, metadata={"kind": "card", "index": 1})
+
+        self.assertLess(
+            shop_action_search_value(state, crafty),
+            shop_action_search_value(state, gros_michel),
+        )
 
     def test_shop_action_value_penalizes_unresolved_pressure_joker_buy(self) -> None:
         state = GameState(

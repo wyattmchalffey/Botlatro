@@ -142,6 +142,61 @@ NON_TARGETED_CONSUMABLES = frozenset(
         "Black Hole",
     }
 )
+CONSUMABLE_KEY_TO_NAME = {
+    "c_fool": "The Fool",
+    "c_magician": "The Magician",
+    "c_high_priestess": "The High Priestess",
+    "c_empress": "The Empress",
+    "c_emperor": "The Emperor",
+    "c_heirophant": "The Hierophant",
+    "c_hierophant": "The Hierophant",
+    "c_lovers": "The Lovers",
+    "c_chariot": "The Chariot",
+    "c_justice": "Justice",
+    "c_hermit": "The Hermit",
+    "c_wheel_of_fortune": "The Wheel of Fortune",
+    "c_strength": "Strength",
+    "c_hanged_man": "The Hanged Man",
+    "c_death": "Death",
+    "c_temperance": "Temperance",
+    "c_devil": "The Devil",
+    "c_tower": "The Tower",
+    "c_star": "The Star",
+    "c_moon": "The Moon",
+    "c_sun": "The Sun",
+    "c_judgement": "Judgement",
+    "c_world": "The World",
+    "c_pluto": "Pluto",
+    "c_mercury": "Mercury",
+    "c_uranus": "Uranus",
+    "c_venus": "Venus",
+    "c_earth": "Earth",
+    "c_mars": "Mars",
+    "c_jupiter": "Jupiter",
+    "c_saturn": "Saturn",
+    "c_neptune": "Neptune",
+    "c_planet_x": "Planet X",
+    "c_ceres": "Ceres",
+    "c_eris": "Eris",
+    "c_familiar": "Familiar",
+    "c_grim": "Grim",
+    "c_incantation": "Incantation",
+    "c_talisman": "Talisman",
+    "c_aura": "Aura",
+    "c_wraith": "Wraith",
+    "c_sigil": "Sigil",
+    "c_ouija": "Ouija",
+    "c_ectoplasm": "Ectoplasm",
+    "c_immolate": "Immolate",
+    "c_ankh": "Ankh",
+    "c_deja_vu": "Deja Vu",
+    "c_hex": "Hex",
+    "c_trance": "Trance",
+    "c_medium": "Medium",
+    "c_cryptid": "Cryptid",
+    "c_soul": "The Soul",
+    "c_black_hole": "Black Hole",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -249,12 +304,12 @@ class GameState:
         current_blind = _with_round_current_blind(_current_blind(data.get("blinds", {})), round_data, phase)
         hand_cards = _area_cards(data.get("hand", data.get("cards", {})))
         joker_cards = _area_cards(data.get("jokers", {}))
-        consumable_cards = _area_cards(data.get("consumables", {}))
-        shop_cards = _area_cards(data.get("shop", {}))
-        voucher_cards = _area_cards(data.get("vouchers", {}))
+        consumable_cards = _normalize_area_cards(_area_cards(data.get("consumables", {})))
+        shop_cards = _normalize_area_cards(_area_cards(data.get("shop", {})))
+        voucher_cards = _normalize_area_cards(_area_cards(data.get("vouchers", {})))
         owned_vouchers = _owned_vouchers_from_mapping(data)
-        pack_cards = _area_cards(data.get("pack", {}))
-        booster_packs = _area_cards(data.get("packs", {}))
+        pack_cards = _normalize_area_cards(_area_cards(data.get("pack", {})))
+        booster_packs = _normalize_area_cards(_area_cards(data.get("packs", {})))
         hand_levels = _hand_levels(data.get("hands", data.get("hand_levels", {})))
 
         state = cls(
@@ -299,7 +354,7 @@ class GameState:
             won = state.won or not state.run_over
             return replace(state, ante=8, run_over=True, won=won, legal_actions=())
         if state.legal_actions:
-            return _with_augmented_consumable_actions(_with_augmented_sell_actions(_with_sanitized_legal_actions(state)))
+            return _with_augmented_pack_actions(_with_augmented_consumable_actions(_with_augmented_sell_actions(_with_sanitized_legal_actions(state))))
         return _with_derived_legal_actions(state, shop_cards=shop_cards, voucher_cards=voucher_cards, booster_packs=booster_packs)
 
 
@@ -318,7 +373,7 @@ def with_derived_legal_actions(
         voucher_cards=_area_cards(state.modifiers.get("voucher_cards", ())) if voucher_cards is None else tuple(voucher_cards),
         booster_packs=_area_cards(state.modifiers.get("booster_packs", ())) if booster_packs is None else tuple(booster_packs),
     )
-    return _with_augmented_consumable_actions(_with_augmented_sell_actions(_with_sanitized_legal_actions(derived)))
+    return _with_augmented_pack_actions(_with_augmented_consumable_actions(_with_augmented_sell_actions(_with_sanitized_legal_actions(derived))))
 
 
 def _parse_phase(raw: Any) -> GamePhase:
@@ -419,6 +474,28 @@ def _area_cards(area: Any) -> tuple[Any, ...]:
     return ()
 
 
+def _normalize_area_cards(cards: tuple[Any, ...]) -> tuple[Any, ...]:
+    return tuple(_normalize_area_card(card) for card in cards)
+
+
+def _normalize_area_card(card: Any) -> Any:
+    if isinstance(card, str):
+        return _card_key_to_name(card)
+    if not isinstance(card, dict):
+        return card
+    key = str(card.get("key", ""))
+    name = _card_key_to_name(key)
+    if name == key:
+        return card
+    label = str(card.get("label", card.get("name", key)))
+    if label == key or ("label" not in card and "name" not in card):
+        updated = dict(card)
+        updated["label"] = name
+        updated["name"] = name
+        return updated
+    return card
+
+
 def _area_count(area: Any) -> int:
     if isinstance(area, dict):
         if "count" in area:
@@ -469,8 +546,12 @@ def _voucher_key_to_name(value: str) -> str:
 
 def _card_label(card: Any) -> str:
     if isinstance(card, str):
-        return card
-    return str(card.get("label", card.get("name", card.get("key", "unknown"))))
+        return _card_key_to_name(card)
+    return _card_key_to_name(str(card.get("label", card.get("name", card.get("key", "unknown")))))
+
+
+def _card_key_to_name(value: str) -> str:
+    return CONSUMABLE_KEY_TO_NAME.get(value, value)
 
 
 def _current_blind(blinds: Any) -> dict[str, Any]:
@@ -599,23 +680,8 @@ def _derive_legal_actions(
         for index in range(len(state.jokers)):
             actions.append(Action(ActionType.SELL, target_id="joker", amount=index, metadata={"kind": "joker", "index": index}))
         actions.extend(_consumable_sell_actions(state))
-        actions.extend(_consumable_use_actions(state, allow_hand_targets=True))
-        if state.pack:
-            pack_cards = _area_cards(state.modifiers.get("pack_cards", ()))
-            for index in range(len(state.pack)):
-                item = pack_cards[index] if index < len(pack_cards) else state.pack[index]
-                for card_indices in _consumable_target_index_sets(_card_label(item), state, allow_hand_targets=True):
-                    actions.append(
-                        Action(
-                            ActionType.CHOOSE_PACK_CARD,
-                            card_indices=card_indices,
-                            target_id="card",
-                            amount=index,
-                            metadata={"kind": "card", "index": index},
-                        )
-                    )
-            actions.append(Action(ActionType.CHOOSE_PACK_CARD, target_id="skip", metadata={"kind": "skip", "index": True}))
-        else:
+        actions.extend(_pack_choice_actions(state))
+        if not state.pack:
             actions.append(Action(ActionType.NO_OP))
     elif state.phase not in {GamePhase.RUN_OVER, GamePhase.UNKNOWN}:
         actions.append(Action(ActionType.NO_OP))
@@ -624,32 +690,64 @@ def _derive_legal_actions(
 
 def _with_sanitized_legal_actions(state: GameState) -> GameState:
     legal_actions = state.legal_actions
-    if state.phase == GamePhase.BOOSTER_OPENED and not state.pack:
-        legal_actions = tuple(action for action in legal_actions if action.action_type != ActionType.CHOOSE_PACK_CARD)
-        if not legal_actions:
-            legal_actions = (Action(ActionType.NO_OP),)
+    if state.phase == GamePhase.BOOSTER_OPENED:
+        legal_actions = tuple(action for action in legal_actions if action.action_type != ActionType.USE_CONSUMABLE)
+        if not state.pack:
+            legal_actions = tuple(action for action in legal_actions if action.action_type != ActionType.CHOOSE_PACK_CARD)
+            if not legal_actions:
+                legal_actions = (Action(ActionType.NO_OP),)
+    legal_actions = tuple(action for action in legal_actions if _action_can_be_taken(state, action))
     if state.phase != GamePhase.SHOP:
         if legal_actions == state.legal_actions:
             return state
         return replace(state, legal_actions=legal_actions)
 
-    legal_actions = tuple(action for action in legal_actions if _action_can_be_taken(state, action))
     if legal_actions == state.legal_actions:
         return state
     return replace(state, legal_actions=legal_actions)
 
 
 def _action_can_be_taken(state: GameState, action: Action) -> bool:
-    if action.action_type != ActionType.BUY:
-        return True
-    kind = str(action.metadata.get("kind", action.target_id or ""))
-    if kind != "card":
-        return True
+    if action.action_type == ActionType.USE_CONSUMABLE:
+        index = _action_index(action)
+        if index is None or not 0 <= index < len(state.consumables):
+            return False
+        targets = _consumable_target_index_sets(
+            state.consumables[index],
+            state,
+            allow_hand_targets=state.phase != GamePhase.SHOP,
+        )
+        return tuple(action.card_indices) in targets
+    if action.action_type == ActionType.CHOOSE_PACK_CARD:
+        if _is_skip_action(action):
+            return True
+        item = _pack_item_for_action(state, action)
+        if item is None:
+            return False
+        targets = _consumable_target_index_sets(_card_label(item), state, allow_hand_targets=True)
+        return tuple(action.card_indices) in targets
+    if action.action_type == ActionType.BUY:
+        kind = str(action.metadata.get("kind", action.target_id or ""))
+        if kind != "card":
+            return True
+        index = _action_index(action)
+        shop_cards = state.modifiers.get("shop_cards", ())
+        if index is None or not 0 <= index < len(shop_cards):
+            return True
+        return _shop_card_can_be_bought(state, shop_cards[index])
+    return True
+
+
+def _pack_item_for_action(state: GameState, action: Action) -> object | None:
     index = _action_index(action)
-    shop_cards = state.modifiers.get("shop_cards", ())
-    if index is None or not 0 <= index < len(shop_cards):
-        return True
-    return _shop_card_can_be_bought(state, shop_cards[index])
+    if index is None or not 0 <= index < len(state.pack):
+        return None
+    pack_cards = _area_cards(state.modifiers.get("pack_cards", ()))
+    return pack_cards[index] if index < len(pack_cards) else state.pack[index]
+
+
+def _is_skip_action(action: Action) -> bool:
+    return action.target_id == "skip" or str(action.metadata.get("kind") or "") == "skip"
 
 
 def _action_index(action: Action) -> int | None:
@@ -672,6 +770,27 @@ def _joker_sell_actions(state: GameState) -> tuple[Action, ...]:
         Action(ActionType.SELL, target_id="joker", amount=index, metadata={"kind": "joker", "index": index})
         for index in range(len(state.jokers))
     )
+
+
+def _pack_choice_actions(state: GameState) -> tuple[Action, ...]:
+    if state.phase != GamePhase.BOOSTER_OPENED or not state.pack:
+        return ()
+    actions: list[Action] = []
+    pack_cards = _area_cards(state.modifiers.get("pack_cards", ()))
+    for index in range(len(state.pack)):
+        item = pack_cards[index] if index < len(pack_cards) else state.pack[index]
+        for card_indices in _consumable_target_index_sets(_card_label(item), state, allow_hand_targets=True):
+            actions.append(
+                Action(
+                    ActionType.CHOOSE_PACK_CARD,
+                    card_indices=card_indices,
+                    target_id="card",
+                    amount=index,
+                    metadata={"kind": "card", "index": index},
+                )
+            )
+    actions.append(Action(ActionType.CHOOSE_PACK_CARD, target_id="skip", metadata={"kind": "skip", "index": True}))
+    return tuple(actions)
 
 
 def _consumable_use_actions(state: GameState, *, allow_hand_targets: bool) -> tuple[Action, ...]:
@@ -828,7 +947,7 @@ def _with_augmented_sell_actions(state: GameState) -> GameState:
 
 
 def _with_augmented_consumable_actions(state: GameState) -> GameState:
-    phases = {GamePhase.SELECTING_HAND, GamePhase.PLAYING_BLIND, GamePhase.SHOP, GamePhase.BOOSTER_OPENED}
+    phases = {GamePhase.SELECTING_HAND, GamePhase.PLAYING_BLIND, GamePhase.SHOP}
     if state.phase not in phases or not state.consumables:
         return state
     additions = _consumable_use_actions(state, allow_hand_targets=state.phase != GamePhase.SHOP) + _consumable_sell_actions(state)
@@ -848,6 +967,37 @@ def _with_augmented_consumable_actions(state: GameState) -> GameState:
             action.action_type,
             tuple(action.card_indices),
             str(action.metadata.get("kind", action.target_id or "")),
+            _action_index(action),
+        )
+        not in existing
+    )
+    if not new_actions:
+        return state
+    return replace(state, legal_actions=state.legal_actions + new_actions)
+
+
+def _with_augmented_pack_actions(state: GameState) -> GameState:
+    if state.phase != GamePhase.BOOSTER_OPENED or not state.pack:
+        return state
+    additions = _pack_choice_actions(state)
+    existing = {
+        (
+            action.action_type,
+            tuple(action.card_indices),
+            action.target_id,
+            str(action.metadata.get("kind", "")),
+            _action_index(action),
+        )
+        for action in state.legal_actions
+    }
+    new_actions = tuple(
+        action
+        for action in additions
+        if (
+            action.action_type,
+            tuple(action.card_indices),
+            action.target_id,
+            str(action.metadata.get("kind", "")),
             _action_index(action),
         )
         not in existing

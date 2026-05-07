@@ -267,6 +267,17 @@ class RunSeedTests(unittest.TestCase):
         self.assertEqual(result.seed, 123)
         self.assertEqual(result.ante_reached, 1)
 
+    def test_pack_empty_card_index_error_is_recoverable_as_stale_state(self) -> None:
+        error = BalatroBridgeError(
+            {
+                "data": {"name": "BAD_REQUEST"},
+                "code": -32001,
+                "message": "Card index out of range. Index: 1, Available cards: 0",
+            }
+        )
+
+        self.assertTrue(run_seed_module._is_recoverable_step_error(error))
+
     def test_run_single_seed_refetches_empty_nonterminal_legal_actions(self) -> None:
         client = EmptyLegalActionsClient()
 

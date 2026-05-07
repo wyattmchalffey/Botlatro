@@ -86,6 +86,7 @@ ENHANCEMENT_BY_CENTER_KEY = {
     "m_gold": "GOLD",
     "m_lucky": "LUCKY",
 }
+SECRET_PLANET_HAND_TYPES = frozenset({"Five of a Kind", "Flush House", "Flush Five"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -502,12 +503,15 @@ def _joker_rarity_rates(data: Mapping[str, Any]) -> dict[str, float]:
 
 
 def _record_available(record: Mapping[str, Any], state: GameState) -> bool:
+    identifiers = _item_identifiers(record)
     banned = _identifier_set(state.modifiers.get("banned_keys"))
-    if _item_identifiers(record).intersection(banned):
+    if identifiers.intersection(banned):
         return False
 
     unlocked = _identifier_set(state.modifiers.get("unlocked_keys"))
-    if unlocked and not _item_identifiers(record).intersection(unlocked):
+    if unlocked and not identifiers.intersection(unlocked):
+        return False
+    if not _secret_planet_available(record, state, unlocked=unlocked, identifiers=identifiers):
         return False
 
     pool_flags = _mapping(state.modifiers.get("pool_flags"))
@@ -525,6 +529,42 @@ def _record_available(record: Mapping[str, Any], state: GameState) -> bool:
     return True
 
 
+def _secret_planet_available(
+    record: Mapping[str, Any],
+    state: GameState,
+    *,
+    unlocked: set[str],
+    identifiers: set[str],
+) -> bool:
+    hand_type = _secret_planet_hand_type(record)
+    if hand_type is None:
+        return True
+    if identifiers.intersection(unlocked):
+        return True
+    return _hand_has_been_played(state, hand_type)
+
+
+def _secret_planet_hand_type(record: Mapping[str, Any]) -> str | None:
+    if str(record.get("set", "")).upper() != "PLANET":
+        return None
+    hand_type = str(_mapping(record.get("config")).get("hand_type", ""))
+    return hand_type if hand_type in SECRET_PLANET_HAND_TYPES else None
+
+
+def _hand_has_been_played(state: GameState, hand_type: str) -> bool:
+    hands = _mapping(state.modifiers.get("hands"))
+    raw = hands.get(hand_type)
+    if raw is None:
+        for name, candidate in hands.items():
+            if str(name) == hand_type:
+                raw = candidate
+                break
+    hand = _mapping(raw)
+    if hand:
+        return any(_int_value(hand.get(key)) > 0 for key in ("played", "played_this_round", "played_this_run", "times_played"))
+    return _int_value(raw) > 0
+
+
 def _voucher_available(record: Mapping[str, Any], state: GameState) -> bool:
     owned = _owned_voucher_identifiers(state)
     if _item_identifiers(record).intersection(owned):
@@ -539,8 +579,28 @@ def _state_has_enhancement_gate(state: GameState, gate_key: str) -> bool:
     enhancement = ENHANCEMENT_BY_CENTER_KEY.get(gate_key)
     if enhancement is None:
         return False
-    cards: Iterable[Card] = state.hand + state.known_deck
-    return any(card.enhancement == enhancement for card in cards)
+    return any(_normalized(card.enhancement) == _normalized(enhancement) for card in _state_cards_for_pool_gates(state))
+
+
+def _state_cards_for_pool_gates(state: GameState) -> tuple[Card, ...]:
+    cards = list(state.hand + state.known_deck)
+    for zone in ("played_pile", "discard_pile"):
+        cards.extend(_cards_from_modifier_zone(state.modifiers.get(zone)))
+    return tuple(cards)
+
+
+def _cards_from_modifier_zone(raw: object) -> tuple[Card, ...]:
+    if raw is None or isinstance(raw, str):
+        return ()
+    if isinstance(raw, Card):
+        return (raw,)
+    if isinstance(raw, Mapping):
+        if any(key in raw for key in ("rank", "suit", "value", "modifier", "enhancement", "label")):
+            return (Card.from_mapping(dict(raw)),)
+        return tuple(card for value in raw.values() for card in _cards_from_modifier_zone(value))
+    if isinstance(raw, Iterable):
+        return tuple(card for item in raw for card in _cards_from_modifier_zone(item))
+    return ()
 
 
 def _payload_from_record(
@@ -862,6 +922,11 @@ def _int_value(raw: object) -> int:
         return int(raw)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return 0
+
+
+def _normalized(raw: object) -> str:
+    text = str(raw or "").strip().lower().replace("_", " ")
+    return text.removesuffix(" card")
 
 
 def _is_number(raw: object) -> bool:

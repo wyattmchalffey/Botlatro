@@ -1,0 +1,69 @@
+Bot: search_bot_v1
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Seeds: 33
+First seed: 1358050382
+Bot: search_bot_v1
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Seeds: 33
+Seed label: white:phase7-current-known-discard-200-worker2:explicit
+First seed: 1358050382
+Endpoints: http://127.0.0.1:12348
+Replay mode: summary
+Start retries: 1
+Failed seed retries: 1
+Run timeout: 1800.0s
+[1/33] seed=1358050382 won=True ante=8 score=313956 money=132 runtime=191.75s
+[2/33] seed=1177471692 won=False ante=1 score=256 money=4 runtime=13.91s
+[3/33] seed=1113118548 won=False ante=0 score=0 money=0 runtime=152.69s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'BAD_REQUEST'}, 'code': -32001, 'message': "Card 'c_trance' requires exact
+[4/33] seed=853940450 won=False ante=5 score=19911 money=3 runtime=206.97s
+[5/33] seed=425370494 won=False ante=5 score=15728 money=37 runtime=100.33s
+[6/33] seed=2000731007 won=False ante=5 score=15556 money=0 runtime=176.45s
+[7/33] seed=849169739 won=False ante=2 score=705 money=7 runtime=55.86s
+[8/33] seed=1510255139 won=False ante=6 score=16323 money=52 runtime=253.99s
+[9/33] seed=1118972829 won=False ante=4 score=4920 money=21 runtime=104.16s
+[10/33] seed=1227824131 won=False ante=0 score=0 money=0 runtime=40.76s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'INVALID_STATE'}, 'code': -32002, 'message': "Method 'use' requires one of
+[11/33] seed=1422859710 won=False ante=6 score=37336 money=13 runtime=271.31s
+[12/33] seed=1522624153 won=False ante=1 score=377 money=1 runtime=22.44s
+[13/33] seed=86839873 won=False ante=2 score=1375 money=6 runtime=69.92s
+[14/33] seed=554804505 won=False ante=2 score=308 money=10 runtime=89.22s
+[15/33] seed=1575306955 won=False ante=3 score=1728 money=13 runtime=156.93s
+[16/33] seed=1113003052 won=False ante=4 score=8554 money=3 runtime=188.27s
+[17/33] seed=1337404170 won=False ante=5 score=8920 money=7 runtime=337.63s
+[18/33] seed=745875321 won=False ante=7 score=34221 money=121 runtime=270.34s
+[19/33] seed=1847632515 won=False ante=2 score=924 money=5 runtime=48.42s
+[20/33] seed=1329680516 won=False ante=4 score=5228 money=6 runtime=107.09s
+[21/33] seed=41580030 won=False ante=1 score=288 money=4 runtime=15.27s
+[22/33] seed=2078566267 won=True ante=8 score=155518 money=26 runtime=317.44s
+[23/33] seed=847910560 won=True ante=8 score=25659 money=28 runtime=481.41s
+[24/33] seed=465819625 won=False ante=5 score=10341 money=18 runtime=213.46s
+[25/33] seed=904222046 won=False ante=0 score=0 money=0 runtime=127.47s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'INVALID_STATE'}, 'code': -32002, 'message': "Method 'use' requires one of
+[26/33] seed=2004325956 won=False ante=4 score=9639 money=28 runtime=253.93s
+[27/33] seed=2003135846 won=False ante=7 score=50265 money=114 runtime=195.74s
+[28/33] seed=1945949024 won=False ante=1 score=258 money=2 runtime=48.72s
+[29/33] seed=925942421 won=False ante=3 score=1340 money=0 runtime=66.57s
+[30/33] seed=115214322 won=False ante=4 score=18606 money=29 runtime=144.66s
+[31/33] seed=965238651 won=False ante=5 score=15537 money=54 runtime=206.35s
+[32/33] seed=864513115 won=False ante=2 score=968 money=7 runtime=76.62s
+[33/33] seed=2031855221 won=False ante=5 score=4704 money=72 runtime=143.19s
+Retry 1: rerunning 3 failed seed(s) on healthy endpoint(s).
+[retry 1] seed=904222046 won=False ante=0 score=0 money=0 runtime=115.33s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'INVALID_STATE'}, 'code': -32002, 'message': "Method 'use' requires one of
+[retry 1] seed=1113118548 won=False ante=0 score=0 money=0 runtime=140.70s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'BAD_REQUEST'}, 'code': -32001, 'message': "Card 'c_trance' requires exact
+[retry 1] seed=1227824131 won=False ante=0 score=0 money=0 runtime=38.14s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'INVALID_STATE'}, 'code': -32002, 'message': "Method 'use' requires one of
+
+Bot: search_bot_v1
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Runs: 33
+Win rate: 9.1%
+Average ante: 3.79
+Average final score: 23619.7
+Average final money: 24.9
+Average runtime: 155.23 sec/run

@@ -134,7 +134,7 @@ class PackSearchTests(unittest.TestCase):
         self.assertEqual(action.target_id, "consumable")
         self.assertEqual(action.metadata["search_sequence"][1]["type"], "choose_pack_card")
 
-    def test_best_pack_action_can_use_stored_consumable_before_pack_choice(self) -> None:
+    def test_best_pack_action_does_not_use_stored_consumable_during_pack_choice(self) -> None:
         use_high_priestess = Action(
             ActionType.USE_CONSUMABLE,
             target_id="consumable",
@@ -156,8 +156,8 @@ class PackSearchTests(unittest.TestCase):
         )
 
         self.assertIsNotNone(action)
-        self.assertEqual(action.action_type, ActionType.USE_CONSUMABLE)
-        self.assertEqual(action.metadata["search_sequence"][1]["type"], "choose_pack_card")
+        self.assertEqual(action.action_type, ActionType.CHOOSE_PACK_CARD)
+        self.assertEqual(action.target_id, "skip")
 
     def test_best_pack_action_skips_normal_joker_when_slots_are_full(self) -> None:
         choose_joker = Action(ActionType.CHOOSE_PACK_CARD, target_id="card", amount=0, metadata={"kind": "card", "index": 0})

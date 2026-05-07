@@ -273,7 +273,7 @@ class BalatroBotSchemaTests(unittest.TestCase):
             )
         )
 
-        self.assertEqual(client.calls[0], ("pack", {"card": 0, "cards": [1, 3]}))
+        self.assertEqual(client.calls[0], ("pack", {"card": 0, "targets": [1, 3]}))
 
     def test_shop_actions_filter_unaffordable_buys(self) -> None:
         state = GameState.from_mapping(
@@ -365,6 +365,89 @@ class BalatroBotSchemaTests(unittest.TestCase):
         )
 
         self.assertEqual(tuple(action.action_type for action in state.legal_actions), (ActionType.NO_OP,))
+
+    def test_consumable_key_only_cards_are_normalized_before_deriving_targets(self) -> None:
+        state = GameState.from_mapping(
+            {
+                "state": "SELECTING_HAND",
+                "hand": {"cards": [{"rank": "A", "suit": "S"}, {"rank": "K", "suit": "H"}]},
+                "consumables": {"cards": [{"key": "c_trance"}]},
+            }
+        )
+
+        use_actions = [action for action in state.legal_actions if action.action_type == ActionType.USE_CONSUMABLE]
+
+        self.assertEqual(state.consumables, ("Trance",))
+        self.assertIn((0,), {action.card_indices for action in use_actions})
+        self.assertNotIn((), {action.card_indices for action in use_actions})
+
+    def test_malformed_bridge_consumable_use_action_is_replaced_with_targeted_actions(self) -> None:
+        state = GameState.from_mapping(
+            {
+                "state": "SELECTING_HAND",
+                "hand": {"cards": [{"rank": "A", "suit": "S"}, {"rank": "K", "suit": "H"}]},
+                "consumables": {"cards": [{"key": "c_trance"}]},
+                "legal_actions": [
+                    {"type": "use_consumable", "target_id": "consumable", "amount": 0, "metadata": {"kind": "consumable", "index": 0}},
+                ],
+            }
+        )
+
+        use_actions = [action for action in state.legal_actions if action.action_type == ActionType.USE_CONSUMABLE]
+
+        self.assertIn((0,), {action.card_indices for action in use_actions})
+        self.assertNotIn((), {action.card_indices for action in use_actions})
+
+    def test_pack_consumable_key_only_cards_are_normalized_before_deriving_targets(self) -> None:
+        state = GameState.from_mapping(
+            {
+                "state": "SMODS_BOOSTER_OPENED",
+                "hand": {"cards": [{"rank": "A", "suit": "S"}, {"rank": "K", "suit": "H"}]},
+                "pack": {"cards": [{"key": "c_hanged_man", "set": "Tarot"}]},
+            }
+        )
+
+        choose_actions = [action for action in state.legal_actions if action.action_type == ActionType.CHOOSE_PACK_CARD]
+
+        self.assertEqual(state.pack, ("The Hanged Man",))
+        self.assertEqual(state.modifiers["pack_cards"][0]["label"], "The Hanged Man")
+        self.assertIn((0,), {action.card_indices for action in choose_actions})
+        self.assertNotIn((), {action.card_indices for action in choose_actions if action.target_id != "skip"})
+
+    def test_malformed_bridge_pack_action_is_replaced_with_targeted_pack_actions(self) -> None:
+        state = GameState.from_mapping(
+            {
+                "state": "SMODS_BOOSTER_OPENED",
+                "hand": {"cards": [{"rank": "A", "suit": "S"}, {"rank": "K", "suit": "H"}]},
+                "pack": {"cards": [{"key": "c_hanged_man", "set": "Tarot"}]},
+                "legal_actions": [
+                    {"type": "choose_pack_card", "target_id": "card", "amount": 0, "metadata": {"kind": "card", "index": 0}},
+                    {"type": "choose_pack_card", "target_id": "skip", "metadata": {"kind": "skip", "index": True}},
+                ],
+            }
+        )
+
+        choose_actions = [action for action in state.legal_actions if action.action_type == ActionType.CHOOSE_PACK_CARD]
+
+        self.assertIn((0,), {action.card_indices for action in choose_actions if action.target_id != "skip"})
+        self.assertNotIn((), {action.card_indices for action in choose_actions if action.target_id != "skip"})
+
+    def test_booster_state_filters_bridge_consumable_use_actions(self) -> None:
+        state = GameState.from_mapping(
+            {
+                "state": "SMODS_BOOSTER_OPENED",
+                "hand": {"cards": [{"rank": "A", "suit": "S"}]},
+                "consumables": {"cards": [{"key": "c_aura"}]},
+                "pack": {"cards": [{"rank": "K", "suit": "H", "set": "Base"}]},
+                "legal_actions": [
+                    {"type": "use_consumable", "target_id": "consumable", "amount": 0, "metadata": {"kind": "consumable", "index": 0}},
+                    {"type": "choose_pack_card", "target_id": "card", "amount": 0, "metadata": {"kind": "card", "index": 0}},
+                ],
+            }
+        )
+
+        self.assertFalse(any(action.action_type == ActionType.USE_CONSUMABLE for action in state.legal_actions))
+        self.assertTrue(any(action.action_type == ActionType.CHOOSE_PACK_CARD for action in state.legal_actions))
 
 
 if __name__ == "__main__":

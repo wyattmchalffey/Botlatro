@@ -1,0 +1,31 @@
+Seed source: first 200 seeds from label white:basic-strategy-2026-04-30-1000
+Combined replay: .data\phase7-current-known-discard-200-smoke\search_bot_v1.jsonl
+Missing seeds: 0
+Bridge/action error summaries after 13-seed rerun: 0
+Normal-run win rate: 9/200 (4.5%)
+
+Bot: search_bot_v1
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Runs: 200
+Win rate: 9/200 (4.5%)
+Average ante: 4.30
+Average final score: 18048.2
+Average final money: 28.1
+Average runtime: 159.91 sec/run
+
+Baseline comparison on same first 200 seeds:
+Baseline wins: 10/200 (5.0%)
+Current wins: 9/200 (4.5%)
+Current persistent error seeds after rerun: 0
+Avg ante delta on paired seeds: -0.44
+Avg score delta on paired seeds: -2292.9
+Avg money delta on paired seeds: -17.3
+Win flips gained: 7; baseline wins lost: 8; both won: 2
+
+Rerun notes:
+Original 13 bridge/action error seeds now all have normal summaries in the combined replay.
+The last two persistent failures were pack-target serialization errors; the bridge expects params.targets for choose_pack_card target indices.
+Rerun logs: error-rerun-13.log, error-rerun-remaining-2.log, error-rerun-remaining-2-pack-target-fix.log

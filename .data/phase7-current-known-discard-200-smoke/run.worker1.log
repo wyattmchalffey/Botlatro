@@ -1,0 +1,68 @@
+Bot: search_bot_v1
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Seeds: 34
+First seed: 1722573520
+Bot: search_bot_v1
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Seeds: 34
+Seed label: white:phase7-current-known-discard-200-worker1:explicit
+First seed: 1722573520
+Endpoints: http://127.0.0.1:12347
+Replay mode: summary
+Start retries: 1
+Failed seed retries: 1
+Run timeout: 1800.0s
+[1/34] seed=1722573520 won=False ante=1 score=248 money=4 runtime=14.50s
+[2/34] seed=1734147445 won=False ante=4 score=5288 money=23 runtime=90.42s
+[3/34] seed=592576228 won=False ante=6 score=16734 money=58 runtime=186.11s
+[4/34] seed=519744964 won=False ante=7 score=58300 money=17 runtime=237.86s
+[5/34] seed=556131986 won=False ante=1 score=440 money=3 runtime=27.99s
+[6/34] seed=290344638 won=True ante=8 score=238200 money=99 runtime=276.41s
+[7/34] seed=1847889806 won=False ante=5 score=9634 money=45 runtime=146.57s
+[8/34] seed=1069591045 won=False ante=1 score=336 money=1 runtime=26.63s
+[9/34] seed=1589435350 won=False ante=4 score=9722 money=41 runtime=126.14s
+[10/34] seed=1209765444 won=False ante=4 score=3802 money=25 runtime=126.54s
+[11/34] seed=1105000646 won=False ante=2 score=470 money=15 runtime=87.98s
+[12/34] seed=1432128507 won=False ante=3 score=1440 money=36 runtime=71.98s
+[13/34] seed=435230847 won=False ante=3 score=3827 money=2 runtime=84.84s
+[14/34] seed=227364886 won=False ante=5 score=25830 money=24 runtime=171.82s
+[15/34] seed=862436853 won=False ante=6 score=37560 money=13 runtime=276.38s
+[16/34] seed=1355900180 won=False ante=4 score=7096 money=26 runtime=114.97s
+[17/34] seed=1603614887 won=False ante=4 score=4858 money=21 runtime=160.88s
+[18/34] seed=93680211 won=False ante=2 score=910 money=16 runtime=65.18s
+[19/34] seed=1898807493 won=False ante=4 score=3965 money=28 runtime=88.11s
+[20/34] seed=1791983604 won=False ante=6 score=19272 money=6 runtime=229.03s
+[21/34] seed=1900588732 won=False ante=3 score=2895 money=25 runtime=55.18s
+[22/34] seed=922933749 won=True ante=8 score=100170 money=70 runtime=193.62s
+[23/34] seed=30549315 won=False ante=0 score=0 money=0 runtime=99.59s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'BAD_REQUEST'}, 'code': -32001, 'message': "Card 'c_talisman' requires exa
+[24/34] seed=40883669 won=False ante=2 score=504 money=2 runtime=42.05s
+[25/34] seed=1815819296 won=False ante=6 score=4542 money=49 runtime=204.88s
+[26/34] seed=1043091076 won=False ante=5 score=11617 money=2 runtime=181.61s
+[27/34] seed=1334306833 won=False ante=4 score=9341 money=24 runtime=167.67s
+[28/34] seed=1782280661 won=False ante=7 score=28709 money=31 runtime=200.23s
+[29/34] seed=1421419275 won=True ante=8 score=143695 money=55 runtime=314.17s
+[30/34] seed=2083079758 won=False ante=2 score=484 money=15 runtime=123.34s
+[31/34] seed=329675395 won=False ante=2 score=445 money=5 runtime=65.56s
+[32/34] seed=1244995351 won=False ante=5 score=2817 money=33 runtime=146.66s
+[33/34] seed=567967531 won=False ante=1 score=295 money=9 runtime=19.44s
+[34/34] seed=2062519150 won=False ante=4 score=8613 money=58 runtime=152.46s
+Retry 1: rerunning 1 failed seed(s) on healthy endpoint(s).
+[retry 1] seed=30549315 won=False ante=0 score=0 money=0 runtime=93.50s death=error:BalatroBridgeError: Balatro bridge error: {'data': {'name': 'BAD_REQUEST'}, 'code': -32001, 'message': "Card 'c_talisman' requires exa
+
+Bot: search_bot_v1
+Stake: white
+Deck: RED
+Profile: P1
+Unlocks: all
+Runs: 34
+Win rate: 8.8%
+Average ante: 4.03
+Average final score: 22413.5
+Average final money: 25.9
+Average runtime: 134.43 sec/run

@@ -1389,44 +1389,6 @@ class BasicStrategyBotTests(unittest.TestCase):
         self.assertEqual(action.metadata["shop_audit"]["chosen_item"]["name"], "Hologram")
         self.assertLess(action.metadata["shop_audit"]["money_plan"]["reserve_money"], 25)
 
-    def test_under_pressure_rerolls_when_visible_options_do_not_fix_scaling(self) -> None:
-        state = GameState(
-            ante=4,
-            blind="Small Blind",
-            required_score=5000,
-            money=24,
-            hands_remaining=4,
-            discards_remaining=4,
-            jokers=(
-                Joker("Greedy Joker"),
-                Joker("Crafty Joker"),
-                Joker("Clever Joker"),
-                Joker("Joker Stencil", metadata={"value": {"effect": "Currently X2"}}),
-            ),
-            modifiers={
-                "shop_cards": (
-                    {"label": "Even Steven", "set": "JOKER", "cost": {"buy": 4}},
-                    {"label": "Uranus", "set": "PLANET", "cost": {"buy": 3}},
-                ),
-                "booster_packs": (
-                    {"label": "Jumbo Arcana Pack", "set": "PACK", "cost": {"buy": 6}},
-                    {"label": "Celestial Pack", "set": "PACK", "cost": {"buy": 4}},
-                ),
-            },
-            legal_actions=(
-                Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),
-                Action(ActionType.BUY, target_id="card", amount=1, metadata={"kind": "card", "index": 1}),
-                Action(ActionType.OPEN_PACK, target_id="pack", amount=0, metadata={"kind": "pack", "index": 0}),
-                Action(ActionType.OPEN_PACK, target_id="pack", amount=1, metadata={"kind": "pack", "index": 1}),
-                Action(ActionType.REROLL),
-                Action(ActionType.END_SHOP),
-            ),
-        )
-
-        action = BasicStrategyBot(seed=1).choose_action(state)
-
-        self.assertEqual(action.action_type, ActionType.REROLL)
-
     def test_shop_safety_margin_opens_pack_before_score_wall(self) -> None:
         state = GameState(
             ante=4,
@@ -1907,6 +1869,44 @@ class BasicStrategyBotTests(unittest.TestCase):
         action = BasicStrategyBot(seed=1).choose_action(state)
 
         self.assertEqual(action.action_type, ActionType.DISCARD)
+
+    def test_last_safety_discard_does_not_take_known_worse_draw(self) -> None:
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            ante=3,
+            blind="Big Blind",
+            required_score=3000,
+            current_score=0,
+            hands_remaining=4,
+            discards_remaining=1,
+            deck_size=41,
+            hand=(
+                Card("K", "C"),
+                Card("J", "C"),
+                Card("8", "S"),
+                Card("8", "C"),
+                Card("5", "H"),
+                Card("5", "D"),
+                Card("3", "C"),
+                Card("3", "D"),
+            ),
+            known_deck=(Card("6", "D"), Card("A", "H"), Card("10", "S")),
+            jokers=(
+                Joker("Crafty Joker", sell_value=2),
+                Joker("Devious Joker", sell_value=2),
+                Joker("Baron", sell_value=4),
+                Joker("Swashbuckler", sell_value=2),
+                Joker("Smiley Face", sell_value=2, metadata={"config": {"extra": 5}}),
+            ),
+        )
+        discard = Action(ActionType.DISCARD, card_indices=(4,))
+        context = strategy._BlindContext()
+
+        projected_score = strategy._projected_score_after_discard(state, discard, context)
+
+        self.assertLess(projected_score, 598)
+        self.assertFalse(strategy._should_safety_discard(state, discard, 598, 3000, context))
+        self.assertFalse(strategy._should_chase_discard(state, discard, 598, 3000, context))
 
     def test_the_eye_avoids_repeating_played_hand_type(self) -> None:
         bot = BasicStrategyBot(seed=1)

@@ -8,8 +8,11 @@ from balatro_ai.api.actions import Action, ActionType
 from balatro_ai.api.state import GamePhase, GameState
 from balatro_ai.bots.basic_strategy_bot import (
     BasicStrategyBot,
+    _best_play_action,
     _blind_select_action,
     _first_action_of_type,
+    _joker_rearrange_action,
+    _tactical_blind_action,
     decision_cache_scope,
 )
 from balatro_ai.search.consumable_search import ConsumableSearchConfig, best_consumable_action
@@ -119,15 +122,32 @@ class SearchBot:
                 self._record_shop_action(state, shop_action)
                 return shop_action
         if any(action.action_type in {ActionType.PLAY_HAND, ActionType.DISCARD} for action in state.legal_actions):
+            basic_action = self._basic_blind_action(state)
             hand_action = best_hand_action(state, config=self.hand_config, context=self._basic_blind_context(state))
             if hand_action is not None:
+                if basic_action is not None and _basic_blind_action_should_guard(basic_action, hand_action):
+                    self._record_basic_blind_action(state, basic_action)
+                    return basic_action
                 self._record_basic_blind_action(state, hand_action)
                 return hand_action
+            if basic_action is not None:
+                self._record_basic_blind_action(state, basic_action)
+                return basic_action
         return self._fallback.choose_action(state)
 
     def _basic_blind_context(self, state: GameState):
         self._fallback._sync_blind_memory(state)
         return self._fallback._blind_context(state)
+
+    def _basic_blind_action(self, state: GameState) -> Action | None:
+        context = self._basic_blind_context(state)
+        rearrange = _joker_rearrange_action(state, context)
+        if rearrange is not None:
+            return rearrange
+        best_play = _best_play_action(state, context)
+        if best_play is None:
+            return None
+        return _tactical_blind_action(state, best_play, context)
 
     def _record_basic_blind_action(self, state: GameState, action: Action) -> None:
         self._fallback._record_blind_action(state, action, self._basic_blind_context(state))
@@ -246,3 +266,14 @@ def _item_label(item: object) -> str:
     if not isinstance(item, dict):
         return str(item)
     return str(item.get("label", item.get("name", item.get("key", ""))))
+
+
+def _basic_blind_action_should_guard(basic_action: Action, search_action: Action) -> bool:
+    if basic_action.action_type == ActionType.REARRANGE:
+        return True
+    if basic_action.action_type == search_action.action_type:
+        return False
+    return {
+        basic_action.action_type,
+        search_action.action_type,
+    } <= {ActionType.PLAY_HAND, ActionType.DISCARD}

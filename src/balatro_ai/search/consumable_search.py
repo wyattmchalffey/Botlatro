@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from random import Random
 from typing import Any
 
@@ -18,6 +18,7 @@ from balatro_ai.search.forward_sim import (
     TAROT_NAMES,
     simulate_use_consumable,
 )
+from balatro_ai.search.hand_viability import ADVANCED_HAND_TYPES, hand_draw_odds
 from balatro_ai.search.shop_sampler import ShopSampler
 from balatro_ai.search.state_value import _best_immediate_score, clear_probability, state_value
 
@@ -537,9 +538,11 @@ def _consumable_use_bonus(
     elif action.card_indices:
         bonus += _current_hand_score_delta_bonus_from_state(state, simulated)
         bonus += _deck_fixing_shape_bonus(state, action)
+        bonus += _hand_viability_delta_bonus(state, simulated)
     elif name == "Immolate":
         bonus += _money_consumable_timing_bonus(state, simulated, config=config, action_index=action_index, name=name)
         bonus -= min(8.0, max(0, len(state.hand) - len(simulated.hand)) * 0.8)
+        bonus += _hand_viability_delta_bonus(state, simulated)
     elif name in {"Ankh", "Hex", "Ectoplasm"}:
         bonus += max(0.0, _shop_value_fn(simulated) - _shop_value_fn(state)) * 0.08
     elif name in {"Familiar", "Grim", "Incantation", "Sigil", "Ouija"}:
@@ -652,6 +655,51 @@ def _deck_fixing_shape_bonus(state: GameState, action: Action) -> float:
     if name in TAROT_ENHANCEMENTS:
         return _enhancement_candidate_score(state, action, TAROT_ENHANCEMENTS[name]) * 0.18
     return 0.0
+
+
+def _hand_viability_delta_bonus(state: GameState, simulated: GameState) -> float:
+    targets = _viability_targets(state)
+    if not targets:
+        return 0.0
+    try:
+        before = hand_draw_odds(_future_draw_state(state))
+        after = hand_draw_odds(_future_draw_state(simulated), draw_size=before.draw_size)
+    except (ValueError, TypeError, AttributeError):
+        return 0.0
+
+    bonus = 0.0
+    for hand_type in targets:
+        delta = max(0.0, after.probability(hand_type) - before.probability(hand_type))
+        if delta <= 0.0:
+            continue
+        scale = 120.0 if hand_type in ADVANCED_HAND_TYPES else 42.0
+        bonus += min(10.0, delta * scale)
+    return min(14.0, bonus)
+
+
+def _viability_targets(state: GameState) -> tuple[HandType, ...]:
+    targets: list[HandType] = []
+    preferred = _preferred_hand_type(state)
+    if preferred is not None:
+        targets.append(preferred)
+    for hand_type in ADVANCED_HAND_TYPES:
+        if state.hand_levels.get(hand_type.value, 1) > 1:
+            targets.append(hand_type)
+    if not targets:
+        targets.extend((HandType.FLUSH, HandType.FULL_HOUSE, HandType.THREE_OF_A_KIND))
+    deduped: list[HandType] = []
+    for hand_type in targets:
+        if hand_type not in deduped:
+            deduped.append(hand_type)
+    return tuple(deduped[:4])
+
+
+def _future_draw_state(state: GameState) -> GameState:
+    if not state.hand:
+        return state
+    known_deck = state.known_deck + state.hand if state.known_deck else ()
+    deck_size = max(state.deck_size + len(state.hand), len(known_deck))
+    return replace(state, hand=(), known_deck=known_deck, deck_size=deck_size)
 
 
 def _enhancement_candidate_score(state: GameState, action: Action, enhancement: str) -> float:

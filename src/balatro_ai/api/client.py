@@ -109,7 +109,7 @@ class JsonRpcBalatroClient:
         if action.action_type.value == "choose_pack_card":
             params = _indexed_params(action, default_kind="card")
             if action.card_indices:
-                params["cards"] = list(action.card_indices)
+                params["targets"] = list(action.card_indices)
             return "pack", params
         if action.action_type.value == "open_pack":
             return "buy", _indexed_params(action, default_kind="pack")

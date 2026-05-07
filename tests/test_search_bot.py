@@ -8,9 +8,11 @@ from balatro_ai.api.actions import Action, ActionType
 from balatro_ai.api.state import Card, GamePhase, GameState, Joker, with_derived_legal_actions
 from balatro_ai.bots.registry import create_bot
 from balatro_ai.bots.search_bot import SearchBot
+from balatro_ai.bots.search_bot_v2 import SearchBotV2
 from balatro_ai.search.consumable_search import ConsumableSearchConfig, best_consumable_action, consumable_action_value
 from balatro_ai.search.discard_search import DiscardSearchConfig
 from balatro_ai.search.pack_search import PackSearchConfig
+from balatro_ai.sim.local_runner import LocalBalatroSimulator
 
 
 class SearchBotTests(unittest.TestCase):
@@ -27,14 +29,17 @@ class SearchBotTests(unittest.TestCase):
         self.assertEqual(bot.name, "search_bot_v1")
         self.assertTrue(bot.enable_shop_search)
 
-    def test_registry_creates_trace_enabled_search_bot_v1(self) -> None:
-        bot = create_bot("search_bot_v1_trace", seed=3)
+    def test_registry_creates_search_bot_v2_as_v1_copy(self) -> None:
+        bot = create_bot("search_bot_v2", seed=3)
 
-        self.assertIsInstance(bot, SearchBot)
-        self.assertEqual(bot.name, "search_bot_v1_trace")
+        self.assertIsInstance(bot, SearchBotV2)
+        self.assertNotIsInstance(bot, SearchBot)
+        self.assertEqual(bot.name, "search_bot_v2")
         self.assertTrue(bot.enable_shop_search)
-        self.assertIsNotNone(bot.shop_config)
-        self.assertEqual(bot.shop_config.trace_top_paths, 8)
+
+    def test_registry_does_not_create_trace_variant_for_search_bot_v1(self) -> None:
+        with self.assertRaises(ValueError):
+            create_bot("search_bot_v1_trace", seed=3)
 
     def test_search_bot_uses_discard_search_when_discards_are_legal(self) -> None:
         bot = SearchBot(seed=1, discard_config=DiscardSearchConfig(draw_samples=2, leaf_samples=1, seed=1))
@@ -118,6 +123,20 @@ class SearchBotTests(unittest.TestCase):
 
         self.assertEqual(action.action_type, ActionType.DISCARD)
         self.assertEqual(action.metadata["search"], "hand_expectimax")
+
+    def test_search_bot_does_not_repeat_opening_hunt_after_first_discard(self) -> None:
+        bot = create_bot("search_bot_v1", seed=1758025119)
+        simulator = LocalBalatroSimulator(seed=1758025119)
+        state = simulator.reset()
+        state = simulator.step(bot.choose_action(state))
+
+        first_action = bot.choose_action(state)
+        self.assertEqual(first_action.action_type, ActionType.DISCARD)
+        self.assertEqual(first_action.card_indices, (0, 1, 7))
+        state = simulator.step(first_action)
+        second_action = bot.choose_action(state)
+
+        self.assertEqual(second_action.action_type, ActionType.PLAY_HAND)
 
     def test_search_bot_preserves_safe_joker_setup_before_discard_search(self) -> None:
         bot = SearchBot(seed=1, discard_config=DiscardSearchConfig(draw_samples=2, leaf_samples=1, seed=1))

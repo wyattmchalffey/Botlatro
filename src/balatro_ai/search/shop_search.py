@@ -22,6 +22,41 @@ from balatro_ai.search.shop_sampler import ShopSampler
 LeafValueFn = Callable[[GameState], float]
 ActionValueFn = Callable[[GameState, Action], float]
 LeafTermsFn = Callable[[GameState], "ShopLeafTerms"]
+_DEFAULT_ACTION_POTENTIAL_WEIGHT = 0.65
+
+_CONDITIONAL_CHIP_JOKERS = frozenset(
+    {
+        "Sly Joker",
+        "Wily Joker",
+        "Clever Joker",
+        "Devious Joker",
+        "Crafty Joker",
+        "Arrowhead",
+        "Square Joker",
+        "Runner",
+    }
+)
+_CONDITIONAL_MULT_ROLE_CREDITS = {
+    "Jolly Joker": 8.0,
+    "Zany Joker": 8.0,
+    "Mad Joker": 8.0,
+    "Crazy Joker": 8.0,
+    "Droll Joker": 8.0,
+    "Greedy Joker": 8.0,
+    "Lusty Joker": 8.0,
+    "Wrathful Joker": 8.0,
+    "Gluttonous Joker": 8.0,
+}
+_CONDITIONAL_PRESSURE_BOSSES = frozenset(
+    {
+        "The Water",
+        "The Manacle",
+        "The Needle",
+        "The Eye",
+        "The Mouth",
+        "The Psychic",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +90,8 @@ class ShopLeafTerms:
     consumable_value: float
     missing_penalty: float
     money_floor_penalty: float
+    clear_gate_penalty: float
+    conditional_penalty: float
     build_score: float
     root_build_score: float
     pressure_ratio: float
@@ -74,6 +111,8 @@ class ShopLeafTerms:
             + self.consumable_value
             - self.missing_penalty
             - self.money_floor_penalty
+            - self.clear_gate_penalty
+            - self.conditional_penalty
         )
 
     def to_trace_dict(self) -> dict[str, float]:
@@ -89,6 +128,8 @@ class ShopLeafTerms:
             "consumables": round(self.consumable_value, 3),
             "missing_penalty": round(self.missing_penalty, 3),
             "money_floor_penalty": round(self.money_floor_penalty, 3),
+            "clear_gate_penalty": round(self.clear_gate_penalty, 3),
+            "conditional_penalty": round(self.conditional_penalty, 3),
             "build_score": round(self.build_score, 3),
             "root_build_score": round(self.root_build_score, 3),
             "pressure_ratio": round(self.pressure_ratio, 3),
@@ -129,7 +170,6 @@ def best_shop_action(
     if search_config.depth <= 0 or search_config.beam_width <= 0:
         return None
 
-    require_replacement_upgrade = leaf_value_fn is None and action_value_fn is None
     shop_sampler = sampler or ShopSampler.from_default_data()
     runtime_context = shop_context or ShopSearchContext()
     if leaf_value_fn is None:
@@ -143,6 +183,9 @@ def best_shop_action(
     else:
         leaf_terms = None
         leaf_value = leaf_value_fn
+    action_potential_weight = (
+        _DEFAULT_ACTION_POTENTIAL_WEIGHT if leaf_value_fn is None and action_value_fn is None else 0.0
+    )
     action_value = action_value_fn or (
         lambda current, action: shop_action_search_value(
             current,
@@ -157,7 +200,6 @@ def best_shop_action(
         shop_sampler,
         root_actions=state.legal_actions,
         protected_jokers=protected_jokers,
-        require_replacement_upgrade=require_replacement_upgrade,
     )
     if not root_actions:
         return None
@@ -176,8 +218,6 @@ def best_shop_action(
                 shop_sampler,
                 root_actions=root_actions if not node.path else (),
                 protected_jokers=(*protected_jokers, *node.protected_jokers),
-                require_joker_buy_after_sell=bool(node.path and _sell_requires_joker_buy(node.path[-1])),
-                require_replacement_upgrade=require_replacement_upgrade,
             )
             if not actions:
                 completed.append(node)
@@ -192,6 +232,7 @@ def best_shop_action(
                     leaf_value_fn=leaf_value,
                     leaf_terms_fn=leaf_terms,
                     leaf_weight=search_config.leaf_weight,
+                    action_potential_weight=action_potential_weight,
                 )
                 if child.terminal:
                     completed.append(child)
@@ -206,9 +247,9 @@ def best_shop_action(
     if not candidates:
         return None
     best = max(candidates, key=lambda item: item.score)
+    trace_candidates = _trace_candidates(candidates, limit=search_config.trace_top_paths)
     if best.score < search_config.min_search_value:
         return None
-    trace_candidates = _trace_candidates(candidates, limit=search_config.trace_top_paths)
     return _annotated_action(
         best.first_action,
         search_value=best.score,
@@ -258,6 +299,8 @@ def shop_action_search_value(
         value = _basic_shop_action_value(state, action, shop_context or ShopSearchContext())
         if action.action_type == ActionType.BUY:
             value -= _unresolved_pressure_buy_penalty(state, action)
+            value -= _conditional_joker_buy_penalty(state, action)
+        value -= _clear_first_speculative_spend_penalty(state, action)
         return value
     if action.action_type == ActionType.USE_CONSUMABLE:
         search_config = config or ShopSearchConfig()
@@ -354,6 +397,22 @@ def shop_leaf_terms(
     consumable_value = _shop_consumable_inventory_value(state)
     money_floor_penalty = _shop_money_floor_penalty(state)
     pressure_ratio, raw_pressure_ratio, capacity_ratio = _shop_pressure_metrics(state)
+    clear_gate_penalty = _shop_clear_gate_penalty(
+        state,
+        root_state=root_state,
+        root_build_score=root_build_score,
+        leaf_build_score=leaf_build_score,
+        pressure_ratio=pressure_ratio,
+        raw_pressure_ratio=raw_pressure_ratio,
+        capacity_ratio=capacity_ratio,
+    )
+    conditional_penalty = _conditional_joker_reliability_penalty(
+        state,
+        profile,
+        pressure_ratio=pressure_ratio,
+        raw_pressure_ratio=raw_pressure_ratio,
+        capacity_ratio=capacity_ratio,
+    )
     return ShopLeafTerms(
         raw_owned_value=raw_owned_value,
         owned_value=shop_owned_joker_leaf_value(
@@ -372,6 +431,8 @@ def shop_leaf_terms(
         consumable_value=consumable_value,
         missing_penalty=missing_penalty,
         money_floor_penalty=money_floor_penalty,
+        clear_gate_penalty=clear_gate_penalty,
+        conditional_penalty=conditional_penalty,
         build_score=leaf_build_score,
         root_build_score=baseline,
         pressure_ratio=pressure_ratio,
@@ -492,6 +553,125 @@ def shop_owned_joker_leaf_value(
     return value
 
 
+def _conditional_joker_reliability_penalty(
+    state: GameState,
+    profile: Any,
+    *,
+    pressure_ratio: float | None = None,
+    raw_pressure_ratio: float | None = None,
+    capacity_ratio: float | None = None,
+) -> float:
+    """Discount high-capacity leaves that need narrow hands but lack stable mult."""
+
+    conditional_chips = [joker.name for joker in state.jokers if joker.name in _CONDITIONAL_CHIP_JOKERS]
+    if not conditional_chips:
+        return 0.0
+
+    if pressure_ratio is None or raw_pressure_ratio is None or capacity_ratio is None:
+        pressure_ratio, raw_pressure_ratio, capacity_ratio = _shop_pressure_metrics(state)
+
+    chip_count = len(conditional_chips)
+    conditional_mult_count = sum(1 for joker in state.jokers if joker.name in _CONDITIONAL_MULT_ROLE_CREDITS)
+    stable_mult_ratio = _stable_mult_ratio_after_conditional_credit(state, profile)
+    missing_stable_mult = stable_mult_ratio < 0.80
+
+    penalty = 0.0
+    if chip_count >= 2:
+        penalty += 8.0 + ((chip_count - 1) * 6.0)
+    if missing_stable_mult:
+        penalty += chip_count * (6.0 + ((0.80 - stable_mult_ratio) * 8.0))
+        if chip_count >= 2:
+            penalty += 10.0
+
+    if (
+        state.ante >= 2
+        and "Clever Joker" in conditional_chips
+        and "Square Joker" in conditional_chips
+        and missing_stable_mult
+    ):
+        penalty += 10.0
+
+    pressure = max(float(pressure_ratio), float(raw_pressure_ratio))
+    capacity_ratio = float(capacity_ratio)
+    if pressure >= 0.90 or capacity_ratio < 1.18:
+        penalty *= 1.0 + min(0.35, max(0.0, pressure - 0.85) * 0.7)
+
+    boss_name = _upcoming_shop_boss_name(state)
+    if boss_name in _CONDITIONAL_PRESSURE_BOSSES:
+        narrow_count = chip_count + conditional_mult_count
+        penalty += 10.0 + (narrow_count * 8.0)
+        if missing_stable_mult:
+            penalty += 12.0
+
+    if state.ante <= 1:
+        penalty *= 0.25
+    elif state.ante >= 4:
+        penalty *= 1.10
+    return min(110.0, max(0.0, penalty))
+
+
+def _conditional_joker_buy_penalty(state: GameState, action: Action) -> float:
+    if action.action_type != ActionType.BUY:
+        return 0.0
+    item = _buy_action_item(state, action)
+    name = _item_label(item)
+    if name not in _CONDITIONAL_CHIP_JOKERS:
+        return 0.0
+
+    try:
+        next_state = simulate_buy(state, action)
+        from balatro_ai.bots.basic_strategy_bot import _build_profile
+
+        profile = _build_profile(next_state)
+    except (ImportError, TypeError, ValueError, IndexError, AttributeError):
+        return 0.0
+
+    stable_mult_ratio = _stable_mult_ratio_after_conditional_credit(next_state, profile)
+    missing_stable_mult = stable_mult_ratio < 0.80
+    pressure_ratio, raw_pressure_ratio, capacity_ratio = _shop_pressure_metrics(next_state)
+    pressure = max(pressure_ratio, raw_pressure_ratio)
+    conditional_chip_count = sum(1 for joker in next_state.jokers if joker.name in _CONDITIONAL_CHIP_JOKERS)
+
+    penalty = 0.0
+    if missing_stable_mult:
+        penalty += 12.0 + ((0.80 - stable_mult_ratio) * 18.0)
+        if conditional_chip_count >= 2:
+            penalty += 12.0 + ((conditional_chip_count - 2) * 6.0)
+
+    if pressure >= 0.90 or capacity_ratio < 1.12:
+        penalty += max(0.0, 1.12 - capacity_ratio) * 70.0
+        penalty += max(0.0, 1.00 - capacity_ratio) * 105.0
+        penalty += max(0.0, pressure - 0.90) * 34.0
+
+    boss_name = _upcoming_shop_boss_name(next_state)
+    if boss_name in _CONDITIONAL_PRESSURE_BOSSES:
+        penalty += 8.0
+        if missing_stable_mult:
+            penalty += 8.0
+
+    if state.ante <= 1:
+        penalty *= 0.35
+    elif state.ante >= 4:
+        penalty *= 1.10
+    return min(160.0, max(0.0, penalty))
+
+
+def _stable_mult_ratio_after_conditional_credit(state: GameState, profile: Any) -> float:
+    requirement = max(1.0, float(profile.role_requirement("mult")))
+    conditional_credit = sum(_CONDITIONAL_MULT_ROLE_CREDITS.get(joker.name, 0.0) for joker in state.jokers)
+    stable_score = max(0.0, float(profile.role_score("mult")) - conditional_credit)
+    return stable_score / requirement
+
+
+def _upcoming_shop_boss_name(state: GameState) -> str | None:
+    try:
+        from balatro_ai.bots.basic_strategy_bot import _upcoming_boss_blind_name
+
+        return _upcoming_boss_blind_name(state)
+    except (ImportError, TypeError, ValueError, AttributeError):
+        return None
+
+
 def _shop_build_score(state: GameState) -> float:
     try:
         from balatro_ai.bots.basic_strategy_bot import _sample_build_score
@@ -530,6 +710,155 @@ def _shop_pressure_metrics(state: GameState) -> tuple[float, float, float]:
         return float(pressure.ratio), float(pressure.raw_ratio), capacity_ratio
     except (ImportError, TypeError, ValueError, AttributeError):
         return 0.0, 0.0, 0.0
+
+
+def _shop_clear_gate_penalty(
+    state: GameState,
+    *,
+    root_state: GameState | None = None,
+    root_build_score: float | None = None,
+    leaf_build_score: float | None = None,
+    pressure_ratio: float | None = None,
+    raw_pressure_ratio: float | None = None,
+    capacity_ratio: float | None = None,
+) -> float:
+    """Keep value lines behind the next-blind clear check."""
+
+    if pressure_ratio is None or raw_pressure_ratio is None or capacity_ratio is None:
+        pressure_ratio, raw_pressure_ratio, capacity_ratio = _shop_pressure_metrics(state)
+    pressure = max(float(pressure_ratio), float(raw_pressure_ratio))
+    capacity_ratio = float(capacity_ratio)
+    if pressure <= 0.0 and capacity_ratio <= 0.0:
+        return 0.0
+
+    leaf_score = _shop_build_score(state) if leaf_build_score is None else float(leaf_build_score)
+    baseline_known = root_state is not None or root_build_score is not None
+    baseline = root_build_score
+    if baseline is None and root_state is not None:
+        baseline = _shop_build_score(root_state)
+    if baseline is None:
+        baseline = leaf_score
+    baseline = float(baseline)
+    build_gain = max(0.0, leaf_score - baseline)
+    meaningful_gain = max(45.0, baseline * 0.30)
+    gain_credit = min(1.0, build_gain / meaningful_gain) if baseline_known else 0.0
+
+    pressure_gap = max(0.0, float(pressure_ratio) - 1.0)
+    raw_gap = max(0.0, float(raw_pressure_ratio) - 1.0)
+    capacity_gap = max(0.0, 1.0 - capacity_ratio)
+    near_clear_gap = 0.0
+    if pressure >= 0.90 or capacity_ratio < 1.12:
+        near_clear_gap = max(0.0, 1.12 - capacity_ratio) * 9.0
+
+    penalty = (
+        (pressure_gap * 82.0)
+        + (raw_gap * 46.0)
+        + (capacity_gap * 74.0)
+        + near_clear_gap
+    )
+    unresolved_gain = 1.0 - gain_credit
+    penalty *= unresolved_gain
+
+    floor_shortfall = _safe_money_shortfall(state)
+    if floor_shortfall > 0:
+        if pressure >= 1.0 or capacity_ratio < 1.0:
+            floor_weight = 1.9 + min(1.0, max(0, state.ante - 2) * 0.25)
+            penalty += floor_shortfall * floor_weight * unresolved_gain
+        elif pressure >= 0.90 or capacity_ratio < 1.12:
+            penalty += floor_shortfall * 0.85 * unresolved_gain
+
+    if pressure < 0.85 and capacity_ratio >= 1.20:
+        penalty *= 0.25
+    elif pressure < 0.95 and capacity_ratio >= 1.05:
+        penalty *= 0.55
+    if state.ante <= 1:
+        penalty *= 0.70
+    return min(260.0, max(0.0, penalty))
+
+
+def _safe_money_shortfall(state: GameState, *, after_spend: int | None = None) -> int:
+    money = state.money if after_spend is None else after_spend
+    return max(0, _minimum_safe_shop_money(state) - money - _economy_floor_credit(state))
+
+
+def _clear_first_speculative_spend_penalty(state: GameState, action: Action) -> float:
+    """Charge value-only spending until the shop line passes the clear bar."""
+
+    spend_kind = _speculative_spend_kind(state, action)
+    if spend_kind is None:
+        return 0.0
+    cost = _shop_action_cost(state, action)
+    if cost <= 0:
+        return 0.0
+
+    pressure_ratio, raw_pressure_ratio, capacity_ratio = _shop_pressure_metrics(state)
+    pressure = max(pressure_ratio, raw_pressure_ratio)
+    after_money = state.money - cost
+    if after_money < 0:
+        return 1000.0
+
+    current_shortfall = _safe_money_shortfall(state)
+    after_shortfall = _safe_money_shortfall(state, after_spend=after_money)
+    new_shortfall = max(0, after_shortfall - current_shortfall)
+    clear_unsettled = pressure >= 0.92 or raw_pressure_ratio >= 0.96 or capacity_ratio < 1.12
+    if not clear_unsettled and new_shortfall <= 0:
+        return 0.0
+
+    pressure_weight = max(0.0, pressure - 0.88) * 1.35
+    capacity_weight = max(0.0, 1.12 - capacity_ratio) * 0.85
+    floor_weight = 3.1 + min(1.0, max(0, state.ante - 2) * 0.25)
+    penalty = (cost * (0.55 + pressure_weight + capacity_weight)) + (new_shortfall * floor_weight)
+    if after_money < 5 and state.ante >= 2:
+        penalty += (5 - after_money) * 3.0
+
+    if clear_unsettled and capacity_ratio < 1.0:
+        capacity_shortfall = 1.0 - capacity_ratio
+        if spend_kind == "pack":
+            penalty += capacity_shortfall * 105.0
+        elif spend_kind == "voucher":
+            penalty += capacity_shortfall * 55.0
+        elif spend_kind == "consumable":
+            penalty += capacity_shortfall * 35.0
+
+    if spend_kind == "pack":
+        penalty *= 1.25
+        pack = _pack_item_for_action(state, action)
+        pack_label = _item_label(pack).lower() if pack is not None else ""
+        if "buffoon" in pack_label and _normal_joker_open_slots(state) > 0 and capacity_ratio < 1.0:
+            penalty *= 0.55
+    elif spend_kind == "voucher":
+        penalty *= 1.10
+    elif spend_kind == "consumable":
+        penalty *= 0.82
+    if state.ante <= 1:
+        penalty *= 0.65
+    return min(150.0, max(0.0, penalty))
+
+
+def _speculative_spend_kind(state: GameState, action: Action) -> str | None:
+    if action.action_type == ActionType.OPEN_PACK:
+        return "pack"
+    if action.action_type != ActionType.BUY:
+        return None
+    kind = _action_kind(action, default="card")
+    if kind == "voucher":
+        return "voucher"
+    item = _buy_action_item(state, action)
+    if item is None or _is_joker_item(item):
+        return None
+    if _is_consumable_item(item):
+        return "consumable"
+    return "speculative"
+
+
+def _shop_action_cost(state: GameState, action: Action) -> int:
+    if action.action_type == ActionType.OPEN_PACK:
+        pack = _pack_item_for_action(state, action)
+        return _item_cost(state, pack)
+    if action.action_type == ActionType.BUY:
+        item = _buy_action_item(state, action)
+        return _item_cost(state, item)
+    return 0
 
 
 def _shop_money_value(state: GameState) -> float:
@@ -778,11 +1107,15 @@ def _expand_action(
     leaf_value_fn: LeafValueFn,
     leaf_terms_fn: LeafTermsFn | None,
     leaf_weight: float,
+    action_potential_weight: float,
 ) -> _BeamNode:
     first_action = node.first_action or action
     path = node.path + (action,)
     immediate = action_value_fn(node.state, action)
-    terminal = action.action_type in {ActionType.END_SHOP, ActionType.REROLL, ActionType.OPEN_PACK}
+    terminal = action.action_type in {ActionType.END_SHOP, ActionType.REROLL, ActionType.OPEN_PACK} or _is_overstock_voucher_buy(
+        node.state,
+        action,
+    )
     try:
         next_state = _simulate_shop_action(node.state, action, sampler, rng=rng)
     except (ValueError, IndexError, TypeError):
@@ -796,9 +1129,17 @@ def _expand_action(
             leaf_terms=None,
             terminal=True,
         )
-    action_score = node.action_score + immediate
     leaf_terms = leaf_terms_fn(next_state) if leaf_terms_fn is not None else None
     leaf_score = leaf_terms.total if leaf_terms is not None else leaf_value_fn(next_state)
+    immediate += _action_potential_shaping(
+        node,
+        action,
+        leaf_score,
+        leaf_value_fn=leaf_value_fn,
+        leaf_terms_fn=leaf_terms_fn,
+        weight=action_potential_weight,
+    )
+    action_score = node.action_score + immediate
     score = action_score + (leaf_score * leaf_weight)
     protected_jokers = node.protected_jokers
     bought_joker = _bought_joker_name(node.state, action)
@@ -815,6 +1156,25 @@ def _expand_action(
         terminal=terminal,
         protected_jokers=protected_jokers,
     )
+
+
+def _action_potential_shaping(
+    node: _BeamNode,
+    action: Action,
+    next_leaf_score: float,
+    *,
+    leaf_value_fn: LeafValueFn,
+    leaf_terms_fn: LeafTermsFn | None,
+    weight: float,
+) -> float:
+    if weight <= 0.0 or action.action_type not in {ActionType.BUY, ActionType.SELL, ActionType.USE_CONSUMABLE}:
+        return 0.0
+    if node.path:
+        current_leaf_score = node.leaf_score
+    else:
+        current_terms = leaf_terms_fn(node.state) if leaf_terms_fn is not None else None
+        current_leaf_score = current_terms.total if current_terms is not None else leaf_value_fn(node.state)
+    return (next_leaf_score - current_leaf_score) * weight
 
 
 def _simulate_shop_action(state: GameState, action: Action, sampler: ShopSampler, *, rng: Random) -> GameState:
@@ -864,16 +1224,7 @@ def _legal_shop_actions(
     *,
     root_actions: tuple[Action, ...] = (),
     protected_jokers: tuple[str, ...] = (),
-    require_joker_buy_after_sell: bool = False,
-    require_replacement_upgrade: bool = False,
 ) -> tuple[Action, ...]:
-    if require_joker_buy_after_sell:
-        return tuple(
-            Action(ActionType.BUY, target_id="card", amount=index, metadata={"kind": "card", "index": index})
-            for index, item in enumerate(_modifier_items(state.modifiers, "shop_cards"))
-            if _is_joker_item(item) and _can_buy_item(state, item) and _shop_card_can_be_bought(state, item)
-        )
-
     if root_actions:
         def root_action_allowed(action: Action) -> bool:
             if not _supported_root_action(action) or _sells_protected_joker(state, action, protected_jokers):
@@ -886,11 +1237,7 @@ def _legal_shop_actions(
                 index = _action_index(action)
                 return index is not None and _consumable_sell_is_search_candidate(state, index)
             index = _action_index(action)
-            return index is not None and _sell_is_search_candidate(
-                state,
-                index,
-                require_upgrade=require_replacement_upgrade,
-            )
+            return index is not None and _sell_is_search_candidate(state, index)
 
         return tuple(
             action
@@ -906,11 +1253,7 @@ def _legal_shop_actions(
 
     for index in range(len(state.jokers)):
         action = Action(ActionType.SELL, target_id="joker", amount=index, metadata={"kind": "joker", "index": index})
-        if not _sells_protected_joker(state, action, protected_jokers) and _sell_is_search_candidate(
-            state,
-            index,
-            require_upgrade=require_replacement_upgrade,
-        ):
+        if not _sells_protected_joker(state, action, protected_jokers) and _sell_is_search_candidate(state, index):
             actions.append(action)
 
     for index, item in enumerate(_modifier_items(state.modifiers, "shop_cards")):
@@ -951,10 +1294,6 @@ def _sells_protected_joker(state: GameState, action: Action, protected_jokers: t
     if index is None or not 0 <= index < len(state.jokers):
         return False
     return state.jokers[index].name in protected_jokers
-
-
-def _sell_requires_joker_buy(action: Action) -> bool:
-    return action.action_type == ActionType.SELL and _action_kind(action, default="joker") == "joker"
 
 
 def _consumable_sell_search_value(state: GameState, action: Action) -> float:
@@ -1003,69 +1342,11 @@ def _held_consumable_value(name: str) -> float:
     return 3.0
 
 
-def _sell_is_search_candidate(state: GameState, index: int, *, require_upgrade: bool = False) -> bool:
+def _sell_is_search_candidate(state: GameState, index: int) -> bool:
     if not 0 <= index < len(state.jokers):
         return False
     sell_value = state.jokers[index].sell_value or 0
-    if sell_value <= 0:
-        return False
-    money_after_sell = state.money + sell_value
-    for item_index, item in enumerate(_modifier_items(state.modifiers, "shop_cards")):
-        if not _is_joker_item(item):
-            continue
-        if _item_cost(state, item) > money_after_sell:
-            continue
-        if _can_buy_item(state, item) and _shop_card_can_be_bought(state, item):
-            continue
-        if _joker_replacement_has_room_after_sell(state, item):
-            if require_upgrade and not _replacement_upgrade_passes(state, index, item_index, item):
-                continue
-            return True
-    return False
-
-
-def _replacement_upgrade_passes(state: GameState, index: int, item_index: int, item: object) -> bool:
-    if not 0 <= index < len(state.jokers):
-        return False
-    try:
-        sell_action = Action(ActionType.SELL, target_id="joker", amount=index, metadata={"kind": "joker", "index": index})
-        sold_state = simulate_sell(state, sell_action)
-        buy_action = Action(ActionType.BUY, target_id="card", amount=item_index, metadata={"kind": "card", "index": item_index})
-        replacement_state = simulate_buy(sold_state, buy_action)
-        delta = _replacement_state_value(replacement_state) - _replacement_state_value(state)
-        return delta >= _replacement_delta_threshold(state, item)
-    except (TypeError, ValueError, IndexError, AttributeError):
-        return False
-
-
-def _replacement_state_value(state: GameState) -> float:
-    try:
-        from balatro_ai.bots.basic_strategy_bot import _build_profile, _sample_build_score
-    except ImportError:
-        return shop_leaf_value(state)
-    profile = _build_profile(state)
-    score_value = min(6000.0, max(0.0, float(_sample_build_score(state, state.jokers)))) * 0.06
-    role_value = 0.0
-    for role in ("chips", "mult", "xmult", "scaling", "economy"):
-        requirement = max(1.0, profile.role_requirement(role))
-        role_value += min(1.0, profile.role_score(role) / requirement) * 9.0
-    missing_penalty = len(profile.missing_roles) * 7.0
-    return score_value + role_value + _shop_money_value(state) + (len(state.consumables) * 1.5) - missing_penalty
-
-
-def _replacement_delta_threshold(state: GameState, item: object) -> float:
-    threshold = 10.0
-    if state.ante >= 5:
-        threshold += 6.0
-    if _is_joker_item(item) and _normal_joker_open_slots(state) <= 0:
-        threshold += 4.0
-    return threshold
-
-
-def _joker_replacement_has_room_after_sell(state: GameState, item: object) -> bool:
-    if not _joker_item_uses_normal_slot(item):
-        return True
-    return _normal_joker_slots_used(state) >= _normal_joker_slot_limit(state)
+    return sell_value > 0
 
 
 def _can_buy_item(state: GameState, item: object) -> bool:
