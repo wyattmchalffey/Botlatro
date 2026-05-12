@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
-from itertools import permutations
+from itertools import combinations, permutations
 from math import ceil, comb
 import re
 from threading import local
@@ -137,6 +137,11 @@ class _BlindContext:
 
 DISCARD_DETAIL_LIMIT = 28
 LATE_DISCARD_DETAIL_LIMIT = 12
+ANTE_ONE_UPGRADE_NEAR_CLEAR_RATIO = 0.80
+ANTE_ONE_UPGRADE_TARGET_RATIO = 0.96
+ANTE_ONE_UPGRADE_MIN_GAIN = 16
+WINNING_ECONOMY_HUNT_MIN_GAIN = 2.5
+BLUE_SEAL_ROUND_END_VALUE = 12.0
 MAX_JOKER_REARRANGE_COUNT = 6
 JOKER_REARRANGE_EXHAUSTIVE_COUNT = 4
 JOKER_REARRANGE_MIN_GAIN = 1
@@ -303,6 +308,19 @@ def _state_scoped_cache(kind: str, state: GameState) -> dict[tuple[object, ...],
     if cache is None:
         return None
     return _identity_cached_value(kind, state, dict)
+
+
+def _decision_scoped_cache(kind: str) -> dict[tuple[object, ...], object] | None:
+    cache = _current_decision_cache()
+    if cache is None:
+        return None
+    key = ("decision_scoped_cache", kind)
+    bucket = cache.get(key)
+    if isinstance(bucket, dict):
+        return bucket
+    bucket = {}
+    cache[key] = bucket
+    return bucket
 
 
 def _freeze_for_cache(value: object) -> object:
@@ -524,7 +542,8 @@ def _pack_choice_action(state: GameState, context: _ShopContext | None = None) -
     if not pack_cards:
         return None
     best_action: Action | None = None
-    best_value = 0.0
+    best_value = float("-inf")
+    best_should_take_without_edge = False
     skip_action = _pack_skip_action(state, has_pack_cards=bool(pack_cards))
     skip_value = _pack_skip_value(state)
 
@@ -546,11 +565,12 @@ def _pack_choice_action(state: GameState, context: _ShopContext | None = None) -
         if value > best_value:
             best_action = _with_target_indices(action, target_indices)
             best_value = value
+            best_should_take_without_edge = not _is_joker_card(pack_card) and not _is_spectral_card(pack_card)
 
-    if skip_action is not None and skip_value >= max(20.0, best_value - 4.0):
+    if skip_action is not None and skip_value > 0.0 and skip_value >= best_value:
         return _annotated_action(skip_action, reason=f"pack_skip value={skip_value:.1f}")
 
-    if best_action is not None and best_value >= 20:
+    if best_action is not None and (best_value > skip_value or best_should_take_without_edge):
         return _annotated_action(best_action, reason=f"pack_pick value={best_value:.1f}")
 
     if skip_action is not None:
@@ -626,6 +646,33 @@ def _shop_action(state: GameState, context: _ShopContext | None = None) -> Actio
 
     threshold = _shop_buy_threshold(state, pressure)
     if best_action is not None and best_value + SHOP_VALUE_TOLERANCE >= threshold:
+        sequenced_info_action = _shop_information_first_action(
+            state,
+            pressure,
+            context,
+            best_action=best_action,
+            best_value=best_value,
+            threshold=threshold,
+        )
+        if sequenced_info_action is not None:
+            info_action, info_value, planned_item = sequenced_info_action
+            return _annotated_action(
+                info_action,
+                reason=(
+                    f"shop_sequence_info_first value={info_value:.1f} "
+                    f"planned_buy={_card_label(planned_item)} buy_value={best_value:.1f} "
+                    f"pressure={pressure.ratio:.2f}"
+                ),
+                audit=_shop_decision_audit(
+                    state,
+                    pressure,
+                    chosen_action=info_action,
+                    chosen_value=info_value,
+                    threshold=threshold,
+                    decision="sequence_info_first",
+                    context=context,
+                ),
+            )
         return _annotated_action(
             best_action,
             reason=(
@@ -662,6 +709,52 @@ def _shop_action(state: GameState, context: _ShopContext | None = None) -> Actio
             ),
         )
     return None
+
+
+def _shop_information_first_action(
+    state: GameState,
+    pressure: _ShopPressure,
+    context: _ShopContext,
+    *,
+    best_action: Action,
+    best_value: float,
+    threshold: float,
+) -> tuple[Action, float, object] | None:
+    if context.packs_opened_in_shop > 0:
+        return None
+    if best_action.action_type != ActionType.BUY or str(best_action.metadata.get("kind", "")) != "card":
+        return None
+    planned_item = _shop_item_for_action(state, best_action)
+    if planned_item is None or not _is_joker_card(planned_item):
+        return None
+    planned_cost = _card_cost(planned_item)
+    if planned_cost <= 0 or state.money < planned_cost:
+        return None
+
+    best_info_action: Action | None = None
+    best_info_value = float("-inf")
+    for action in state.legal_actions:
+        if not _shop_action_reveals_information_before_joker_buy(state, action):
+            continue
+        info_cost = _shop_action_cost(state, action)
+        if planned_cost + info_cost > state.money:
+            continue
+        if (
+            _normal_slot_joker_card(planned_item)
+            and _shop_information_action_can_take_joker_slot(state, action)
+            and _normal_joker_open_slots(state) <= 1
+        ):
+            continue
+        value = _shop_action_value(state, action, pressure, context)
+        if value + SHOP_VALUE_TOLERANCE < threshold:
+            continue
+        if value > best_info_value:
+            best_info_action = action
+            best_info_value = value
+
+    if best_info_action is None:
+        return None
+    return best_info_action, best_info_value, planned_item
 
 
 def _replacement_sell_action(state: GameState, pressure: _ShopPressure) -> Action | None:
@@ -764,7 +857,12 @@ def _shop_decision_audit(
     options = [
         _shop_option_payload(state, action, _shop_action_value(state, action, pressure, context))
         for action in state.legal_actions
-        if action.action_type in {ActionType.BUY, ActionType.OPEN_PACK, ActionType.REROLL, ActionType.END_SHOP}
+        if action.action_type in {
+            ActionType.BUY,
+            ActionType.OPEN_PACK,
+            ActionType.REROLL,
+            ActionType.END_SHOP,
+        }
     ]
     return {
         "decision": decision,
@@ -955,11 +1053,41 @@ def _shop_action_value(
     return 0.0
 
 
+def _shop_action_reveals_information_before_joker_buy(state: GameState, action: Action) -> bool:
+    if action.action_type == ActionType.OPEN_PACK:
+        pack = _shop_item_for_action(state, action)
+        return (
+            pack is not None
+            and _is_buffoon_pack(pack)
+            and not _shop_pack_can_trigger_hidden_target_error(state, pack)
+        )
+    return False
+
+
+def _shop_information_action_can_take_joker_slot(state: GameState, action: Action) -> bool:
+    if action.action_type == ActionType.OPEN_PACK:
+        pack = _shop_item_for_action(state, action)
+        return pack is not None and _is_buffoon_pack(pack)
+    return False
+
+
+def _shop_action_cost(state: GameState, action: Action) -> int:
+    item = _shop_item_for_action(state, action)
+    return _card_cost(item) if item is not None else 0
+
+
 def _minimum_reroll_bank(state: GameState, pressure: _ShopPressure | None = None) -> int:
     if state.ante >= 4:
         reserve = _desired_money_reserve(state, pressure)
         if _normal_joker_open_slots(state) <= 0:
-            reserve = max(reserve, _interest_cap_money(state))
+            owned_jokers = {joker.name for joker in state.jokers}
+            closing_cap = (
+                _late_closing_money_reserve_cap(state, pressure, owned_jokers)
+                if pressure is not None
+                else None
+            )
+            if closing_cap is None:
+                reserve = max(reserve, _interest_cap_money(state))
         return reserve + 5
     if state.ante <= 1 and not _has_real_scoring_joker(state) and not _visible_early_power_path(state):
         return 5
@@ -1027,6 +1155,13 @@ def _late_reroll_is_worth_it(
 def _late_reroll_limit(state: GameState, pressure: _ShopPressure, profile: _BuildProfile) -> int:
     if state.ante < 5:
         return 99
+    if state.ante >= 7 and pressure.ratio >= 1.2:
+        if _urgent_late_role_hunt(state, pressure, profile):
+            return 4 if pressure.ratio >= 1.6 else 3
+        if _rich_late_role_hunt(profile) or {"xmult", "scaling"} & set(profile.missing_roles):
+            return 3 if pressure.ratio >= 1.6 else 2
+    if state.ante >= 8 and pressure.ratio >= 1.05 and _rich_late_role_hunt(profile):
+        return 2
     if pressure.raw_ratio >= 1.35:
         return 3 if _urgent_late_role_hunt(state, pressure, profile) else 2
     if pressure.raw_ratio >= 1.15:
@@ -1068,16 +1203,42 @@ def _pack_card_value(state: GameState, card: object) -> float:
     if _is_joker_card(card):
         return _joker_card_value(state, card) + 15 + _early_shop_safety_adjustment(state, card)
     if _is_planet_card(card):
-        if not _has_consumable_room(state):
-            return 0.0
         return _planet_card_value(state, card) + 10
     if _is_tarot_card(card):
-        if not _has_consumable_room(state):
-            return 0.0
         return _tarot_card_value(state, card) + 10
+    if _is_spectral_card(card):
+        return _spectral_card_value(state, card)
     if _is_playing_card(card):
         return _playing_card_shop_value(state, card)
     return 0.0
+
+
+def _spectral_card_value(state: GameState, card: object) -> float:
+    name = _card_label(card)
+    if name == "Immolate":
+        destroyed_count = min(5, len(state.hand))
+        deck_penalty = destroyed_count * 1.6
+        if state.deck_size and state.deck_size <= 30:
+            deck_penalty += (31 - state.deck_size) * 0.4
+        return _money_gain_value(state, 20) - deck_penalty
+    if name == "The Soul":
+        return 70.0 if _normal_joker_open_slots(state) > 0 else 0.0
+    if name == "Wraith":
+        if _normal_joker_open_slots(state) <= 0:
+            return 0.0
+        return 44.0 - (state.money * 1.4)
+    return 0.0
+
+
+def _money_gain_value(state: GameState, amount: int) -> float:
+    if amount <= 0:
+        return 0.0
+    value = float(amount)
+    interest_gap = max(0, _interest_cap_money(state) - state.money)
+    value += min(amount, interest_gap) * (0.45 if state.ante <= 2 else 0.25)
+    if _has_money_scaling_joker(state):
+        value += amount * 0.35
+    return value
 
 
 def _pack_card_requires_targets(card: object) -> bool:
@@ -1088,8 +1249,6 @@ def _pack_card_is_pickable(state: GameState, card: object) -> bool:
     if _is_black_hole_card(card):
         return True
     if _is_joker_card(card) and _buy_would_overfill_joker_slots(state, card):
-        return False
-    if _is_consumable_card(card) and not _has_consumable_room(state):
         return False
     return True
 
@@ -1215,14 +1374,14 @@ def _shop_pressure(state: GameState) -> _ShopPressure:
 def _shop_pressure_uncached(state: GameState) -> _ShopPressure:
     boss_name = _upcoming_boss_blind_name(state)
     boss_target_multiplier = _effective_boss_target_multiplier(state, boss_name)
-    boss_capacity_factor = _weighted_boss_capacity_factor(state, boss_name)
+    boss_capacity_factor = _shop_pressure_boss_capacity_factor(state, boss_name)
     raw_target = _estimated_next_required_score(state)
     safety_multiplier = _shop_target_safety_multiplier(state)
     target = raw_target * safety_multiplier
-    current_score = _sample_build_score(state, state.jokers)
-    hands = float(state.hands_remaining or 4)
-    preferred_hands = max(2.0, min(4.0, hands) - 0.5)
-    raw_capacity = max(1.0, current_score * preferred_hands * 0.85)
+    score_state = _shop_pressure_score_state(state, boss_name, raw_target=raw_target)
+    current_score = _sample_build_score(score_state, score_state.jokers)
+    effective_hands = _shop_pressure_effective_hands(state, boss_name)
+    raw_capacity = max(1.0, current_score * effective_hands * 0.85)
     capacity_safety_factor = _shop_capacity_safety_factor(state) * boss_capacity_factor
     capacity = max(1.0, raw_capacity * capacity_safety_factor)
     raw_ratio = raw_target / raw_capacity
@@ -1293,6 +1452,51 @@ def _shop_capacity_safety_factor(state: GameState) -> float:
     return max(0.72, factor)
 
 
+def _shop_pressure_boss_capacity_factor(state: GameState, boss_name: str | None) -> float:
+    if _shop_pressure_uses_exact_needle_hand(state, boss_name):
+        return 1.0
+    return _weighted_boss_capacity_factor(state, boss_name)
+
+
+def _shop_pressure_effective_hands(state: GameState, boss_name: str | None) -> float:
+    if _shop_pressure_uses_exact_needle_hand(state, boss_name):
+        return 1.0
+    hands = float(state.hands_remaining or 4)
+    return max(2.0, min(4.0, hands) - 0.5)
+
+
+def _shop_pressure_score_state(state: GameState, boss_name: str | None, *, raw_target: float) -> GameState:
+    if not _shop_pressure_uses_boss_score_state(state, boss_name):
+        return state
+    return replace(
+        state,
+        blind=str(boss_name),
+        required_score=int(raw_target),
+        hands_remaining=_shop_pressure_boss_hands_remaining(state, boss_name),
+        discards_remaining=_shop_pressure_boss_discards_remaining(state, boss_name),
+    )
+
+
+def _shop_pressure_uses_boss_score_state(state: GameState, boss_name: str | None) -> bool:
+    return bool(boss_name) and _shop_cleared_blind_kind(state) == "BIG"
+
+
+def _shop_pressure_boss_hands_remaining(state: GameState, boss_name: str | None) -> int:
+    if boss_name == "The Needle":
+        return 1
+    return state.hands_remaining
+
+
+def _shop_pressure_boss_discards_remaining(state: GameState, boss_name: str | None) -> int:
+    if boss_name == "The Water":
+        return 0
+    return state.discards_remaining
+
+
+def _shop_pressure_uses_exact_needle_hand(state: GameState, boss_name: str | None) -> bool:
+    return boss_name == "The Needle" and _shop_cleared_blind_kind(state) == "BIG"
+
+
 def _has_planet_investment(state: GameState) -> bool:
     return any(level > 1 for level in state.hand_levels.values())
 
@@ -1312,12 +1516,15 @@ def _estimated_next_required_score(state: GameState) -> float:
     ante = max(1, state.ante)
     small = ANTE_SMALL_BLIND_SCORES.get(ante, _extrapolated_small_blind_score(ante))
     next_small = ANTE_SMALL_BLIND_SCORES.get(ante + 1, _extrapolated_small_blind_score(ante + 1))
+    cleared_kind = _shop_cleared_blind_kind(state)
 
-    if state.blind == "Small Blind":
+    if state.blind == "Small Blind" and cleared_kind != "BIG":
         return small * 1.5
-    if state.blind == "Big Blind":
+    if state.blind == "Big Blind" or cleared_kind == "BIG":
         boss_base = small * 2.0
         boss_score = _upcoming_boss_score(state)
+        if cleared_kind == "BIG" and boss_score > 0:
+            return boss_score
         if boss_score > 0:
             return max(boss_base, boss_score)
         boss_name = _upcoming_boss_blind_name(state)
@@ -1400,7 +1607,7 @@ def _blind_score_from_mapping(value: object) -> float:
 
 
 def _effective_boss_target_multiplier(state: GameState, boss_name: str | None) -> float:
-    if state.blind != "Big Blind" or _upcoming_boss_score(state) > 0:
+    if (state.blind != "Big Blind" and _shop_cleared_blind_kind(state) != "BIG") or _upcoming_boss_score(state) > 0:
         return 1.0
     return _boss_score_target_multiplier(boss_name)
 
@@ -1436,6 +1643,11 @@ def _weighted_boss_capacity_factor(state: GameState, boss_name: str | None) -> f
 
 
 def _boss_preview_weight(state: GameState) -> float:
+    cleared_kind = _shop_cleared_blind_kind(state)
+    if cleared_kind == "BIG":
+        return 1.0
+    if cleared_kind == "SMALL":
+        return 0.45
     if state.blind == "Big Blind":
         return 1.0
     if state.blind == "Small Blind":
@@ -1443,11 +1655,19 @@ def _boss_preview_weight(state: GameState) -> float:
     return 0.0
 
 
+def _shop_cleared_blind_kind(state: GameState) -> str:
+    raw = state.modifiers.get("cleared_blind")
+    if not isinstance(raw, dict):
+        return ""
+    kind = str(raw.get("kind", "")).upper()
+    return kind if kind in {"SMALL", "BIG", "BOSS"} else ""
+
+
 def _boss_capacity_factor(state: GameState, boss_name: str) -> float:
     if boss_name == "The Flint":
         return 0.66
     if boss_name == "The Needle":
-        return 0.74
+        return 0.34
     if boss_name in {"The Eye", "The Mouth"}:
         return 0.8
     if boss_name == "The Pillar":
@@ -1508,8 +1728,12 @@ def _is_tarot_card(card: object) -> bool:
     return _card_set(card) == "TAROT"
 
 
+def _is_spectral_card(card: object) -> bool:
+    return _card_set(card) == "SPECTRAL" or _card_label(card) in SPECTRAL_CARD_NAMES
+
+
 def _is_consumable_card(card: object) -> bool:
-    return _is_tarot_card(card) or _is_planet_card(card) or _card_set(card) == "SPECTRAL"
+    return _is_tarot_card(card) or _is_planet_card(card) or _is_spectral_card(card)
 
 
 def _is_playing_card(card: object) -> bool:
@@ -1732,33 +1956,15 @@ def _joker_with_added_current_xmult(joker: Joker, amount: float, *, minimum: flo
 
 
 def _joker_current_plus_value(joker: Joker, *, suffix: str) -> int:
-    effect = _joker_effect_text(joker).replace("$", " ").replace("(", " ").replace(")", " ")
-    match = re.search(
-        rf"currently\s+([+-]?\d+)(?:\s+{re.escape(suffix)})?",
-        effect,
-        flags=re.IGNORECASE,
-    )
-    return int(match.group(1)) if match else 0
+    return joker.effect.current_plus_value(suffix)
 
 
 def _joker_current_xmult_value(joker: Joker) -> float:
-    effect = _joker_effect_text(joker)
-    match = re.search(r"currently\s+x\s*([0-9]+(?:\.[0-9]+)?)", effect, flags=re.IGNORECASE)
-    if match:
-        return float(match.group(1))
-    match = re.search(r"\bx\s*([0-9]+(?:\.[0-9]+)?)\s*mult", effect, flags=re.IGNORECASE)
-    return float(match.group(1)) if match else 1.0
+    return joker.effect.current_xmult_visible if joker.effect.current_xmult_visible is not None else 1.0
 
 
 def _joker_effect_text(joker: Joker) -> str:
-    return _identity_cached_value("bot_joker_effect_text", joker, lambda: _joker_effect_text_uncached(joker))
-
-
-def _joker_effect_text_uncached(joker: Joker) -> str:
-    value = joker.metadata.get("value")
-    if isinstance(value, dict):
-        return str(value.get("effect", ""))
-    return str(joker.metadata.get("effect", ""))
+    return joker.effect.text
 
 
 def _format_xmult(value: float) -> str:
@@ -2876,6 +3082,10 @@ def _pack_value(state: GameState, pack: object) -> float:
     return float(value)
 
 
+def _is_buffoon_pack(pack: object) -> bool:
+    return "buffoon" in _card_label(pack).lower()
+
+
 def _rare_hand_pack_bonus(state: GameState, pack_kind: str) -> float:
     hand_type = _rare_hand_plan(state)
     if hand_type is None:
@@ -3074,7 +3284,38 @@ def _desired_money_reserve(state: GameState, pressure: _ShopPressure | None = No
         if pressure.raw_ratio >= 1.2:
             reserve -= 4
         reserve = max(8, reserve)
+    if pressure is not None:
+        closing_cap = _late_closing_money_reserve_cap(state, pressure, owned_jokers)
+        if closing_cap is not None:
+            reserve = min(reserve, closing_cap)
     return reserve
+
+
+def _late_closing_money_reserve_cap(
+    state: GameState,
+    pressure: _ShopPressure,
+    owned_jokers: set[str],
+) -> int | None:
+    if state.ante < 7:
+        return None
+    if state.money < 45:
+        return None
+    if pressure.ratio < 1.05 and pressure.raw_ratio < 0.95:
+        return None
+
+    has_money_scaling = bool(owned_jokers.intersection(MONEY_SCALING_RESERVE_TARGETS))
+    if has_money_scaling:
+        if pressure.ratio >= 1.75 or pressure.raw_ratio >= 1.25:
+            return 35
+        if state.ante >= 8 or pressure.ratio >= 1.25:
+            return 50
+        return None
+
+    if pressure.ratio >= 1.75 or pressure.raw_ratio >= 1.2:
+        return 12
+    if pressure.ratio >= 1.25 or pressure.raw_ratio >= 1.05:
+        return 20
+    return 25
 
 
 def _spendable_money(state: GameState, pressure: _ShopPressure | None = None) -> int:
@@ -3655,6 +3896,11 @@ def _tactical_blind_action(
     context = context or _BlindContext()
     score = _score_play_action(state, best_play, context)
     remaining_score = max(0, state.required_score - state.current_score)
+    if score >= remaining_score > 0:
+        economy_hunt = _winning_economy_hunt_discard_action(state, best_play, score, remaining_score, context)
+        if economy_hunt is not None:
+            return economy_hunt
+
     first_blind_discard = _first_blind_one_hand_hunt_action(state, best_play, score, remaining_score, context)
     if first_blind_discard is not None:
         return first_blind_discard
@@ -3667,16 +3913,22 @@ def _tactical_blind_action(
     if strategic_discard is not None:
         return strategic_discard
 
+    mystic_setup_discard = _mystic_summit_setup_discard_action(state, best_play, score, remaining_score, context)
+    if mystic_setup_discard is not None:
+        return mystic_setup_discard
+
     if (
         remaining_score == 0
         or score >= remaining_score
-        or state.hands_remaining <= 1
         or state.discards_remaining <= 0
         or _estimated_hands_needed(remaining_score, score) < state.hands_remaining
     ):
         return _annotated_action(best_play, reason=_play_reason(state, best_play, context))
 
     best_discard = _best_discard_action(state, current_best_score=score, context=context)
+    if best_discard is not None and state.hands_remaining <= 1:
+        return _annotated_action(best_discard, reason=_last_hand_hunt_discard_reason(state, best_play, best_discard, context))
+
     if best_discard is not None and _discard_can_reduce_hands_needed(state, best_discard, score, remaining_score, context):
         return _annotated_action(best_discard, reason=_discard_reason(state, best_play, best_discard, context))
 
@@ -3753,6 +4005,371 @@ def _opening_setup_is_safe(
     if state.ante <= 2 and state.hands_remaining >= 3:
         return _estimated_hands_needed(after_remaining, max(1, fallback_score)) <= state.hands_remaining
     return _estimated_hands_needed(after_remaining, max(1, fallback_score)) <= max(1, state.hands_remaining - 1)
+
+
+def _winning_economy_hunt_discard_action(
+    state: GameState,
+    best_play: Action,
+    score: int,
+    remaining_score: int,
+    context: _BlindContext | None = None,
+) -> Action | None:
+    context = context or _BlindContext()
+    if (
+        remaining_score <= 0
+        or score < remaining_score
+        or state.discards_remaining <= 0
+        or not state.known_deck
+    ):
+        return None
+
+    baseline_value = _clear_economy_value_for_play(state, best_play, context)
+    ranked: list[tuple[tuple[float, float, int, int, int], Action, float, int]] = []
+    for action in state.legal_actions:
+        if action.action_type != ActionType.DISCARD or not action.card_indices:
+            continue
+        drawn_cards = _known_draw_for_discard(state, action)
+        if not drawn_cards or not any(_card_is_economy_hunt_target(state, card) for card in drawn_cards):
+            continue
+        discarded_cards = tuple(state.hand[index] for index in action.card_indices)
+        discard_value = _conditional_discard_money_delta_for_economy_hunt(state, discarded_cards, context)
+        projected_state = _state_after_known_discard_for_economy_hunt(state, action, drawn_cards, context)
+        projected_context = replace(context, discards_taken=context.discards_taken + 1)
+        projected_value, projected_score = _best_clear_economy_value(projected_state, remaining_score, projected_context)
+        projected_value += discard_value
+        if projected_score < remaining_score:
+            continue
+        gain = projected_value - baseline_value
+        if gain + SHOP_VALUE_TOLERANCE < WINNING_ECONOMY_HUNT_MIN_GAIN:
+            continue
+        ranked.append(
+            (
+                (
+                    gain,
+                    projected_value,
+                    _drawn_economy_hunt_value(state, drawn_cards),
+                    -len(action.card_indices),
+                    -_action_index_sum(action),
+                ),
+                action,
+                gain,
+                projected_score,
+            )
+        )
+
+    if not ranked:
+        return None
+
+    _, action, gain, projected_score = max(ranked, key=lambda item: item[0])
+    return _annotated_action(
+        action,
+        reason=_winning_economy_hunt_discard_reason(state, best_play, action, gain, projected_score, context),
+    )
+
+
+def _known_draw_for_discard(state: GameState, action: Action) -> tuple[Card, ...]:
+    kept_count = max(0, len(state.hand) - len(action.card_indices))
+    draw_count = min(len(action.card_indices), max(0, 8 - kept_count), len(state.known_deck))
+    if draw_count <= 0:
+        return ()
+    return tuple(state.known_deck[:draw_count])
+
+
+def _state_after_known_discard_for_economy_hunt(
+    state: GameState,
+    action: Action,
+    drawn_cards: tuple[Card, ...],
+    context: _BlindContext,
+) -> GameState:
+    discarded_cards = tuple(state.hand[index] for index in action.card_indices)
+    kept_cards = tuple(card for index, card in enumerate(state.hand) if index not in action.card_indices)
+    discard_money = _conditional_discard_money_delta_for_economy_hunt(state, discarded_cards, context)
+    return replace(
+        state,
+        hand=(*kept_cards, *drawn_cards),
+        known_deck=tuple(state.known_deck[len(drawn_cards):]),
+        deck_size=max(0, state.deck_size - len(drawn_cards)),
+        discards_remaining=max(0, state.discards_remaining - 1),
+        money=state.money + discard_money,
+        jokers=_jokers_after_discard_for_scoring(state, discarded_cards),
+        hand_levels=_hand_levels_after_discard_for_economy_hunt(state, discarded_cards, context),
+        modifiers=_modifiers_after_discard_for_economy_hunt(state.modifiers, context),
+    )
+
+
+def _conditional_discard_money_delta_for_economy_hunt(
+    state: GameState,
+    discarded_cards: tuple[Card, ...],
+    context: _BlindContext,
+) -> int:
+    if _round_discard_used_count(state, context) > 0 or len(discarded_cards) != 1:
+        return 0
+    total = 0
+    for joker in state.jokers:
+        if joker.name == "Trading Card" and not joker.effect.disabled:
+            total += _trading_card_dollars(joker)
+    return total
+
+
+def _trading_card_dollars(joker: Joker) -> int:
+    if joker.effect.earn_dollars is not None:
+        return joker.effect.earn_dollars
+    value = _joker_metadata_numeric_value(joker, ("dollars", "money", "extra"))
+    try:
+        return int(value) if value is not None else 3
+    except (TypeError, ValueError):
+        return 3
+
+
+def _hand_levels_after_discard_for_economy_hunt(
+    state: GameState,
+    discarded_cards: tuple[Card, ...],
+    context: _BlindContext,
+) -> dict[str, int]:
+    if (
+        not discarded_cards
+        or state.blind == "The Hook"
+        or _round_discard_used_count(state, context) > 0
+        or not any(joker.name == "Burnt Joker" and not joker.effect.disabled for joker in state.jokers)
+    ):
+        return state.hand_levels
+    evaluation = evaluate_played_cards(
+        discarded_cards,
+        state.hand_levels,
+        debuffed_suits=debuffed_suits_for_blind(state.blind),
+        blind_name=state.blind,
+        jokers=state.jokers,
+        discards_remaining=state.discards_remaining,
+        hands_remaining=state.hands_remaining,
+        held_cards=(),
+        deck_size=state.deck_size,
+        money=state.money,
+        played_hand_types_this_round=context.played_hand_types,
+        played_hand_counts=_played_hand_counts(state),
+    )
+    updated = dict(state.hand_levels)
+    updated[evaluation.hand_type.value] = max(1, _int_or_default(updated.get(evaluation.hand_type.value), 1)) + 1
+    return updated
+
+
+def _modifiers_after_discard_for_economy_hunt(
+    modifiers: dict[str, object],
+    context: _BlindContext,
+) -> dict[str, object]:
+    updated = dict(modifiers)
+    next_count = max(0, _round_discard_used_count_from_modifiers(modifiers), context.discards_taken) + 1
+    for key in ("round_discards_used", "discards_used", "discards_used_this_round"):
+        updated[key] = next_count
+    return updated
+
+
+def _round_discard_used_count(state: GameState, context: _BlindContext) -> int:
+    return max(context.discards_taken, _round_discard_used_count_from_modifiers(state.modifiers))
+
+
+def _round_discard_used_count_from_modifiers(modifiers: dict[str, object]) -> int:
+    for key in ("round_discards_used", "discards_used", "discards_used_this_round"):
+        if key not in modifiers:
+            continue
+        value = _int_or_default(modifiers.get(key), 0)
+        return max(0, value)
+    return 0
+
+
+def _int_or_default(value: object, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _best_clear_economy_value(
+    state: GameState,
+    remaining_score: int,
+    context: _BlindContext,
+) -> tuple[float, int]:
+    best_value = float("-inf")
+    best_score = 0
+    max_cards = min(5, len(state.hand))
+    for count in range(1, max_cards + 1):
+        for indices in combinations(range(len(state.hand)), count):
+            action = Action(ActionType.PLAY_HAND, card_indices=tuple(indices))
+            evaluation = _evaluate_play_action(state, action, context)
+            score = _boss_adjusted_score(state, evaluation.hand_type, evaluation.score, context)
+            if score < remaining_score:
+                continue
+            value = _clear_economy_value_for_evaluated_play(state, action, evaluation, context)
+            if value > best_value or (value == best_value and score > best_score):
+                best_value = value
+                best_score = score
+    return best_value, best_score
+
+
+def _clear_economy_value_for_play(
+    state: GameState,
+    action: Action,
+    context: _BlindContext,
+) -> float:
+    evaluation = _evaluate_play_action(state, action, context)
+    return _clear_economy_value_for_evaluated_play(state, action, evaluation, context)
+
+
+def _clear_economy_value_for_evaluated_play(
+    state: GameState,
+    action: Action,
+    evaluation,
+    context: _BlindContext,
+) -> float:
+    played = set(action.card_indices)
+    held_cards = tuple(card for index, card in enumerate(state.hand) if index not in played)
+    return (
+        float(evaluation.money_delta)
+        + _held_round_end_economy_value(state, held_cards)
+        + _discard_sensitive_cash_out_value(state, context)
+    )
+
+
+def _discard_sensitive_cash_out_value(state: GameState, context: _BlindContext) -> float:
+    if state.discards_remaining <= 0 or _round_discard_used_count(state, context) > 0:
+        return 0.0
+
+    value = 0.0
+    for joker in state.jokers:
+        if joker.name == "Delayed Gratification" and not joker.effect.disabled:
+            value += float(state.discards_remaining * _delayed_gratification_dollars(joker))
+    return value
+
+
+def _delayed_gratification_dollars(joker: Joker) -> int:
+    if joker.effect.earn_dollars is not None:
+        return joker.effect.earn_dollars
+    value = _joker_metadata_numeric_value(joker, ("dollars", "money", "extra"))
+    try:
+        return int(value) if value is not None else 2
+    except (TypeError, ValueError):
+        return 2
+
+
+def _joker_metadata_numeric_value(joker: Joker, keys: tuple[str, ...]) -> object | None:
+    sources: list[dict[str, object]] = [joker.metadata]
+    for key in ("ability", "config", "extra", "value"):
+        value = joker.metadata.get(key)
+        if isinstance(value, dict):
+            sources.append(value)
+            nested = value.get("extra")
+            if isinstance(nested, dict):
+                sources.append(nested)
+    for source in sources:
+        for key in keys:
+            if key in source:
+                return source[key]
+    return None
+
+
+def _held_round_end_economy_value(state: GameState, held_cards: tuple[Card, ...]) -> float:
+    value = 0.0
+    trigger_count = 1 + sum(1 for joker in state.jokers if joker.name == "Mime" and not joker.effect.disabled)
+    value += 3.0 * trigger_count * sum(1 for card in held_cards if _is_gold_enhancement(card))
+    blue_seals = sum(1 for card in held_cards if _is_blue_seal(card))
+    if blue_seals > 0:
+        value += BLUE_SEAL_ROUND_END_VALUE * min(_basic_consumable_open_slots(state), blue_seals)
+    return value
+
+
+def _drawn_economy_hunt_value(state: GameState, drawn_cards: tuple[Card, ...]) -> float:
+    return sum(_economy_hunt_card_value(state, card) for card in drawn_cards)
+
+
+def _economy_hunt_card_value(state: GameState, card: Card) -> float:
+    value = 0.0
+    if _is_gold_enhancement(card):
+        value += 3.0
+    if _is_blue_seal(card) and _basic_consumable_open_slots(state) > 0:
+        value += BLUE_SEAL_ROUND_END_VALUE
+    if _is_gold_seal(card):
+        value += 3.0
+    return value
+
+
+def _card_is_economy_hunt_target(state: GameState, card: Card) -> bool:
+    return _economy_hunt_card_value(state, card) > 0.0
+
+
+def _basic_consumable_open_slots(state: GameState) -> int:
+    return max(0, 2 - len(state.consumables))
+
+
+def _is_gold_enhancement(card: Card) -> bool:
+    return not card.debuffed and _normalize_card_attr(card.enhancement) in {"gold", "gold card"}
+
+
+def _is_blue_seal(card: Card) -> bool:
+    return not card.debuffed and _normalize_card_attr(card.seal) == "blue"
+
+
+def _is_gold_seal(card: Card) -> bool:
+    return not card.debuffed and _normalize_card_attr(card.seal) == "gold"
+
+
+def _normalize_card_attr(value: object) -> str:
+    return str(value or "").strip().lower().replace("_", " ").replace("-", " ")
+
+
+def _mystic_summit_setup_discard_action(
+    state: GameState,
+    best_play: Action,
+    score: int,
+    remaining_score: int,
+    context: _BlindContext | None = None,
+) -> Action | None:
+    context = context or _BlindContext()
+    names = _joker_names(state)
+    if (
+        "Mystic Summit" not in names
+        or "Banner" in names
+        or "Delayed Gratification" in names
+        or "Green Joker" in names
+        or "Ramen" in names
+        or state.ante > 2
+        or state.current_score > 0
+        or remaining_score <= 0
+        or score >= remaining_score
+        or state.hands_remaining <= 1
+        or state.discards_remaining <= 0
+    ):
+        return None
+
+    active_state = replace(state, discards_remaining=0)
+    active_score = _score_play_action(active_state, best_play, context)
+    if active_score <= score:
+        return None
+
+    current_hands_needed = _estimated_hands_needed(remaining_score, score)
+    active_hands_needed = _estimated_hands_needed(remaining_score, active_score)
+    if active_score < remaining_score and active_hands_needed >= current_hands_needed:
+        return None
+
+    best_discard = _best_discard_action(state, current_best_score=score, context=context)
+    if best_discard is None:
+        return None
+
+    if state.discards_remaining <= 1:
+        projected_score = _projected_score_after_discard(state, best_discard, context)
+        projected_hands_needed = _estimated_hands_needed(remaining_score, projected_score)
+        if projected_score < remaining_score and projected_hands_needed >= current_hands_needed:
+            return None
+
+    return _annotated_action(
+        best_discard,
+        reason=_mystic_summit_setup_discard_reason(
+            state,
+            best_play,
+            best_discard,
+            score,
+            active_score,
+            context,
+        ),
+    )
 
 
 def _strategic_joker_discard_action(
@@ -3837,7 +4454,226 @@ def _first_blind_one_hand_hunt_action(
     best_discard = _best_discard_action(state, current_best_score=score, context=context)
     if best_discard is None:
         return None
+    upgrade_discard = _ante_one_near_clear_upgrade_discard_action(
+        state,
+        best_play,
+        best_discard,
+        score,
+        remaining_score,
+        context,
+    )
+    if upgrade_discard is not None:
+        return upgrade_discard
     return _annotated_action(best_discard, reason=_first_blind_discard_reason(state, best_play, best_discard, context))
+
+
+def _ante_one_near_clear_upgrade_discard_action(
+    state: GameState,
+    best_play: Action,
+    fallback_discard: Action,
+    score: int,
+    remaining_score: int,
+    context: _BlindContext | None = None,
+) -> Action | None:
+    context = context or _BlindContext()
+    if (
+        state.ante != 1
+        or state.blind != "Small Blind"
+        or state.current_score != 0
+        or context.discards_taken != 1
+        or state.discards_remaining <= 0
+        or state.jokers
+        or remaining_score <= 0
+        or score >= remaining_score
+        or len(best_play.card_indices) != 5
+        or score < remaining_score * ANTE_ONE_UPGRADE_NEAR_CLEAR_RATIO
+    ):
+        return None
+
+    fallback_projected_score = _projected_score_after_discard(state, fallback_discard, context)
+    if fallback_projected_score >= score * 0.75:
+        return None
+
+    evaluation = _evaluate_play_action(state, best_play, context)
+    keep_candidates = _ante_one_upgrade_keep_candidates(state, best_play, evaluation.hand_type)
+    if not keep_candidates:
+        return None
+
+    ranked: list[tuple[tuple[float, float, int, int], Action, int]] = []
+    for keep_indices in keep_candidates:
+        discard_indices = _ante_one_upgrade_discard_indices(state, keep_indices)
+        if not discard_indices:
+            continue
+        discard = _matching_discard_action(state, discard_indices)
+        if discard is None:
+            continue
+
+        projected_score = _projected_score_after_discard(state, discard, context)
+        if not _ante_one_upgrade_projection_is_good(
+            score,
+            projected_score,
+            remaining_score,
+        ):
+            continue
+        core_score = _ante_one_upgrade_core_score(state, keep_indices)
+        ranked.append(
+            (
+                (float(projected_score), core_score, -len(discard.card_indices), -_action_index_sum(discard)),
+                discard,
+                projected_score,
+            )
+        )
+
+    if not ranked:
+        return None
+
+    _, discard, projected_score = max(ranked, key=lambda item: item[0])
+    return _annotated_action(
+        discard,
+        reason=_ante_one_upgrade_discard_reason(
+            state,
+            best_play,
+            discard,
+            evaluation.hand_type,
+            projected_score,
+            context,
+        ),
+    )
+
+
+def _ante_one_upgrade_keep_candidates(
+    state: GameState,
+    best_play: Action,
+    hand_type: HandType,
+) -> tuple[tuple[int, ...], ...]:
+    selected_indices = tuple(best_play.card_indices)
+    candidates: list[tuple[int, ...]] = []
+
+    if hand_type in {HandType.FLUSH, HandType.STRAIGHT_FLUSH, HandType.FLUSH_HOUSE, HandType.FLUSH_FIVE}:
+        flush_core = _ante_one_flush_upgrade_core_indices(state, selected_indices)
+        if flush_core:
+            candidates.append(flush_core)
+
+    if hand_type in {HandType.STRAIGHT, HandType.STRAIGHT_FLUSH}:
+        straight_core = _ante_one_straight_upgrade_core_indices(state, selected_indices)
+        if straight_core:
+            candidates.append(straight_core)
+
+    return _unique_index_tuples(candidates)
+
+
+def _ante_one_flush_upgrade_core_indices(
+    state: GameState,
+    selected_indices: tuple[int, ...],
+) -> tuple[int, ...] | None:
+    selected_cards = tuple(state.hand[index] for index in selected_indices)
+    suit = _dominant_suit_from_cards(selected_cards)
+    if suit is None:
+        return None
+
+    suited_indices = tuple(
+        index
+        for index in selected_indices
+        if _normalize_suit(state.hand[index].suit) == _normalize_suit(suit)
+    )
+    if len(suited_indices) < 5:
+        return None
+
+    keep = sorted(suited_indices, key=lambda index: _ante_one_card_upgrade_key(state.hand[index]), reverse=True)[:4]
+    return tuple(sorted(keep))
+
+
+def _ante_one_straight_upgrade_core_indices(
+    state: GameState,
+    selected_indices: tuple[int, ...],
+) -> tuple[int, ...] | None:
+    best: tuple[tuple[int, int, int, int], tuple[int, ...]] | None = None
+    for core in combinations(selected_indices, 4):
+        cards = tuple(state.hand[index] for index in core)
+        if _straight_draw_potential(cards) < 4:
+            continue
+        key = (
+            _straight_core_high_end(cards),
+            sum(STRAIGHT_VALUES[card.rank] for card in cards),
+            sum(RANK_VALUES[card.rank] for card in cards),
+            -sum(core),
+        )
+        if best is None or key > best[0]:
+            best = (key, tuple(sorted(core)))
+    return best[1] if best is not None else None
+
+
+def _ante_one_upgrade_discard_indices(
+    state: GameState,
+    keep_core_indices: tuple[int, ...],
+) -> tuple[int, ...]:
+    keep_indices = set(keep_core_indices)
+    extra_keeps_needed = max(0, len(state.hand) - len(keep_indices) - 5)
+    if extra_keeps_needed > 0:
+        extras = sorted(
+            (index for index in range(len(state.hand)) if index not in keep_indices),
+            key=lambda index: _ante_one_card_upgrade_key(state.hand[index]),
+            reverse=True,
+        )
+        keep_indices.update(extras[:extra_keeps_needed])
+    return tuple(index for index in range(len(state.hand)) if index not in keep_indices)
+
+
+def _matching_discard_action(state: GameState, discard_indices: tuple[int, ...]) -> Action | None:
+    wanted = tuple(sorted(discard_indices))
+    for action in state.legal_actions:
+        if action.action_type == ActionType.DISCARD and tuple(sorted(action.card_indices)) == wanted:
+            return action
+    return None
+
+
+def _ante_one_card_upgrade_key(card: Card) -> tuple[int, int]:
+    return (RANK_VALUES[card.rank], STRAIGHT_VALUES[card.rank])
+
+
+def _ante_one_upgrade_core_score(state: GameState, keep_indices: tuple[int, ...]) -> float:
+    cards = tuple(state.hand[index] for index in keep_indices)
+    return sum(RANK_VALUES[card.rank] for card in cards) + (_strong_draw_size(cards) * 8.0)
+
+
+def _ante_one_upgrade_projection_is_good(
+    score: int,
+    projected_score: int,
+    remaining_score: int,
+) -> bool:
+    if projected_score <= score:
+        return False
+    if projected_score >= remaining_score:
+        return True
+    target_score = max(
+        score + ANTE_ONE_UPGRADE_MIN_GAIN,
+        remaining_score * ANTE_ONE_UPGRADE_TARGET_RATIO,
+    )
+    return projected_score >= target_score
+
+
+def _straight_core_high_end(cards: tuple[Card, ...]) -> int:
+    values = {STRAIGHT_VALUES[card.rank] for card in cards}
+    if any(card.rank == "A" for card in cards):
+        values.add(1)
+
+    best = 0
+    for start in range(1, 11):
+        if sum(1 for value in range(start, start + 5) if value in values) >= 4:
+            best = max(best, start + 4)
+    return best
+
+
+def _unique_index_tuples(candidates: list[tuple[int, ...]]) -> tuple[tuple[int, ...], ...]:
+    unique: list[tuple[int, ...]] = []
+    seen: set[tuple[int, ...]] = set()
+    for candidate in candidates:
+        normalized = tuple(sorted(candidate))
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        unique.append(normalized)
+    return tuple(unique)
 
 
 def _should_play_now(state: GameState, action: Action) -> bool:
@@ -4233,12 +5069,27 @@ def _projected_score_after_discard(
     discarded_cards = tuple(state.hand[index] for index in action.card_indices)
     projected_state = replace(state, jokers=_jokers_after_discard_for_scoring(state, discarded_cards))
     draw_count = min(len(action.card_indices), max(0, 8 - len(kept_cards)))
+    content_cache = _decision_scoped_cache("projected_score_after_discard_content")
+    content_key = _projected_discard_cache_key(
+        projected_state,
+        kept_cards=kept_cards,
+        discarded_cards=discarded_cards,
+        draw_count=draw_count,
+        context=context,
+    )
+    if content_cache is not None and content_key in content_cache:
+        score = content_cache[content_key]
+        if cache is not None:
+            cache[cache_key] = score
+        return int(score)
 
     if state.known_deck and draw_count > 0:
         known_draw = tuple(state.known_deck[:draw_count])
         score = _best_score_from_cards(projected_state, (*kept_cards, *known_draw), context)
         if cache is not None:
             cache[cache_key] = score
+        if content_cache is not None:
+            content_cache[content_key] = score
         return score
 
     kept_score = _best_score_from_cards(projected_state, kept_cards, context)
@@ -4247,7 +5098,27 @@ def _projected_score_after_discard(
     score = int(max(kept_score, (optimistic_score * realism) + (kept_score * (1.0 - realism))))
     if cache is not None:
         cache[cache_key] = score
+    if content_cache is not None:
+        content_cache[content_key] = score
     return score
+
+
+def _projected_discard_cache_key(
+    state: GameState,
+    *,
+    kept_cards: tuple[Card, ...],
+    discarded_cards: tuple[Card, ...],
+    draw_count: int,
+    context: _BlindContext,
+) -> tuple[object, ...]:
+    return (
+        _hand_multiset_cache_key(kept_cards),
+        _hand_multiset_cache_key(discarded_cards),
+        draw_count,
+        _jokers_cache_key(state.jokers),
+        _scoring_state_cache_key(state, context),
+        _freeze_for_cache(tuple(state.known_deck[:draw_count])),
+    )
 
 
 def _jokers_after_discard_for_scoring(state: GameState, discarded_cards: tuple[Card, ...]) -> tuple[Joker, ...]:
@@ -4286,6 +5157,16 @@ def _best_score_from_cards(
     context = context or _BlindContext()
     if not cards:
         return 0
+    content_cache = _decision_scoped_cache("best_score_from_cards_content")
+    content_key = (
+        _hand_multiset_cache_key(cards),
+        _jokers_cache_key(state.jokers),
+        _freeze_for_cache(state.hand_levels),
+        _scoring_state_cache_key(state, context),
+    )
+    if content_cache is not None and content_key in content_cache:
+        return int(content_cache[content_key])
+
     cache = _state_scoped_cache("best_score_from_cards", state)
     cache_key = (
         _freeze_for_cache(cards),
@@ -4311,6 +5192,8 @@ def _best_score_from_cards(
     score = _boss_adjusted_score(state, evaluation.hand_type, evaluation.score, context)
     if cache is not None:
         cache[cache_key] = score
+    if content_cache is not None:
+        content_cache[content_key] = score
     return score
 
 
@@ -4323,6 +5206,16 @@ def _optimistic_completion_score(
     context = context or _BlindContext()
     if draw_count <= 0:
         return _best_score_from_cards(state, kept_cards, context)
+    cache = _decision_scoped_cache("optimistic_completion_score_content")
+    cache_key = (
+        _hand_multiset_cache_key(kept_cards),
+        draw_count,
+        _jokers_cache_key(state.jokers),
+        _freeze_for_cache(state.hand_levels),
+        _scoring_state_cache_key(state, context),
+    )
+    if cache is not None and cache_key in cache:
+        return int(cache[cache_key])
 
     candidates = [_fill_with_high_cards(kept_cards, draw_count)]
     flush_cards = _flush_completion_cards(kept_cards, draw_count)
@@ -4335,7 +5228,31 @@ def _optimistic_completion_score(
     if rank_cards:
         candidates.append(rank_cards)
 
-    return max(_best_score_from_cards(state, candidate, context) for candidate in candidates)
+    score = max(_best_score_from_cards(state, candidate, context) for candidate in candidates)
+    if cache is not None:
+        cache[cache_key] = score
+    return score
+
+
+def _hand_multiset_cache_key(cards: tuple[Card, ...]) -> tuple[object, ...]:
+    return tuple(sorted((_card_cache_key(card) for card in cards), key=repr))
+
+
+def _jokers_cache_key(jokers: tuple[Joker, ...]) -> tuple[object, ...]:
+    return tuple(_joker_cache_key(joker) for joker in jokers)
+
+
+def _scoring_state_cache_key(state: GameState, context: _BlindContext) -> tuple[object, ...]:
+    return (
+        state.blind,
+        state.discards_remaining,
+        state.hands_remaining,
+        state.deck_size,
+        state.money,
+        context.played_hand_types,
+        context.discards_taken,
+        _freeze_for_cache(state.modifiers.get("hands", state.modifiers.get("hand_stats", {}))),
+    )
 
 
 def _fill_with_high_cards(kept_cards: tuple[Card, ...], draw_count: int) -> tuple[Card, ...]:
@@ -4486,6 +5403,40 @@ def _discard_reason(
     )
 
 
+def _last_hand_hunt_discard_reason(
+    state: GameState,
+    best_play: Action,
+    discard: Action,
+    context: _BlindContext | None = None,
+) -> str:
+    context = context or _BlindContext()
+    best_score = _score_play_action(state, best_play, context)
+    remaining_score = max(0, state.required_score - state.current_score)
+    projected_score = _projected_score_after_discard(state, discard, context)
+    return (
+        f"last_hand_hunt current_score={best_score} projected_score={projected_score} "
+        f"remaining={remaining_score} discards_left={state.discards_remaining}"
+    )
+
+
+def _winning_economy_hunt_discard_reason(
+    state: GameState,
+    best_play: Action,
+    discard: Action,
+    gain: float,
+    projected_score: int,
+    context: _BlindContext | None = None,
+) -> str:
+    context = context or _BlindContext()
+    best_score = _score_play_action(state, best_play, context)
+    drawn_cards = _known_draw_for_discard(state, discard)
+    drawn_label = ",".join(card.short_name for card in drawn_cards if _card_is_economy_hunt_target(state, card)) or "-"
+    return (
+        f"winning_economy_hunt current_score={best_score} projected_score={projected_score} "
+        f"gain={gain:.1f} targets={drawn_label} discarding={len(discard.card_indices)}"
+    )
+
+
 def _joker_discard_reason(
     state: GameState,
     best_play: Action,
@@ -4559,6 +5510,23 @@ def _panic_discard_reason(
     )
 
 
+def _mystic_summit_setup_discard_reason(
+    state: GameState,
+    best_play: Action,
+    discard: Action,
+    score: int,
+    active_score: int,
+    context: _BlindContext | None = None,
+) -> str:
+    remaining_score = max(0, state.required_score - state.current_score)
+    projected_score = _projected_score_after_discard(state, discard, context)
+    return (
+        f"mystic_summit_setup current_score={score} active_score={active_score} "
+        f"projected_score={projected_score} remaining={remaining_score} "
+        f"discards_left={state.discards_remaining}"
+    )
+
+
 def _first_blind_discard_reason(
     state: GameState,
     best_play: Action,
@@ -4569,6 +5537,23 @@ def _first_blind_discard_reason(
     projected_score = _projected_score_after_discard(state, discard, context)
     return (
         f"first_blind_hunt current_score={best_score} projected_score={projected_score} "
+        f"discarding={len(discard.card_indices)}"
+    )
+
+
+def _ante_one_upgrade_discard_reason(
+    state: GameState,
+    best_play: Action,
+    discard: Action,
+    hand_type: HandType,
+    projected_score: int,
+    context: _BlindContext | None = None,
+) -> str:
+    best_score = _score_play_action(state, best_play, context)
+    remaining_score = max(0, state.required_score - state.current_score)
+    return (
+        f"ante_one_upgrade hand={hand_type.value} current_score={best_score} "
+        f"projected_score={projected_score} target_score={remaining_score} "
         f"discarding={len(discard.card_indices)}"
     )
 
@@ -4827,10 +5812,8 @@ def _castle_target_suit(state: GameState) -> str | None:
     for joker in state.jokers:
         if joker.name != "Castle":
             continue
-        effect = _joker_effect_text(joker)
-        match = re.search(r"discarded\s+(Spade|Heart|Club|Diamond)", effect, flags=re.IGNORECASE)
-        if match:
-            return _normalize_suit(match.group(1))
+        if joker.effect.discarded_suit or joker.effect.target_suit:
+            return joker.effect.discarded_suit or joker.effect.target_suit
     return None
 
 
@@ -4838,7 +5821,7 @@ def _mail_in_rebate_rank(state: GameState) -> str | None:
     for joker in state.jokers:
         if joker.name != "Mail-In Rebate":
             continue
-        return _mail_in_rebate_rank_from_text(_joker_effect_text(joker))
+        return joker.effect.discarded_rank
     return None
 
 
@@ -5666,6 +6649,28 @@ TARGET_REQUIRED_TAROTS = {
     "The Moon",
     "The Sun",
     "The World",
+}
+
+
+SPECTRAL_CARD_NAMES = {
+    "Familiar",
+    "Grim",
+    "Incantation",
+    "Talisman",
+    "Aura",
+    "Wraith",
+    "Sigil",
+    "Ouija",
+    "Ectoplasm",
+    "Immolate",
+    "Ankh",
+    "Deja Vu",
+    "Hex",
+    "Trance",
+    "Medium",
+    "Cryptid",
+    "The Soul",
+    "Black Hole",
 }
 
 

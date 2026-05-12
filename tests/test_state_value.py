@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import context  # noqa: F401
 from balatro_ai.api.state import Card, GamePhase, GameState, Joker
-from balatro_ai.search.state_value import clear_probability, future_value, state_value
+from balatro_ai.search import state_value as state_values
+from balatro_ai.search.state_value import clear_probability, future_value, headroom_value, planning_value, state_value
 
 
 class StateValueTests(unittest.TestCase):
@@ -103,6 +105,107 @@ class StateValueTests(unittest.TestCase):
         )
 
         self.assertGreater(future_value(strong), future_value(weak))
+
+    def test_planning_value_rewards_headroom_above_bare_clear(self) -> None:
+        bare_clear = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            blind="Small Blind",
+            required_score=50,
+            current_score=0,
+            hands_remaining=1,
+            deck_size=0,
+            hand=(Card("A", "S"), Card("A", "H")),
+        )
+        surplus_clear = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            blind="Small Blind",
+            required_score=50,
+            current_score=0,
+            hands_remaining=1,
+            deck_size=0,
+            hand=(Card("A", "S"), Card("A", "H"), Card("A", "D"), Card("A", "C")),
+            jokers=(Joker("Joker"),),
+        )
+
+        self.assertGreater(headroom_value(surplus_clear), headroom_value(bare_clear))
+        self.assertGreater(planning_value(surplus_clear, samples=1), planning_value(bare_clear, samples=1))
+
+    def test_search_value_reuses_best_score_for_equivalent_hand_content(self) -> None:
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            blind="Small Blind",
+            required_score=500,
+            current_score=0,
+            hands_remaining=2,
+            discards_remaining=1,
+            deck_size=20,
+            hand=(Card("A", "S"), Card("A", "H"), Card("K", "D"), Card("Q", "C")),
+            jokers=(Joker("Joker"),),
+        )
+        equivalent_state = GameState(
+            phase=state.phase,
+            blind=state.blind,
+            required_score=state.required_score,
+            current_score=state.current_score,
+            hands_remaining=state.hands_remaining,
+            discards_remaining=state.discards_remaining,
+            deck_size=state.deck_size,
+            hand=tuple(reversed(state.hand)),
+            jokers=state.jokers,
+            hand_levels=dict(state.hand_levels),
+            modifiers=dict(state.modifiers),
+        )
+
+        with state_values.state_value_cache_scope():
+            with patch.object(state_values, "evaluate_played_cards", wraps=state_values.evaluate_played_cards) as evaluate:
+                first_score = state_values._best_immediate_score(state)
+                calls_after_first = evaluate.call_count
+                second_score = state_values._best_immediate_score(equivalent_state)
+
+        self.assertEqual(second_score, first_score)
+        self.assertGreater(calls_after_first, 0)
+        self.assertEqual(evaluate.call_count, calls_after_first)
+
+    def test_search_value_reuses_greedy_action_score_for_equivalent_hand_content(self) -> None:
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            blind="Small Blind",
+            required_score=500,
+            current_score=0,
+            hands_remaining=2,
+            discards_remaining=1,
+            deck_size=20,
+            hand=(Card("A", "S"), Card("A", "H"), Card("K", "D"), Card("Q", "C")),
+            jokers=(Joker("Joker"),),
+        )
+        equivalent_state = GameState(
+            phase=state.phase,
+            blind=state.blind,
+            required_score=state.required_score,
+            current_score=state.current_score,
+            hands_remaining=state.hands_remaining,
+            discards_remaining=state.discards_remaining,
+            deck_size=state.deck_size,
+            hand=tuple(reversed(state.hand)),
+            jokers=state.jokers,
+            hand_levels=dict(state.hand_levels),
+            modifiers=dict(state.modifiers),
+        )
+
+        with state_values.state_value_cache_scope():
+            with patch.object(state_values, "evaluate_played_cards", wraps=state_values.evaluate_played_cards) as evaluate:
+                first_action = state_values._best_greedy_play_action(state)
+                calls_after_first = evaluate.call_count
+                second_action = state_values._best_greedy_play_action(equivalent_state)
+
+        self.assertIsNotNone(first_action)
+        self.assertIsNotNone(second_action)
+        self.assertEqual(
+            sorted(state.hand[index].short_name for index in first_action.card_indices),
+            sorted(equivalent_state.hand[index].short_name for index in second_action.card_indices),
+        )
+        self.assertGreater(calls_after_first, 0)
+        self.assertEqual(evaluate.call_count, calls_after_first)
 
     def test_future_value_cashes_out_round_eval_leaf(self) -> None:
         state = GameState(

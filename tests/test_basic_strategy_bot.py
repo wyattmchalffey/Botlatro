@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from itertools import combinations
 import unittest
+from unittest.mock import patch
 
 import context  # noqa: F401
 from balatro_ai.api.actions import Action, ActionType
@@ -298,6 +300,7 @@ class BasicStrategyBotTests(unittest.TestCase):
 
     def test_first_blind_uses_discards_to_hunt_one_hand_clear(self) -> None:
         state = GameState(
+            phase=GamePhase.SHOP,
             ante=1,
             blind="Small Blind",
             required_score=300,
@@ -328,6 +331,7 @@ class BasicStrategyBotTests(unittest.TestCase):
 
     def test_first_blind_plays_when_current_hand_clears_in_one(self) -> None:
         state = GameState(
+            phase=GamePhase.SHOP,
             ante=1,
             blind="Small Blind",
             required_score=300,
@@ -352,6 +356,419 @@ class BasicStrategyBotTests(unittest.TestCase):
 
         self.assertEqual(action.action_type, ActionType.PLAY_HAND)
         self.assertEqual(action.card_indices, (0, 1, 2, 3, 4))
+
+    def test_last_hand_uses_discard_when_projection_can_clear(self) -> None:
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            ante=2,
+            blind="The Needle",
+            required_score=800,
+            current_score=0,
+            hands_remaining=1,
+            discards_remaining=1,
+            jokers=(Joker("Joker"),),
+            hand=(
+                Card("A", "H"),
+                Card("K", "H"),
+                Card("Q", "H"),
+                Card("J", "H"),
+                Card("2", "C"),
+            ),
+            known_deck=(Card("10", "H"),),
+            legal_actions=(
+                Action(ActionType.PLAY_HAND, card_indices=(0, 1, 2, 3, 4)),
+                Action(ActionType.DISCARD, card_indices=(4,)),
+            ),
+        )
+
+        action = BasicStrategyBot(seed=1).choose_action(state)
+
+        self.assertEqual(action.action_type, ActionType.DISCARD)
+        self.assertEqual(action.card_indices, (4,))
+        self.assertIn("last_hand_hunt", action.metadata["reason"])
+
+    def test_winning_hand_discards_to_hold_drawn_gold_card(self) -> None:
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            ante=2,
+            blind="Small Blind",
+            required_score=300,
+            current_score=0,
+            hands_remaining=4,
+            discards_remaining=1,
+            hand=(
+                Card("A", "H"),
+                Card("K", "H"),
+                Card("Q", "H"),
+                Card("J", "H"),
+                Card("9", "H"),
+                Card("2", "C"),
+            ),
+            known_deck=(Card("3", "D", enhancement="GOLD"),),
+            legal_actions=(
+                Action(ActionType.PLAY_HAND, card_indices=(0, 1, 2, 3, 4)),
+                Action(ActionType.DISCARD, card_indices=(5,)),
+            ),
+        )
+
+        action = BasicStrategyBot(seed=1).choose_action(state)
+
+        self.assertEqual(action.action_type, ActionType.DISCARD)
+        self.assertEqual(action.card_indices, (5,))
+        self.assertIn("winning_economy_hunt", action.metadata["reason"])
+
+    def test_winning_hand_discards_to_hold_drawn_blue_seal(self) -> None:
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            ante=2,
+            blind="Small Blind",
+            required_score=300,
+            current_score=0,
+            hands_remaining=4,
+            discards_remaining=1,
+            hand=(
+                Card("A", "H"),
+                Card("K", "H"),
+                Card("Q", "H"),
+                Card("J", "H"),
+                Card("9", "H"),
+                Card("2", "C"),
+            ),
+            known_deck=(Card("3", "D", seal="Blue"),),
+            legal_actions=(
+                Action(ActionType.PLAY_HAND, card_indices=(0, 1, 2, 3, 4)),
+                Action(ActionType.DISCARD, card_indices=(5,)),
+            ),
+        )
+
+        action = BasicStrategyBot(seed=1).choose_action(state)
+
+        self.assertEqual(action.action_type, ActionType.DISCARD)
+        self.assertEqual(action.card_indices, (5,))
+        self.assertIn("winning_economy_hunt", action.metadata["reason"])
+
+    def test_winning_hand_does_not_hunt_blue_seal_without_consumable_room(self) -> None:
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            ante=2,
+            blind="Small Blind",
+            required_score=300,
+            current_score=0,
+            hands_remaining=4,
+            discards_remaining=1,
+            consumables=("Mars", "Venus"),
+            hand=(
+                Card("A", "H"),
+                Card("K", "H"),
+                Card("Q", "H"),
+                Card("J", "H"),
+                Card("9", "H"),
+                Card("2", "C"),
+            ),
+            known_deck=(Card("3", "D", seal="Blue"),),
+            legal_actions=(
+                Action(ActionType.PLAY_HAND, card_indices=(0, 1, 2, 3, 4)),
+                Action(ActionType.DISCARD, card_indices=(5,)),
+            ),
+        )
+
+        action = BasicStrategyBot(seed=1).choose_action(state)
+
+        self.assertEqual(action.action_type, ActionType.PLAY_HAND)
+
+    def test_winning_hand_value_discard_runs_before_opening_joker_setup(self) -> None:
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            ante=2,
+            blind="Small Blind",
+            required_score=300,
+            current_score=0,
+            hands_remaining=4,
+            discards_remaining=1,
+            jokers=(Joker("DNA"),),
+            hand=(
+                Card("A", "H"),
+                Card("K", "H"),
+                Card("Q", "H"),
+                Card("J", "H"),
+                Card("9", "H"),
+                Card("2", "C"),
+            ),
+            known_deck=(Card("3", "D", enhancement="GOLD"),),
+            legal_actions=(
+                Action(ActionType.PLAY_HAND, card_indices=(0, 1, 2, 3, 4)),
+                Action(ActionType.PLAY_HAND, card_indices=(5,)),
+                Action(ActionType.DISCARD, card_indices=(5,)),
+            ),
+        )
+
+        action = BasicStrategyBot(seed=1).choose_action(state)
+
+        self.assertEqual(action.action_type, ActionType.DISCARD)
+        self.assertEqual(action.card_indices, (5,))
+        self.assertIn("winning_economy_hunt", action.metadata["reason"])
+
+    def test_winning_hand_value_discard_accounts_for_delayed_gratification_cost(self) -> None:
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            ante=2,
+            blind="Small Blind",
+            required_score=300,
+            current_score=0,
+            hands_remaining=4,
+            discards_remaining=1,
+            jokers=(Joker("Delayed Gratification"),),
+            hand=(
+                Card("A", "H"),
+                Card("K", "H"),
+                Card("Q", "H"),
+                Card("J", "H"),
+                Card("9", "H"),
+                Card("2", "C"),
+            ),
+            known_deck=(Card("3", "D", enhancement="GOLD"),),
+            legal_actions=(
+                Action(ActionType.PLAY_HAND, card_indices=(0, 1, 2, 3, 4)),
+                Action(ActionType.DISCARD, card_indices=(5,)),
+            ),
+        )
+
+        action = BasicStrategyBot(seed=1).choose_action(state)
+
+        self.assertEqual(action.action_type, ActionType.PLAY_HAND)
+
+    def test_winning_hand_value_discard_can_outweigh_delayed_gratification(self) -> None:
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            ante=2,
+            blind="Small Blind",
+            required_score=300,
+            current_score=0,
+            hands_remaining=4,
+            discards_remaining=1,
+            jokers=(Joker("Delayed Gratification"),),
+            hand=(
+                Card("A", "H"),
+                Card("K", "H"),
+                Card("Q", "H"),
+                Card("J", "H"),
+                Card("9", "H"),
+                Card("2", "C"),
+            ),
+            known_deck=(Card("3", "D", seal="Blue"),),
+            legal_actions=(
+                Action(ActionType.PLAY_HAND, card_indices=(0, 1, 2, 3, 4)),
+                Action(ActionType.DISCARD, card_indices=(5,)),
+            ),
+        )
+
+        action = BasicStrategyBot(seed=1).choose_action(state)
+
+        self.assertEqual(action.action_type, ActionType.DISCARD)
+        self.assertEqual(action.card_indices, (5,))
+        self.assertIn("winning_economy_hunt", action.metadata["reason"])
+
+    def test_winning_hand_value_discard_counts_trading_card_money_on_first_single_discard(self) -> None:
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            ante=2,
+            blind="Small Blind",
+            required_score=300,
+            current_score=0,
+            hands_remaining=4,
+            discards_remaining=1,
+            jokers=(Joker("Delayed Gratification"), Joker("Trading Card")),
+            hand=(
+                Card("A", "H"),
+                Card("K", "H"),
+                Card("Q", "H"),
+                Card("J", "H"),
+                Card("9", "H"),
+                Card("2", "C"),
+            ),
+            known_deck=(Card("3", "D", enhancement="GOLD"),),
+            modifiers={"round_discards_used": 0},
+            legal_actions=(
+                Action(ActionType.PLAY_HAND, card_indices=(0, 1, 2, 3, 4)),
+                Action(ActionType.DISCARD, card_indices=(5,)),
+            ),
+        )
+
+        action = BasicStrategyBot(seed=1).choose_action(state)
+
+        self.assertEqual(action.action_type, ActionType.DISCARD)
+        self.assertEqual(action.card_indices, (5,))
+        self.assertIn("winning_economy_hunt", action.metadata["reason"])
+
+    def test_winning_hand_value_discard_does_not_count_trading_card_on_multi_discard(self) -> None:
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            ante=2,
+            blind="Small Blind",
+            required_score=300,
+            current_score=0,
+            hands_remaining=4,
+            discards_remaining=1,
+            jokers=(Joker("Delayed Gratification"), Joker("Trading Card")),
+            hand=(
+                Card("A", "H"),
+                Card("K", "H"),
+                Card("Q", "H"),
+                Card("J", "H"),
+                Card("9", "H"),
+                Card("2", "C"),
+                Card("3", "C"),
+            ),
+            known_deck=(Card("4", "D", enhancement="GOLD"), Card("5", "C")),
+            modifiers={"round_discards_used": 0},
+            legal_actions=(
+                Action(ActionType.PLAY_HAND, card_indices=(0, 1, 2, 3, 4)),
+                Action(ActionType.DISCARD, card_indices=(5, 6)),
+            ),
+        )
+
+        action = BasicStrategyBot(seed=1).choose_action(state)
+
+        self.assertEqual(action.action_type, ActionType.PLAY_HAND)
+
+    def test_winning_hand_value_discard_projects_burnt_joker_first_discard_level(self) -> None:
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            ante=2,
+            blind="Small Blind",
+            required_score=300,
+            current_score=0,
+            hands_remaining=4,
+            discards_remaining=2,
+            jokers=(Joker("Burnt Joker"),),
+            hand_levels={"Pair": 1},
+            hand=(Card("A", "S"), Card("A", "H"), Card("K", "D"), Card("7", "C"), Card("2", "S")),
+            known_deck=(Card("3", "D"), Card("4", "C")),
+            modifiers={"round_discards_used": 0},
+        )
+
+        projected = strategy._state_after_known_discard_for_economy_hunt(
+            state,
+            Action(ActionType.DISCARD, card_indices=(0, 1)),
+            (Card("3", "D"), Card("4", "C")),
+            strategy._BlindContext(),
+        )
+
+        self.assertEqual(projected.hand_levels["Pair"], 2)
+        self.assertEqual(projected.modifiers["round_discards_used"], 1)
+
+    def test_winning_hand_value_discard_does_not_project_burnt_joker_after_prior_discard(self) -> None:
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            ante=2,
+            blind="Small Blind",
+            required_score=300,
+            current_score=0,
+            hands_remaining=4,
+            discards_remaining=1,
+            jokers=(Joker("Burnt Joker"),),
+            hand_levels={"Pair": 1},
+            hand=(Card("A", "S"), Card("A", "H"), Card("K", "D"), Card("7", "C"), Card("2", "S")),
+            known_deck=(Card("3", "D"), Card("4", "C")),
+            modifiers={"round_discards_used": 1},
+        )
+
+        projected = strategy._state_after_known_discard_for_economy_hunt(
+            state,
+            Action(ActionType.DISCARD, card_indices=(0, 1)),
+            (Card("3", "D"), Card("4", "C")),
+            strategy._BlindContext(discards_taken=1),
+        )
+
+        self.assertEqual(projected.hand_levels["Pair"], 1)
+        self.assertEqual(projected.modifiers["round_discards_used"], 2)
+
+    def test_ante_one_near_clear_flush_discards_to_upgrade_suit(self) -> None:
+        state = GameState(
+            phase=GamePhase.SHOP,
+            ante=1,
+            blind="Small Blind",
+            required_score=300,
+            current_score=0,
+            hands_remaining=4,
+            discards_remaining=3,
+            hand=(
+                Card("K", "H"),
+                Card("8", "D"),
+                Card("7", "H"),
+                Card("7", "C"),
+                Card("6", "H"),
+                Card("4", "H"),
+                Card("4", "C"),
+                Card("2", "H"),
+            ),
+            known_deck=(Card("10", "D"), Card("A", "S"), Card("5", "S"), Card("J", "H")),
+            legal_actions=(
+                Action(ActionType.PLAY_HAND, card_indices=(0, 2, 4, 5, 7)),
+                Action(ActionType.DISCARD, card_indices=(0, 1, 4, 7)),
+                Action(ActionType.DISCARD, card_indices=(1, 3, 6, 7)),
+            ),
+        )
+
+        context = strategy._BlindContext(discards_taken=1)
+        best_play = state.legal_actions[0]
+        fallback_discard = state.legal_actions[1]
+        action = strategy._ante_one_near_clear_upgrade_discard_action(
+            state,
+            best_play,
+            fallback_discard,
+            strategy._score_play_action(state, best_play, context),
+            state.required_score,
+            context,
+        )
+
+        self.assertIsNotNone(action)
+        self.assertEqual(action.action_type, ActionType.DISCARD)
+        self.assertEqual(action.card_indices, (1, 3, 6, 7))
+        self.assertIn("ante_one_upgrade", action.metadata["reason"])
+
+    def test_ante_one_near_clear_straight_discards_to_upgrade_high_run(self) -> None:
+        state = GameState(
+            ante=1,
+            blind="Small Blind",
+            required_score=300,
+            current_score=0,
+            hands_remaining=4,
+            discards_remaining=3,
+            hand=(
+                Card("Q", "H"),
+                Card("Q", "D"),
+                Card("9", "H"),
+                Card("8", "C"),
+                Card("7", "H"),
+                Card("6", "S"),
+                Card("6", "D"),
+                Card("10", "S"),
+            ),
+            known_deck=(Card("J", "H"), Card("2", "C"), Card("3", "D"), Card("4", "S")),
+            legal_actions=(
+                Action(ActionType.PLAY_HAND, card_indices=(2, 3, 4, 5, 7)),
+                Action(ActionType.DISCARD, card_indices=(2, 3, 4, 7)),
+                Action(ActionType.DISCARD, card_indices=(0, 1, 5, 6)),
+            ),
+        )
+
+        context = strategy._BlindContext(discards_taken=1)
+        best_play = state.legal_actions[0]
+        fallback_discard = state.legal_actions[1]
+        action = strategy._ante_one_near_clear_upgrade_discard_action(
+            state,
+            best_play,
+            fallback_discard,
+            strategy._score_play_action(state, best_play, context),
+            state.required_score,
+            context,
+        )
+
+        self.assertIsNotNone(action)
+        self.assertEqual(action.action_type, ActionType.DISCARD)
+        self.assertEqual(action.card_indices, (0, 1, 5, 6))
+        self.assertIn("ante_one_upgrade", action.metadata["reason"])
 
     def test_discard_preserves_strong_flush_draw(self) -> None:
         state = GameState(
@@ -709,8 +1126,9 @@ class BasicStrategyBotTests(unittest.TestCase):
         self.assertEqual(action.action_type, ActionType.REROLL)
         self.assertEqual(action.metadata["shop_audit"]["money_plan"]["reserve_money"], 18)
 
-    def test_early_shop_buys_strong_visible_joker_before_buffoon_pack(self) -> None:
+    def test_early_shop_does_not_sequence_pack_unless_it_remains_planned_after_buy(self) -> None:
         state = GameState(
+            phase=GamePhase.SHOP,
             ante=1,
             blind="Small Blind",
             required_score=300,
@@ -720,7 +1138,7 @@ class BasicStrategyBotTests(unittest.TestCase):
                     {"label": "Cavendish", "set": "JOKER", "cost": {"buy": 4}},
                 ),
                 "booster_packs": (
-                    {"label": "Buffoon Pack", "set": "PACK", "cost": {"buy": 4}},
+                    {"label": "Standard Pack", "set": "PACK", "cost": {"buy": 4}},
                 ),
             },
             legal_actions=(
@@ -734,7 +1152,212 @@ class BasicStrategyBotTests(unittest.TestCase):
         action = BasicStrategyBot(seed=1).choose_action(state)
 
         self.assertEqual(action.action_type, ActionType.BUY)
-        self.assertEqual(action.metadata["shop_audit"]["chosen_item"]["name"], "Cavendish")
+        self.assertEqual(action.metadata["shop_audit"]["decision"], "take")
+
+    def test_early_shop_does_not_sequence_pack_when_pair_is_unaffordable(self) -> None:
+        state = GameState(
+            phase=GamePhase.SHOP,
+            ante=1,
+            blind="Small Blind",
+            required_score=300,
+            money=7,
+            modifiers={
+                "shop_cards": (
+                    {"label": "Cavendish", "set": "JOKER", "cost": {"buy": 4}},
+                ),
+                "booster_packs": (
+                    {"label": "Buffoon Pack", "set": "PACK", "cost": {"buy": 4}},
+                ),
+            },
+            legal_actions=(
+                Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),
+                Action(ActionType.OPEN_PACK, target_id="pack", amount=0, metadata={"kind": "pack", "index": 0}),
+                Action(ActionType.END_SHOP),
+            ),
+        )
+
+        action = BasicStrategyBot(seed=1).choose_action(state)
+
+        self.assertEqual(action.action_type, ActionType.BUY)
+        self.assertEqual(action.metadata["shop_audit"]["decision"], "take")
+
+    def test_early_shop_opens_buffoon_before_planned_joker_plus_pack_line(self) -> None:
+        state = GameState(
+            phase=GamePhase.SHOP,
+            ante=1,
+            blind="Small Blind",
+            required_score=300,
+            money=10,
+            modifiers={
+                "shop_cards": (
+                    {"label": "Jupiter", "set": "PLANET", "cost": {"buy": 3}},
+                    {"label": "Fortune Teller", "set": "JOKER", "cost": {"buy": 6}},
+                ),
+                "voucher_cards": (
+                    {"label": "Seed Money", "set": "VOUCHER", "cost": {"buy": 10}},
+                ),
+                "booster_packs": (
+                    {"label": "Buffoon Pack", "set": "PACK", "cost": {"buy": 4}},
+                    {"label": "Standard Pack", "set": "PACK", "cost": {"buy": 4}},
+                ),
+            },
+            legal_actions=(
+                Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),
+                Action(ActionType.BUY, target_id="card", amount=1, metadata={"kind": "card", "index": 1}),
+                Action(ActionType.BUY, target_id="voucher", amount=0, metadata={"kind": "voucher", "index": 0}),
+                Action(ActionType.OPEN_PACK, target_id="pack", amount=0, metadata={"kind": "pack", "index": 0}),
+                Action(ActionType.OPEN_PACK, target_id="pack", amount=1, metadata={"kind": "pack", "index": 1}),
+                Action(ActionType.REROLL),
+                Action(ActionType.END_SHOP),
+            ),
+        )
+
+        action = BasicStrategyBot(seed=1).choose_action(state)
+
+        self.assertEqual(action.action_type, ActionType.OPEN_PACK)
+        self.assertEqual(action.amount, 0)
+        self.assertIn("planned_buy=Fortune Teller", action.metadata["reason"])
+
+    def test_early_shop_opens_buffoon_even_when_second_joker_is_post_buy_plan(self) -> None:
+        state = GameState(
+            phase=GamePhase.SHOP,
+            ante=2,
+            blind="Small Blind",
+            required_score=800,
+            money=17,
+            jokers=(Joker("Scary Face"), Joker("Abstract Joker")),
+            modifiers={
+                "shop_cards": (
+                    {"label": "Hallucination", "set": "JOKER", "cost": {"buy": 4}},
+                    {"label": "Sly Joker", "set": "JOKER", "cost": {"buy": 3}},
+                ),
+                "booster_packs": (
+                    {"label": "Celestial Pack", "set": "PACK", "cost": {"buy": 4}},
+                    {"label": "Buffoon Pack", "set": "PACK", "cost": {"buy": 4}},
+                ),
+            },
+            legal_actions=(
+                Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),
+                Action(ActionType.BUY, target_id="card", amount=1, metadata={"kind": "card", "index": 1}),
+                Action(ActionType.OPEN_PACK, target_id="pack", amount=0, metadata={"kind": "pack", "index": 0}),
+                Action(ActionType.OPEN_PACK, target_id="pack", amount=1, metadata={"kind": "pack", "index": 1}),
+                Action(ActionType.REROLL),
+                Action(ActionType.END_SHOP),
+            ),
+        )
+
+        action = BasicStrategyBot(seed=1).choose_action(state)
+
+        self.assertEqual(action.action_type, ActionType.OPEN_PACK)
+        self.assertEqual(action.amount, 1)
+        self.assertEqual(action.metadata["shop_audit"]["decision"], "sequence_info_first")
+        self.assertIn("planned_buy=Hallucination", action.metadata["reason"])
+
+    def test_early_shop_does_not_sequence_arcana_even_when_post_buy_planned(self) -> None:
+        state = GameState(
+            phase=GamePhase.SHOP,
+            ante=3,
+            blind="Small Blind",
+            required_score=2000,
+            money=12,
+            hand=(Card("A", "S"), Card("K", "H"), Card("Q", "D")),
+            modifiers={
+                "shop_cards": (
+                    {"label": "Cavendish", "set": "JOKER", "cost": {"buy": 4}},
+                ),
+                "booster_packs": (
+                    {"label": "Arcana Pack", "set": "PACK", "cost": {"buy": 4}},
+                ),
+            },
+            legal_actions=(
+                Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),
+                Action(ActionType.OPEN_PACK, target_id="pack", amount=0, metadata={"kind": "pack", "index": 0}),
+                Action(ActionType.END_SHOP),
+            ),
+        )
+
+        action = BasicStrategyBot(seed=1).choose_action(state)
+
+        self.assertEqual(action.action_type, ActionType.BUY)
+        self.assertEqual(action.metadata["shop_audit"]["decision"], "take")
+
+    def test_early_shop_does_not_open_arcana_first_when_reroll_is_post_buy_plan(self) -> None:
+        state = GameState(
+            phase=GamePhase.SHOP,
+            ante=3,
+            blind="Small Blind",
+            required_score=2000,
+            money=20,
+            hand=(Card("A", "S"), Card("K", "H"), Card("Q", "D")),
+            modifiers={
+                "shop_cards": (
+                    {"label": "Cavendish", "set": "JOKER", "cost": {"buy": 4}},
+                ),
+                "booster_packs": (
+                    {"label": "Arcana Pack", "set": "PACK", "cost": {"buy": 4}},
+                ),
+            },
+            legal_actions=(
+                Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),
+                Action(ActionType.OPEN_PACK, target_id="pack", amount=0, metadata={"kind": "pack", "index": 0}),
+                Action(ActionType.END_SHOP),
+            ),
+        )
+
+        action = BasicStrategyBot(seed=1).choose_action(state)
+
+        self.assertEqual(action.action_type, ActionType.BUY)
+        self.assertEqual(action.metadata["shop_audit"]["decision"], "take")
+
+    def test_early_shop_does_not_sequence_judgement_before_planned_joker_buy(self) -> None:
+        state = GameState(
+            phase=GamePhase.SHOP,
+            ante=1,
+            blind="Small Blind",
+            required_score=300,
+            money=9,
+            consumables=("Judgement",),
+            modifiers={
+                "shop_cards": (
+                    {"label": "Cavendish", "set": "JOKER", "cost": {"buy": 4}},
+                ),
+            },
+            legal_actions=(
+                Action(ActionType.USE_CONSUMABLE, target_id="consumable", amount=0, metadata={"kind": "consumable", "index": 0}),
+                Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),
+                Action(ActionType.END_SHOP),
+            ),
+        )
+
+        action = BasicStrategyBot(seed=1).choose_action(state)
+
+        self.assertEqual(action.action_type, ActionType.BUY)
+        self.assertEqual(action.metadata["shop_audit"]["decision"], "take")
+
+    def test_late_shop_does_not_sequence_judgement_before_planned_joker_buy(self) -> None:
+        state = GameState(
+            phase=GamePhase.SHOP,
+            ante=3,
+            blind="Small Blind",
+            required_score=2000,
+            money=9,
+            consumables=("Judgement",),
+            modifiers={
+                "shop_cards": (
+                    {"label": "Cavendish", "set": "JOKER", "cost": {"buy": 4}},
+                ),
+            },
+            legal_actions=(
+                Action(ActionType.USE_CONSUMABLE, target_id="consumable", amount=0, metadata={"kind": "consumable", "index": 0}),
+                Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),
+                Action(ActionType.END_SHOP),
+            ),
+        )
+
+        action = BasicStrategyBot(seed=1).choose_action(state)
+
+        self.assertEqual(action.action_type, ActionType.BUY)
+        self.assertEqual(action.metadata["shop_audit"]["decision"], "take")
 
     def test_joker_stencil_is_worthless_when_it_fills_last_slot(self) -> None:
         state = GameState(
@@ -1522,6 +2145,146 @@ class BasicStrategyBotTests(unittest.TestCase):
         self.assertEqual(pressure.boss_target_multiplier, 2.0)
         self.assertGreater(pressure.ratio, pressure.raw_ratio)
 
+    def test_shop_pressure_uses_cleared_big_blind_for_boss_shop(self) -> None:
+        state = GameState(
+            phase=GamePhase.SHOP,
+            ante=4,
+            blind="Small Blind",
+            required_score=5000,
+            money=40,
+            jokers=(Joker("Joker"),),
+            modifiers={
+                "cleared_blind": {
+                    "ante": 4,
+                    "blind": "Big Blind",
+                    "required_score": 7500,
+                    "kind": "BIG",
+                },
+                "blinds": {
+                    "boss": {"name": "The Wall", "type": "BOSS", "score": 20000},
+                },
+            },
+            legal_actions=(
+                Action(ActionType.REROLL),
+                Action(ActionType.END_SHOP),
+            ),
+        )
+
+        pressure = strategy._shop_pressure(state)
+
+        self.assertEqual(strategy._estimated_next_required_score(state), 20000)
+        self.assertEqual(pressure.boss_name, "The Wall")
+        self.assertEqual(pressure.boss_target_multiplier, 1.0)
+        self.assertGreater(pressure.ratio, 1.0)
+
+    def test_shop_pressure_full_weights_needle_after_big_blind(self) -> None:
+        state = GameState(
+            phase=GamePhase.SHOP,
+            ante=3,
+            blind="Small Blind",
+            required_score=2000,
+            money=25,
+            jokers=(Joker("Jolly Joker"), Joker("Flower Pot"), Joker("Crafty Joker")),
+            modifiers={
+                "cleared_blind": {
+                    "ante": 3,
+                    "blind": "Big Blind",
+                    "required_score": 3000,
+                    "kind": "BIG",
+                },
+                "blinds": {
+                    "boss": {"name": "The Needle", "type": "BOSS", "score": 2000},
+                },
+            },
+            legal_actions=(
+                Action(ActionType.REROLL),
+                Action(ActionType.END_SHOP),
+            ),
+        )
+
+        pressure = strategy._shop_pressure(state)
+
+        self.assertEqual(strategy._estimated_next_required_score(state), 2000)
+        self.assertEqual(pressure.boss_name, "The Needle")
+        self.assertEqual(pressure.boss_capacity_factor, 1.0)
+        needle_state = replace(state, blind="The Needle", required_score=2000, hands_remaining=1)
+        expected_capacity = strategy._sample_build_score(needle_state, needle_state.jokers) * 0.85
+        self.assertAlmostEqual(pressure.build_capacity, expected_capacity, places=2)
+
+    def test_post_big_shop_pressure_scores_flint_as_boss(self) -> None:
+        state = GameState(
+            phase=GamePhase.SHOP,
+            ante=4,
+            blind="Small Blind",
+            required_score=5000,
+            money=35,
+            hands_remaining=4,
+            discards_remaining=4,
+            jokers=(Joker("Joker"), Joker("Banner")),
+            modifiers={
+                "cleared_blind": {
+                    "ante": 4,
+                    "blind": "Big Blind",
+                    "required_score": 7500,
+                    "kind": "BIG",
+                },
+                "blinds": {
+                    "boss": {"name": "The Flint", "type": "BOSS", "score": 10000},
+                },
+            },
+            legal_actions=(
+                Action(ActionType.REROLL),
+                Action(ActionType.END_SHOP),
+            ),
+        )
+
+        pressure = strategy._shop_pressure(state)
+
+        flint_state = replace(state, blind="The Flint", required_score=10000)
+        normal_score = strategy._sample_build_score(state, state.jokers)
+        flint_score = strategy._sample_build_score(flint_state, flint_state.jokers)
+        expected_capacity = flint_score * 3.5 * 0.85 * pressure.capacity_safety_factor
+        self.assertEqual(pressure.boss_name, "The Flint")
+        self.assertLess(flint_score, normal_score)
+        self.assertAlmostEqual(pressure.build_capacity, expected_capacity, places=2)
+
+    def test_post_big_shop_pressure_scores_water_with_no_discards(self) -> None:
+        state = GameState(
+            phase=GamePhase.SHOP,
+            ante=4,
+            blind="Small Blind",
+            required_score=5000,
+            money=35,
+            hands_remaining=4,
+            discards_remaining=4,
+            jokers=(Joker("Banner"),),
+            modifiers={
+                "cleared_blind": {
+                    "ante": 4,
+                    "blind": "Big Blind",
+                    "required_score": 7500,
+                    "kind": "BIG",
+                },
+                "blinds": {
+                    "boss": {"name": "The Water", "type": "BOSS", "score": 10000},
+                },
+            },
+            legal_actions=(
+                Action(ActionType.REROLL),
+                Action(ActionType.END_SHOP),
+            ),
+        )
+
+        pressure = strategy._shop_pressure(state)
+
+        water_state = replace(state, blind="The Water", required_score=10000, discards_remaining=0)
+        normal_score = strategy._sample_build_score(state, state.jokers)
+        water_score = strategy._sample_build_score(water_state, water_state.jokers)
+        expected_capacity = water_score * 3.5 * 0.85 * pressure.capacity_safety_factor
+        self.assertEqual(pressure.boss_name, "The Water")
+        self.assertLess(water_score, normal_score)
+        self.assertAlmostEqual(pressure.build_capacity, expected_capacity, places=2)
+
     def test_late_role_hunt_rerolls_money_above_interest_reserve(self) -> None:
         state = GameState(
             ante=6,
@@ -1622,6 +2385,61 @@ class BasicStrategyBotTests(unittest.TestCase):
         self.assertEqual(action.action_type, ActionType.REROLL)
         self.assertEqual(action.metadata["shop_audit"]["money_plan"]["reserve_money"], 75)
         self.assertEqual(action.metadata["shop_audit"]["money_plan"]["spendable_money"], 35)
+
+    def test_ante_eight_closing_reroll_spends_money_tree_bank_under_pressure(self) -> None:
+        state = GameState(
+            ante=8,
+            blind="Big Blind",
+            required_score=100000,
+            money=80,
+            vouchers=("Money Tree",),
+            jokers=(
+                Joker("Stuntman"),
+                Joker("Jolly Joker"),
+                Joker("Blue Joker"),
+                Joker("Golden Joker"),
+                Joker("Gros Michel"),
+            ),
+            legal_actions=(
+                Action(ActionType.REROLL),
+                Action(ActionType.END_SHOP),
+            ),
+        )
+
+        action = BasicStrategyBot(seed=1).choose_action(state)
+
+        self.assertEqual(action.action_type, ActionType.REROLL)
+        money_plan = action.metadata["shop_audit"]["money_plan"]
+        self.assertEqual(money_plan["interest_cap_money"], 100)
+        self.assertLessEqual(money_plan["reserve_money"], 12)
+        self.assertGreaterEqual(money_plan["spendable_money"], 60)
+
+    def test_ante_seven_closing_pressure_relaxes_money_scaling_reserve(self) -> None:
+        state = GameState(
+            ante=7,
+            blind="Big Blind",
+            required_score=75000,
+            money=80,
+            jokers=(
+                Joker("Bull"),
+                Joker("Jolly Joker"),
+                Joker("Blue Joker"),
+                Joker("Golden Joker"),
+                Joker("Gros Michel"),
+            ),
+            legal_actions=(
+                Action(ActionType.REROLL),
+                Action(ActionType.END_SHOP),
+            ),
+        )
+
+        action = BasicStrategyBot(seed=1).choose_action(state)
+
+        self.assertEqual(action.action_type, ActionType.REROLL)
+        money_plan = action.metadata["shop_audit"]["money_plan"]
+        self.assertTrue(money_plan["has_money_scaling_joker"])
+        self.assertLess(money_plan["reserve_money"], 75)
+        self.assertGreaterEqual(money_plan["spendable_money"], 40)
 
     def test_late_shop_prioritizes_missing_xmult_role(self) -> None:
         state = GameState(
@@ -1908,6 +2726,78 @@ class BasicStrategyBotTests(unittest.TestCase):
         self.assertFalse(strategy._should_safety_discard(state, discard, 598, 3000, context))
         self.assertFalse(strategy._should_chase_discard(state, discard, 598, 3000, context))
 
+    def test_projected_discard_score_reuses_equivalent_hand_content(self) -> None:
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            ante=2,
+            blind="Small Blind",
+            required_score=800,
+            current_score=0,
+            hands_remaining=4,
+            discards_remaining=3,
+            deck_size=40,
+            hand=(
+                Card("2", "S"),
+                Card("2", "S"),
+                Card("A", "H"),
+                Card("K", "D"),
+                Card("Q", "C"),
+                Card("J", "S"),
+            ),
+            jokers=(Joker("Joker"),),
+        )
+        context = strategy._BlindContext()
+
+        with strategy.decision_cache_scope():
+            with patch.object(strategy, "best_play_from_hand", wraps=strategy.best_play_from_hand) as best_play:
+                first_score = strategy._projected_score_after_discard(state, Action(ActionType.DISCARD, card_indices=(0,)), context)
+                calls_after_first = best_play.call_count
+                second_score = strategy._projected_score_after_discard(state, Action(ActionType.DISCARD, card_indices=(1,)), context)
+
+        self.assertEqual(second_score, first_score)
+        self.assertGreater(calls_after_first, 0)
+        self.assertEqual(best_play.call_count, calls_after_first)
+
+    def test_optimistic_completion_score_reuses_equivalent_projected_states(self) -> None:
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            ante=2,
+            blind="Small Blind",
+            required_score=800,
+            current_score=0,
+            hands_remaining=4,
+            discards_remaining=3,
+            deck_size=40,
+            hand=(Card("A", "S"), Card("K", "H"), Card("Q", "D")),
+            jokers=(Joker("Joker"),),
+        )
+        equivalent_state = GameState(
+            phase=state.phase,
+            ante=state.ante,
+            blind=state.blind,
+            required_score=state.required_score,
+            current_score=state.current_score,
+            hands_remaining=state.hands_remaining,
+            discards_remaining=state.discards_remaining,
+            money=state.money,
+            deck_size=state.deck_size,
+            hand=state.hand,
+            jokers=state.jokers,
+            hand_levels=dict(state.hand_levels),
+            modifiers=dict(state.modifiers),
+        )
+        context = strategy._BlindContext()
+
+        with strategy.decision_cache_scope():
+            with patch.object(strategy, "best_play_from_hand", wraps=strategy.best_play_from_hand) as best_play:
+                first_score = strategy._optimistic_completion_score(state, state.hand, 2, context)
+                calls_after_first = best_play.call_count
+                second_score = strategy._optimistic_completion_score(equivalent_state, equivalent_state.hand, 2, context)
+
+        self.assertEqual(second_score, first_score)
+        self.assertGreater(calls_after_first, 0)
+        self.assertEqual(best_play.call_count, calls_after_first)
+
     def test_the_eye_avoids_repeating_played_hand_type(self) -> None:
         bot = BasicStrategyBot(seed=1)
         first_state = GameState(
@@ -2105,6 +2995,37 @@ class BasicStrategyBotTests(unittest.TestCase):
 
         self.assertGreater(card_sharp_value, joker_value)
 
+    def test_mystic_summit_burns_discard_when_active_score_clears(self) -> None:
+        state = GameState(
+            ante=1,
+            blind="The Pillar",
+            required_score=600,
+            current_score=0,
+            hands_remaining=4,
+            discards_remaining=4,
+            hand=(
+                Card("A", "H"),
+                Card("K", "H"),
+                Card("Q", "H"),
+                Card("J", "H"),
+                Card("9", "H"),
+                Card("4", "C"),
+                Card("3", "D"),
+                Card("2", "S"),
+            ),
+            jokers=(Joker("Mystic Summit", sell_value=3),),
+            legal_actions=(
+                Action(ActionType.PLAY_HAND, card_indices=(0, 1, 2, 3, 4)),
+                Action(ActionType.DISCARD, card_indices=(5, 6, 7)),
+            ),
+        )
+
+        action = BasicStrategyBot(seed=1).choose_action(state)
+
+        self.assertEqual(action.action_type, ActionType.DISCARD)
+        self.assertEqual(action.card_indices, (5, 6, 7))
+        self.assertIn("mystic_summit_setup", action.metadata["reason"])
+
     def test_square_joker_prefers_four_card_clear_to_scale(self) -> None:
         state = GameState(
             ante=2,
@@ -2263,6 +3184,40 @@ class BasicStrategyBotTests(unittest.TestCase):
         self.assertEqual(action.action_type, ActionType.CHOOSE_PACK_CARD)
         self.assertEqual(action.target_id, "card")
 
+    def test_pack_choice_takes_positive_value_planet_under_old_threshold(self) -> None:
+        state = GameState(
+            phase=GamePhase.BOOSTER_OPENED,
+            ante=1,
+            money=0,
+            hands_remaining=4,
+            discards_remaining=4,
+            jokers=(Joker("Flash Card", sell_value=2),),
+            modifiers={
+                "pack_cards": (
+                    {"label": "Pluto", "key": "c_pluto", "set": "PLANET", "config": {"hand_type": "High Card"}},
+                    {"label": "Uranus", "key": "c_uranus", "set": "PLANET", "config": {"hand_type": "Two Pair"}},
+                    {"label": "Mars", "key": "c_mars", "set": "PLANET", "config": {"hand_type": "Four of a Kind"}},
+                    {"label": "Neptune", "key": "c_neptune", "set": "PLANET", "config": {"hand_type": "Straight Flush"}},
+                    {"label": "Earth", "key": "c_earth", "set": "PLANET", "config": {"hand_type": "Full House"}},
+                )
+            },
+            legal_actions=(
+                Action(ActionType.CHOOSE_PACK_CARD, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),
+                Action(ActionType.CHOOSE_PACK_CARD, target_id="card", amount=1, metadata={"kind": "card", "index": 1}),
+                Action(ActionType.CHOOSE_PACK_CARD, target_id="card", amount=2, metadata={"kind": "card", "index": 2}),
+                Action(ActionType.CHOOSE_PACK_CARD, target_id="card", amount=3, metadata={"kind": "card", "index": 3}),
+                Action(ActionType.CHOOSE_PACK_CARD, target_id="card", amount=4, metadata={"kind": "card", "index": 4}),
+                Action(ActionType.CHOOSE_PACK_CARD, target_id="skip", metadata={"kind": "skip", "index": True}),
+            ),
+        )
+
+        action = BasicStrategyBot(seed=1).choose_action(state)
+
+        self.assertEqual(action.action_type, ActionType.CHOOSE_PACK_CARD)
+        self.assertEqual(action.target_id, "card")
+        self.assertEqual(action.amount, 4)
+        self.assertIn("pack_pick", action.metadata["reason"])
+
     def test_empty_booster_state_uses_no_op_instead_of_pack_skip(self) -> None:
         state = GameState(
             phase=GamePhase.BOOSTER_OPENED,
@@ -2383,6 +3338,56 @@ class BasicStrategyBotTests(unittest.TestCase):
         self.assertEqual(action.target_id, "card")
         self.assertEqual(action.amount, 0)
 
+    def test_pack_choice_takes_immolate_for_money(self) -> None:
+        state = GameState(
+            money=6,
+            hand=(
+                Card("A", "S"),
+                Card("K", "H"),
+                Card("Q", "D"),
+                Card("J", "C"),
+                Card("9", "S"),
+                Card("8", "H"),
+                Card("4", "D"),
+                Card("2", "C"),
+            ),
+            modifiers={
+                "pack_cards": (
+                    {"label": "Immolate", "key": "c_immolate", "set": "SPECTRAL", "cost": {"buy": 0}},
+                )
+            },
+            legal_actions=(
+                Action(ActionType.CHOOSE_PACK_CARD, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),
+                Action(ActionType.CHOOSE_PACK_CARD, target_id="skip", metadata={"kind": "skip", "index": True}),
+            ),
+        )
+
+        action = BasicStrategyBot(seed=1).choose_action(state)
+
+        self.assertEqual(action.action_type, ActionType.CHOOSE_PACK_CARD)
+        self.assertEqual(action.target_id, "card")
+        self.assertEqual(action.amount, 0)
+        self.assertIn("pack_pick", action.metadata["reason"])
+
+    def test_pack_choice_can_skip_low_value_spectral_card(self) -> None:
+        state = GameState(
+            money=6,
+            modifiers={
+                "pack_cards": (
+                    {"label": "Ouija", "key": "c_ouija", "set": "SPECTRAL", "cost": {"buy": 0}},
+                )
+            },
+            legal_actions=(
+                Action(ActionType.CHOOSE_PACK_CARD, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),
+                Action(ActionType.CHOOSE_PACK_CARD, target_id="skip", metadata={"kind": "skip", "index": True}),
+            ),
+        )
+
+        action = BasicStrategyBot(seed=1).choose_action(state)
+
+        self.assertEqual(action.action_type, ActionType.CHOOSE_PACK_CARD)
+        self.assertEqual(action.target_id, "skip")
+
     def test_pack_choice_skips_target_required_tarot_until_targets_are_supported(self) -> None:
         state = GameState(
             money=6,
@@ -2475,13 +3480,13 @@ class BasicStrategyBotTests(unittest.TestCase):
         self.assertEqual(action.action_type, ActionType.CHOOSE_PACK_CARD)
         self.assertEqual(action.target_id, "skip")
 
-    def test_pack_choice_skips_consumable_when_slots_are_full(self) -> None:
+    def test_pack_choice_takes_planet_when_consumable_slots_are_full(self) -> None:
         state = GameState(
             money=6,
             consumables=("The Fool", "Death"),
             modifiers={
                 "pack_cards": (
-                    {"label": "Death", "set": "TAROT", "cost": {"buy": 0}},
+                    {"label": "Jupiter", "key": "c_jupiter", "set": "PLANET", "cost": {"buy": 0}},
                 )
             },
             legal_actions=(
@@ -2493,7 +3498,7 @@ class BasicStrategyBotTests(unittest.TestCase):
         action = BasicStrategyBot(seed=1).choose_action(state)
 
         self.assertEqual(action.action_type, ActionType.CHOOSE_PACK_CARD)
-        self.assertEqual(action.target_id, "skip")
+        self.assertEqual(action.target_id, "card")
 
 
 if __name__ == "__main__":

@@ -29,13 +29,16 @@ class SearchBotTests(unittest.TestCase):
         self.assertEqual(bot.name, "search_bot_v1")
         self.assertTrue(bot.enable_shop_search)
 
-    def test_registry_creates_search_bot_v2_as_v1_copy(self) -> None:
+    def test_registry_creates_search_bot_v2_experiment_lane(self) -> None:
         bot = create_bot("search_bot_v2", seed=3)
 
         self.assertIsInstance(bot, SearchBotV2)
         self.assertNotIsInstance(bot, SearchBot)
         self.assertEqual(bot.name, "search_bot_v2")
         self.assertTrue(bot.enable_shop_search)
+        self.assertEqual(bot.hand_config.beam_depth, 3)
+        self.assertEqual(bot.hand_config.beam_width, 2)
+        self.assertEqual(bot.hand_config.draw_samples, 2)
 
     def test_registry_does_not_create_trace_variant_for_search_bot_v1(self) -> None:
         with self.assertRaises(ValueError):
@@ -508,6 +511,31 @@ class SearchBotTests(unittest.TestCase):
 
         self.assertEqual(first_action.action_type, ActionType.BUY)
         self.assertEqual(second_action.action_type, ActionType.END_SHOP)
+
+    def test_search_bot_v2_allows_beam_to_override_basic_play_discard_guard(self) -> None:
+        bot = SearchBotV2(seed=1)
+        beam_discard = Action(ActionType.DISCARD, card_indices=(2,), metadata={"search": "hand_beam"})
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            ante=2,
+            blind="Small Blind",
+            required_score=60,
+            current_score=0,
+            hands_remaining=1,
+            discards_remaining=1,
+            deck_size=1,
+            hand=(Card("A", "S"), Card("K", "H"), Card("2", "D")),
+            legal_actions=(
+                Action(ActionType.PLAY_HAND, card_indices=(0,)),
+                Action(ActionType.DISCARD, card_indices=(2,)),
+            ),
+        )
+
+        with patch("balatro_ai.bots.search_bot_v2.best_hand_action", return_value=beam_discard):
+            action = bot.choose_action(state)
+
+        self.assertEqual(action.action_type, ActionType.DISCARD)
+        self.assertEqual(action.metadata["search"], "hand_beam")
 
 
 class _FallbackChooseRaises:

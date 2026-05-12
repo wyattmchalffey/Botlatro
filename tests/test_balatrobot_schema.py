@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import unittest
 
 import context  # noqa: F401
 from balatro_ai.api.actions import Action, ActionType
 from balatro_ai.api.client import JsonRpcBalatroClient
-from balatro_ai.api.state import GamePhase, GameState, Stake
+from balatro_ai.api.state import GamePhase, GameState, Joker, Stake
 
 
 class RecordingClient(JsonRpcBalatroClient):
@@ -245,6 +246,42 @@ class BalatroBotSchemaTests(unittest.TestCase):
 
         self.assertEqual(state.hand[0].enhancement, "GLASS")
         self.assertEqual(state.hand[1].enhancement, "BONUS")
+
+    def test_joker_parser_compiles_visible_effect_descriptor(self) -> None:
+        joker = Joker(
+            "Visible Joker",
+            metadata={
+                "value": {
+                    "effect": (
+                        "Earn $5 for each discarded 8, rank changes every round "
+                        "(Currently +24 Mult). Retrigger for the next 2 hands. "
+                        "3 cards remaining. All abilities are disabled. Ready!"
+                    )
+                }
+            },
+        )
+
+        self.assertEqual(joker.effect.text, joker.metadata["value"]["effect"])
+        self.assertTrue(joker.effect.disabled)
+        self.assertTrue(joker.effect.ready)
+        self.assertEqual(joker.effect.current_int, 24)
+        self.assertEqual(joker.effect.current_plus_value("mult"), 24)
+        self.assertEqual(joker.effect.remaining, 3)
+        self.assertEqual(joker.effect.cards_remaining, 3)
+        self.assertEqual(joker.effect.next_hands, 2)
+        self.assertEqual(joker.effect.discarded_rank, "8")
+        self.assertEqual(joker.effect.earn_dollars, 5)
+
+    def test_joker_descriptor_tracks_targets_and_recompiles_on_replace(self) -> None:
+        idol = Joker("The Idol", metadata={"value": {"effect": "Each played King of Spades gives X2 Mult when scored"}})
+        castle = Joker("Castle", metadata={"value": {"effect": "This Joker gains +3 Chips per discarded Spade card"}})
+        updated = replace(idol, metadata={"value": {"effect": "Currently X1.4 Mult"}})
+
+        self.assertEqual(idol.effect.target_rank, "K")
+        self.assertEqual(idol.effect.target_suit, "S")
+        self.assertEqual(castle.effect.discarded_suit, "S")
+        self.assertEqual(updated.effect.current_xmult_visible, 1.4)
+        self.assertIsNone(updated.effect.target_rank)
 
     def test_client_uses_documented_methods(self) -> None:
         client = RecordingClient()
