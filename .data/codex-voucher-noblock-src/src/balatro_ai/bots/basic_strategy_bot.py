@@ -1032,7 +1032,6 @@ def _shop_action_value(
             - _cost_penalty(state, pack, pressure)
         )
     if action.action_type == ActionType.REROLL:
-        reroll_cost = _shop_reroll_cost(state)
         if not _early_reroll_is_allowed(state, pressure):
             return 0.0
         if state.money < _minimum_reroll_bank(state, pressure):
@@ -1050,12 +1049,7 @@ def _shop_action_value(
         pressure_bonus += _reroll_role_hunt_bonus(profile, pressure)
         if any(joker.name == "Flash Card" for joker in state.jokers):
             pressure_bonus += 26
-        return (
-            24
-            + pressure_bonus
-            - _money_after_spend_penalty(state, reroll_cost, pressure)
-            - _reroll_cost_escalation_penalty(state, reroll_cost, pressure)
-        )
+        return 24 + pressure_bonus - _money_after_spend_penalty(state, 5, pressure)
     return 0.0
 
 
@@ -1078,28 +1072,11 @@ def _shop_information_action_can_take_joker_slot(state: GameState, action: Actio
 
 
 def _shop_action_cost(state: GameState, action: Action) -> int:
-    if action.action_type == ActionType.REROLL:
-        return _shop_reroll_cost(state)
     item = _shop_item_for_action(state, action)
     return _card_cost(item) if item is not None else 0
 
 
-def _shop_reroll_cost(state: GameState) -> int:
-    if _int_or_default(state.modifiers.get("free_rerolls"), 0) > 0:
-        return 0
-    for key in ("reroll_cost", "current_reroll_cost"):
-        if key in state.modifiers:
-            return max(0, _int_or_default(state.modifiers.get(key), 5))
-    reset_cost = _int_or_default(
-        state.modifiers.get("round_reset_reroll_cost", state.modifiers.get("base_reroll_cost")),
-        5,
-    )
-    increase = _int_or_default(state.modifiers.get("reroll_cost_increase"), 0)
-    return max(0, reset_cost + increase)
-
-
 def _minimum_reroll_bank(state: GameState, pressure: _ShopPressure | None = None) -> int:
-    reroll_cost = _shop_reroll_cost(state)
     if state.ante >= 4:
         reserve = _desired_money_reserve(state, pressure)
         if _normal_joker_open_slots(state) <= 0:
@@ -1111,13 +1088,13 @@ def _minimum_reroll_bank(state: GameState, pressure: _ShopPressure | None = None
             )
             if closing_cap is None:
                 reserve = max(reserve, _interest_cap_money(state))
-        return reserve + reroll_cost
+        return reserve + 5
     if state.ante <= 1 and not _has_real_scoring_joker(state) and not _visible_early_power_path(state):
         return 5
     if state.ante <= 2 and not _has_real_scoring_joker(state) and pressure is not None and pressure.ratio >= 1.1:
         return 6
     if _has_money_scaling_joker(state):
-        return min(_desired_money_reserve(state, pressure) + reroll_cost, 30)
+        return min(_desired_money_reserve(state, pressure) + 5, 30)
     return 9
 
 
@@ -1131,21 +1108,6 @@ def _early_reroll_is_allowed(state: GameState, pressure: _ShopPressure) -> bool:
     if state.money < 9:
         return False
     return pressure.ratio >= 1.1 or not _has_real_scoring_joker(state)
-
-
-def _reroll_cost_escalation_penalty(state: GameState, cost: int, pressure: _ShopPressure) -> float:
-    if cost <= 5:
-        return 0.0
-    extra_cost = cost - 5
-    if pressure.ratio >= 1.75 or pressure.raw_ratio >= 1.2:
-        weight = 1.4
-    elif pressure.ratio >= 1.05 or pressure.raw_ratio >= 0.95:
-        weight = 2.2
-    else:
-        weight = 3.0
-    if state.ante >= 5:
-        weight += 0.4
-    return extra_cost * weight
 
 
 def _visible_early_power_path(state: GameState) -> bool:
@@ -1193,9 +1155,6 @@ def _late_reroll_is_worth_it(
 def _late_reroll_limit(state: GameState, pressure: _ShopPressure, profile: _BuildProfile) -> int:
     if state.ante < 5:
         return 99
-    closer_limit = _late_pressure_closer_reroll_limit(state, pressure, profile)
-    if closer_limit is not None:
-        return closer_limit
     if state.ante >= 7 and pressure.ratio >= 1.2:
         if _urgent_late_role_hunt(state, pressure, profile):
             return 4 if pressure.ratio >= 1.6 else 3
@@ -1212,46 +1171,6 @@ def _late_reroll_limit(state: GameState, pressure: _ShopPressure, profile: _Buil
     if _rich_late_role_hunt(profile):
         return 1
     return 0
-
-
-def _late_pressure_closer_mode(
-    state: GameState,
-    pressure: _ShopPressure,
-    profile: _BuildProfile | None = None,
-) -> bool:
-    if state.ante < 5 or _has_money_scaling_joker(state):
-        return False
-    if state.money < 45:
-        return False
-
-    spendable = max(0, state.money - _late_pressure_interest_floor(state, pressure))
-    if spendable < 15:
-        return False
-    if _shop_has_followup_big_blind_shop(state):
-        return pressure.raw_ratio >= 1.75 or pressure.ratio >= 3.0
-    if pressure.raw_ratio >= 1.2:
-        return True
-    if pressure.ratio >= 1.75:
-        return True
-
-    profile = profile or _build_profile(state)
-    return state.money >= 75 and profile.rich and pressure.raw_ratio >= 1.05
-
-
-def _late_pressure_closer_reroll_limit(
-    state: GameState,
-    pressure: _ShopPressure,
-    profile: _BuildProfile,
-) -> int | None:
-    if not _late_pressure_closer_mode(state, pressure, profile):
-        return None
-    if _shop_has_followup_big_blind_shop(state):
-        return 3 if pressure.ratio >= 3.0 or pressure.raw_ratio >= 1.75 else 2
-    if pressure.ratio >= 3.0 or pressure.raw_ratio >= 1.75:
-        return 8
-    if pressure.ratio >= 1.25 or pressure.raw_ratio >= 1.05:
-        return 6
-    return 4
 
 
 def _shop_card_value(state: GameState, card: object) -> float:
@@ -1734,11 +1653,6 @@ def _boss_preview_weight(state: GameState) -> float:
     if state.blind == "Small Blind":
         return 0.45
     return 0.0
-
-
-def _shop_has_followup_big_blind_shop(state: GameState) -> bool:
-    cleared_kind = _shop_cleared_blind_kind(state)
-    return cleared_kind == "SMALL" or (state.blind == "Small Blind" and cleared_kind != "BIG")
 
 
 def _shop_cleared_blind_kind(state: GameState) -> str:
@@ -3121,13 +3035,11 @@ def _voucher_value(state: GameState, voucher: object, pressure: _ShopPressure | 
     name = _card_label(voucher)
     if any(existing == name for existing in state.vouchers):
         return 0.0
-    if _voucher_buy_is_blocked(state, name):
+    if _voucher_buy_is_blocked(name):
         return 0.0
 
     pressure = pressure or _shop_pressure(state)
     if _voucher_does_not_solve_current_boss_shop(state, name, pressure):
-        return 0.0
-    if _late_pressure_blocks_voucher(state, name, pressure):
         return 0.0
 
     value = float(VOUCHER_VALUES.get(name, 22))
@@ -3135,10 +3047,8 @@ def _voucher_value(state: GameState, voucher: object, pressure: _ShopPressure | 
     return max(0.0, value)
 
 
-def _voucher_buy_is_blocked(state: GameState, name: str) -> bool:
-    if name == "Blank" and state.ante >= 8:
-        return True
-    return _voucher_name_key(name) in VOUCHER_BUY_DENYLIST
+def _voucher_buy_is_blocked(name: str) -> bool:
+    return False
 
 
 def _voucher_name_key(name: str) -> str:
@@ -3153,20 +3063,6 @@ def _voucher_does_not_solve_current_boss_shop(
     if name not in {"Grabber", "Nacho Tong"}:
         return False
     return _shop_pressure_uses_exact_needle_hand(state, pressure.boss_name)
-
-
-def _late_pressure_blocks_voucher(state: GameState, name: str, pressure: _ShopPressure) -> bool:
-    if state.ante < 5 or pressure.ratio < 1.15:
-        return False
-    if name == "Blank":
-        return state.ante >= 8
-    if name in VOUCHER_PRESSURE_ALLOWED_NAMES:
-        return False
-    if name == "Observatory":
-        return not any(planet in PLANET_TO_HAND for planet in state.consumables)
-    if name in {"Seed Money", "Money Tree"}:
-        return not _has_money_scaling_joker(state)
-    return True
 
 
 def _voucher_dynamic_adjustment(state: GameState, name: str, pressure: _ShopPressure) -> float:
@@ -3307,16 +3203,6 @@ def _discount_voucher_adjustment(
     pressure: _ShopPressure,
     profile: _BuildProfile,
 ) -> float:
-    if pressure.ratio >= 0.95:
-        penalty = 8.0 + min(18.0, pressure.danger * 12.0)
-        if state.ante >= 4:
-            penalty += 6.0
-        if state.ante >= 5:
-            penalty += 8.0
-        if profile.rich and pressure.ratio < 1.05 and state.ante <= 4:
-            penalty -= 4.0
-        return -penalty
-
     bonus = max(0.0, (7 - state.ante) * 3.0)
     if profile.rich and state.ante <= 6:
         bonus += 8.0
@@ -3576,10 +3462,6 @@ def _late_pack_is_worth_opening(
 def _late_pack_limit(state: GameState, pressure: _ShopPressure) -> int:
     if state.ante < 5:
         return 99
-    if _late_pressure_closer_mode(state, pressure):
-        if pressure.ratio >= 3.0 or pressure.raw_ratio >= 1.75:
-            return 5
-        return 4
     if pressure.ratio >= 1.05:
         return 2
     return 1
@@ -3715,17 +3597,6 @@ def _interest_cap_money(state: GameState) -> int:
     return cap
 
 
-def _late_pressure_interest_floor(state: GameState, pressure: _ShopPressure) -> int:
-    cap = _interest_cap_money(state)
-    if state.ante < 5:
-        return cap
-    if pressure.ratio >= 3.0 or pressure.raw_ratio >= 1.75:
-        return max(20, int(cap * 0.65))
-    if pressure.ratio >= 1.75 or pressure.raw_ratio >= 1.2:
-        return max(20, int(cap * 0.8))
-    return cap
-
-
 def _desired_money_reserve(state: GameState, pressure: _ShopPressure | None = None) -> int:
     reserve = _interest_cap_money(state)
     owned_jokers = {joker.name for joker in state.jokers}
@@ -3734,8 +3605,11 @@ def _desired_money_reserve(state: GameState, pressure: _ShopPressure | None = No
             reserve = max(reserve, target)
     if {"Bull", "Bootstraps"}.issubset(owned_jokers):
         reserve = max(reserve, 100)
-    if pressure is not None and not owned_jokers.intersection(MONEY_SCALING_RESERVE_TARGETS):
-        reserve = min(reserve, _late_pressure_interest_floor(state, pressure))
+    if pressure is not None and pressure.raw_ratio >= 1.05 and not owned_jokers.intersection(MONEY_SCALING_RESERVE_TARGETS):
+        reserve -= int(min(15.0, (pressure.raw_ratio - 1.0) * 36.0))
+        if pressure.raw_ratio >= 1.2:
+            reserve -= 4
+        reserve = max(8, reserve)
     if pressure is not None:
         closing_cap = _late_closing_money_reserve_cap(state, pressure, owned_jokers)
         if closing_cap is not None:
@@ -3748,7 +3622,7 @@ def _late_closing_money_reserve_cap(
     pressure: _ShopPressure,
     owned_jokers: set[str],
 ) -> int | None:
-    if state.ante < 5:
+    if state.ante < 7:
         return None
     if state.money < 45:
         return None
@@ -3756,8 +3630,6 @@ def _late_closing_money_reserve_cap(
         return None
 
     has_money_scaling = bool(owned_jokers.intersection(MONEY_SCALING_RESERVE_TARGETS))
-    if has_money_scaling and state.ante < 7:
-        return None
     if has_money_scaling:
         if pressure.ratio >= 1.75 or pressure.raw_ratio >= 1.25:
             return 35
@@ -3765,8 +3637,11 @@ def _late_closing_money_reserve_cap(
             return 50
         return None
 
-    floor = _late_pressure_interest_floor(state, pressure)
-    return floor if floor < _interest_cap_money(state) else None
+    if pressure.ratio >= 1.75 or pressure.raw_ratio >= 1.2:
+        return 12
+    if pressure.ratio >= 1.25 or pressure.raw_ratio >= 1.05:
+        return 20
+    return 25
 
 
 def _spendable_money(state: GameState, pressure: _ShopPressure | None = None) -> int:
@@ -7135,6 +7010,7 @@ SUIT_TAROT_TARGET_SUITS = {
 VOUCHER_BUY_DENYLIST = frozenset(
     {
         "planet merchant",
+        "blank",
         "magic trick",
         "directors cut",
         "crystal ball",
@@ -7153,18 +7029,6 @@ VOUCHER_IMMEDIATE_SCORE_NAMES = frozenset(
         "Hone",
         "Glow Up",
         "Retcon",
-        "Antimatter",
-    }
-)
-
-VOUCHER_PRESSURE_ALLOWED_NAMES = frozenset(
-    {
-        "Grabber",
-        "Nacho Tong",
-        "Wasteful",
-        "Recyclomancy",
-        "Paint Brush",
-        "Palette",
         "Antimatter",
     }
 )
@@ -7201,7 +7065,7 @@ VOUCHER_VALUES = {
     "Reroll Glut": 40,
     "Tarot Merchant": 24,
     "Tarot Tycoon": 30,
-    "Planet Merchant": 0,
+    "Planet Merchant": 22,
     "Planet Tycoon": 24,
     "Crystal Ball": 26,
     "Omen Globe": 34,
@@ -7216,7 +7080,7 @@ VOUCHER_VALUES = {
     "Seed Money": 38,
     "Money Tree": 46,
     "Blank": 22,
-    "Magic Trick": 0,
+    "Magic Trick": 22,
     "Illusion": 18,
     "Antimatter": 58,
     "Hieroglyph": 22,

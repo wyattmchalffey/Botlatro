@@ -1124,7 +1124,7 @@ class BasicStrategyBotTests(unittest.TestCase):
         action = BasicStrategyBot(seed=1).choose_action(state)
 
         self.assertEqual(action.action_type, ActionType.REROLL)
-        self.assertEqual(action.metadata["shop_audit"]["money_plan"]["reserve_money"], 18)
+        self.assertEqual(action.metadata["shop_audit"]["money_plan"]["reserve_money"], 25)
 
     def test_early_shop_does_not_sequence_pack_unless_it_remains_planned_after_buy(self) -> None:
         state = GameState(
@@ -1217,6 +1217,128 @@ class BasicStrategyBotTests(unittest.TestCase):
         self.assertEqual(action.action_type, ActionType.OPEN_PACK)
         self.assertEqual(action.amount, 0)
         self.assertIn("planned_buy=Fortune Teller", action.metadata["reason"])
+
+    def test_shop_never_buys_blocked_vouchers(self) -> None:
+        blocked = (
+            "Planet Merchant",
+            "Magic Trick",
+            "Director's Cut",
+            "Crystal Ball",
+            "Telescope",
+        )
+        for name in blocked:
+            with self.subTest(name=name):
+                state = GameState(
+                    phase=GamePhase.SHOP,
+                    ante=2,
+                    blind="Small Blind",
+                    required_score=800,
+                    money=100,
+                    modifiers={
+                        "voucher_cards": (
+                            {"label": name, "set": "VOUCHER", "cost": {"buy": 1}},
+                        ),
+                    },
+                    legal_actions=(
+                        Action(ActionType.BUY, target_id="voucher", amount=0, metadata={"kind": "voucher", "index": 0}),
+                        Action(ActionType.END_SHOP),
+                    ),
+                )
+
+                action = BasicStrategyBot(seed=1).choose_action(state)
+
+                self.assertEqual(action.action_type, ActionType.END_SHOP)
+                self.assertEqual(strategy._voucher_value(state, {"label": name, "set": "VOUCHER"}), 0.0)
+
+    def test_shop_can_buy_blank_before_ante_eight_but_not_in_ante_eight_shop(self) -> None:
+        before_ante_eight = GameState(
+            phase=GamePhase.SHOP,
+            ante=7,
+            blind="Small Blind",
+            required_score=35000,
+            money=100,
+            modifiers={
+                "voucher_cards": (
+                    {"label": "Blank", "set": "VOUCHER", "cost": {"buy": 1}},
+                ),
+            },
+            legal_actions=(
+                Action(ActionType.BUY, target_id="voucher", amount=0, metadata={"kind": "voucher", "index": 0}),
+                Action(ActionType.END_SHOP),
+            ),
+        )
+        ante_eight = replace(before_ante_eight, ante=8)
+
+        self.assertGreater(strategy._voucher_value(before_ante_eight, {"label": "Blank", "set": "VOUCHER"}), 0.0)
+        self.assertEqual(strategy._voucher_value(ante_eight, {"label": "Blank", "set": "VOUCHER"}), 0.0)
+
+        action = BasicStrategyBot(seed=1).choose_action(ante_eight)
+
+        self.assertEqual(action.action_type, ActionType.END_SHOP)
+
+    def test_late_pressure_blocks_non_immediate_vouchers(self) -> None:
+        state = GameState(
+            phase=GamePhase.SHOP,
+            ante=5,
+            blind="Small Blind",
+            required_score=11000,
+            money=80,
+        )
+        pressure = strategy._ShopPressure(
+            target_score=24000,
+            build_capacity=16000,
+            ratio=1.5,
+            raw_ratio=1.5,
+            safety_multiplier=1.2,
+            capacity_safety_factor=0.85,
+        )
+
+        for name in ("Seed Money", "Clearance Sale", "Reroll Surplus", "Overstock", "Tarot Merchant", "Hone"):
+            with self.subTest(name=name):
+                self.assertEqual(strategy._voucher_value(state, {"label": name, "set": "VOUCHER"}, pressure), 0.0)
+
+        self.assertGreater(strategy._voucher_value(state, {"label": "Paint Brush", "set": "VOUCHER"}, pressure), 0.0)
+        self.assertGreater(strategy._voucher_value(state, {"label": "Antimatter", "set": "VOUCHER"}, pressure), 0.0)
+        self.assertGreater(strategy._voucher_value(state, {"label": "Blank", "set": "VOUCHER"}, pressure), 0.0)
+
+    def test_pressure_allows_interest_voucher_with_money_scaling(self) -> None:
+        state = GameState(
+            phase=GamePhase.SHOP,
+            ante=5,
+            blind="Small Blind",
+            required_score=11000,
+            money=80,
+            jokers=(Joker("Bull"),),
+        )
+        pressure = strategy._ShopPressure(
+            target_score=24000,
+            build_capacity=16000,
+            ratio=1.5,
+            raw_ratio=1.5,
+            safety_multiplier=1.2,
+            capacity_safety_factor=0.85,
+        )
+
+        self.assertGreater(strategy._voucher_value(state, {"label": "Seed Money", "set": "VOUCHER"}, pressure), 0.0)
+
+    def test_grabber_and_nacho_are_not_valued_for_needle_boss_shop(self) -> None:
+        state = GameState(
+            phase=GamePhase.SHOP,
+            ante=5,
+            blind="Big Blind",
+            required_score=16500,
+            money=80,
+            modifiers={
+                "cleared_blind": {"kind": "BIG"},
+                "upcoming_boss": {"name": "The Needle", "score": 22000},
+            },
+        )
+        pressure = strategy._shop_pressure(state)
+
+        self.assertEqual(pressure.boss_name, "The Needle")
+        self.assertEqual(strategy._voucher_value(state, {"label": "Grabber", "set": "VOUCHER"}, pressure), 0.0)
+        self.assertEqual(strategy._voucher_value(state, {"label": "Nacho Tong", "set": "VOUCHER"}, pressure), 0.0)
+        self.assertGreater(strategy._voucher_value(state, {"label": "Paint Brush", "set": "VOUCHER"}, pressure), 0.0)
 
     def test_early_shop_opens_buffoon_even_when_second_joker_is_post_buy_plan(self) -> None:
         state = GameState(
@@ -2010,7 +2132,7 @@ class BasicStrategyBotTests(unittest.TestCase):
 
         self.assertEqual(action.action_type, ActionType.BUY)
         self.assertEqual(action.metadata["shop_audit"]["chosen_item"]["name"], "Hologram")
-        self.assertLess(action.metadata["shop_audit"]["money_plan"]["reserve_money"], 25)
+        self.assertEqual(action.metadata["shop_audit"]["money_plan"]["reserve_money"], 25)
 
     def test_shop_safety_margin_opens_pack_before_score_wall(self) -> None:
         state = GameState(
@@ -2411,8 +2533,8 @@ class BasicStrategyBotTests(unittest.TestCase):
         self.assertEqual(action.action_type, ActionType.REROLL)
         money_plan = action.metadata["shop_audit"]["money_plan"]
         self.assertEqual(money_plan["interest_cap_money"], 100)
-        self.assertLessEqual(money_plan["reserve_money"], 12)
-        self.assertGreaterEqual(money_plan["spendable_money"], 60)
+        self.assertEqual(money_plan["reserve_money"], 65)
+        self.assertEqual(money_plan["spendable_money"], 15)
 
     def test_ante_seven_closing_pressure_relaxes_money_scaling_reserve(self) -> None:
         state = GameState(
@@ -2545,7 +2667,34 @@ class BasicStrategyBotTests(unittest.TestCase):
         self.assertIn("xmult", missing_roles)
         self.assertIn("scaling", missing_roles)
 
-    def test_late_shop_allows_two_role_hunt_rerolls_when_rich_and_underpowered(self) -> None:
+    def test_late_shop_closer_allows_deeper_rerolls_when_rich_and_underpowered(self) -> None:
+        bot = BasicStrategyBot(seed=1)
+        state = GameState(
+            seed=123,
+            ante=6,
+            blind="Big Blind",
+            required_score=20000,
+            money=90,
+            jokers=(
+                Joker("Stuntman"),
+                Joker("Jolly Joker"),
+                Joker("Blue Joker"),
+                Joker("Golden Joker"),
+                Joker("Gros Michel"),
+            ),
+            legal_actions=(
+                Action(ActionType.REROLL),
+                Action(ActionType.END_SHOP),
+            ),
+        )
+
+        actions = [bot.choose_action(state) for _ in range(9)]
+
+        self.assertTrue(all(action.action_type == ActionType.REROLL for action in actions[:8]))
+        self.assertEqual(actions[8].action_type, ActionType.END_SHOP)
+        self.assertEqual(actions[8].metadata["shop_audit"]["shop_context"]["rerolls_in_shop"], 8)
+
+    def test_late_shop_spreads_rerolls_after_small_blind(self) -> None:
         bot = BasicStrategyBot(seed=1)
         state = GameState(
             seed=123,
@@ -2566,14 +2715,118 @@ class BasicStrategyBotTests(unittest.TestCase):
             ),
         )
 
-        first_action = bot.choose_action(state)
-        second_action = bot.choose_action(state)
-        third_action = bot.choose_action(state)
+        actions = [bot.choose_action(state) for _ in range(3)]
 
-        self.assertEqual(first_action.action_type, ActionType.REROLL)
-        self.assertEqual(second_action.action_type, ActionType.REROLL)
-        self.assertEqual(third_action.action_type, ActionType.END_SHOP)
-        self.assertEqual(third_action.metadata["shop_audit"]["shop_context"]["rerolls_in_shop"], 2)
+        self.assertTrue(all(action.action_type == ActionType.REROLL for action in actions[:2]))
+        self.assertEqual(actions[2].action_type, ActionType.END_SHOP)
+        self.assertEqual(actions[2].metadata["shop_audit"]["shop_context"]["rerolls_in_shop"], 2)
+
+    def test_late_shop_closer_rerolls_when_only_missing_chips_and_mult(self) -> None:
+        state = GameState(
+            ante=7,
+            blind="Small Blind",
+            required_score=52500,
+            money=86,
+            jokers=(
+                Joker("Green Joker"),
+                Joker("Hanging Chad"),
+                Joker("Arrowhead"),
+                Joker("Flower Pot"),
+                Joker("Devious Joker"),
+            ),
+            legal_actions=(
+                Action(ActionType.REROLL),
+                Action(ActionType.END_SHOP),
+            ),
+        )
+
+        action = BasicStrategyBot(seed=1).choose_action(state)
+
+        self.assertEqual(action.action_type, ActionType.REROLL)
+        self.assertGreaterEqual(action.metadata["shop_audit"]["money_plan"]["spendable_money"], 60)
+        self.assertNotIn("xmult", action.metadata["shop_audit"]["build_profile"]["missing_roles"])
+
+    def test_late_shop_closer_spends_interest_bank_under_pressure(self) -> None:
+        state = GameState(
+            ante=6,
+            blind="Small Blind",
+            required_score=30000,
+            money=93,
+            vouchers=("Seed Money", "Money Tree"),
+            jokers=(
+                Joker("Erosion"),
+                Joker("Ride the Bus"),
+                Joker("Swashbuckler"),
+                Joker("Seeing Double"),
+                Joker("Odd Todd"),
+            ),
+            legal_actions=(
+                Action(ActionType.REROLL),
+                Action(ActionType.END_SHOP),
+            ),
+        )
+
+        action = BasicStrategyBot(seed=1).choose_action(state)
+
+        self.assertEqual(action.action_type, ActionType.REROLL)
+        money_plan = action.metadata["shop_audit"]["money_plan"]
+        self.assertEqual(money_plan["interest_cap_money"], 100)
+        self.assertEqual(money_plan["reserve_money"], 65)
+        self.assertEqual(money_plan["spendable_money"], 28)
+
+    def test_late_shop_does_not_expensive_reroll_below_pressure_floor(self) -> None:
+        state = GameState(
+            ante=7,
+            blind="Small Blind",
+            required_score=52500,
+            money=31,
+            modifiers={"reroll_cost": 7},
+            jokers=(
+                Joker("Green Joker"),
+                Joker("Hanging Chad"),
+                Joker("Arrowhead"),
+                Joker("Flower Pot"),
+                Joker("Devious Joker"),
+            ),
+            legal_actions=(
+                Action(ActionType.REROLL),
+                Action(ActionType.END_SHOP),
+            ),
+        )
+
+        action = BasicStrategyBot(seed=1).choose_action(state)
+
+        self.assertEqual(action.action_type, ActionType.END_SHOP)
+        self.assertEqual(action.metadata["shop_audit"]["money_plan"]["reserve_money"], 20)
+
+    def test_late_shop_closer_opens_packs_after_normal_late_cap(self) -> None:
+        state = GameState(
+            ante=7,
+            blind="Small Blind",
+            required_score=52500,
+            money=90,
+            jokers=(
+                Joker("Green Joker"),
+                Joker("Hanging Chad"),
+                Joker("Arrowhead"),
+                Joker("Flower Pot"),
+                Joker("Devious Joker"),
+            ),
+            modifiers={
+                "booster_packs": (
+                    {"label": "Jumbo Celestial Pack", "set": "PACK", "cost": {"buy": 6}},
+                )
+            },
+            legal_actions=(
+                Action(ActionType.OPEN_PACK, target_id="pack", amount=0, metadata={"kind": "pack", "index": 0}),
+                Action(ActionType.END_SHOP),
+            ),
+        )
+
+        action = strategy._shop_action(state, context=strategy._ShopContext(packs_opened_in_shop=2))
+
+        self.assertIsNotNone(action)
+        self.assertEqual(action.action_type, ActionType.OPEN_PACK)
 
     def test_late_shop_opens_planet_pack_when_missing_scaling(self) -> None:
         state = GameState(
