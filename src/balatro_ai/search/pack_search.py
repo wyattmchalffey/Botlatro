@@ -50,10 +50,12 @@ def best_pack_action(
     actions = tuple(action for action in choose_actions if _pack_action_is_legal(state, action) and _pack_action_is_searchable(state, action))
     if not actions:
         return None
+    actions = _prefer_max_targeted_tarot_actions(state, actions)
     evaluator = value_fn or _default_value_fn(search_config)
     include_item_value = value_fn is None
     best_action: Action | None = None
     best_value = float("-inf")
+    best_target_count = -1
     for action in actions:
         value = pack_action_value(
             state,
@@ -63,9 +65,11 @@ def best_pack_action(
             include_item_value=include_item_value,
             sampler=shop_sampler,
         )
-        if value > best_value:
+        target_count = len(action.card_indices)
+        if value > best_value or (value == best_value and target_count > best_target_count):
             best_action = action
             best_value = value
+            best_target_count = target_count
     sell_action, sell_value = _best_sell_then_pick_action(
         state,
         choose_actions,
@@ -79,6 +83,32 @@ def best_pack_action(
     if best_action is None:
         return None
     return _annotated_action(best_action, search_value=best_value)
+
+
+def _prefer_max_targeted_tarot_actions(state: GameState, actions: tuple[Action, ...]) -> tuple[Action, ...]:
+    pack_cards = _modifier_items(state.modifiers, "pack_cards")
+    max_target_counts: dict[int, int] = {}
+    for action in actions:
+        if _is_skip_action(action):
+            continue
+        index = _action_index(action)
+        if index is None or not 0 <= index < len(pack_cards):
+            continue
+        item = pack_cards[index]
+        if _item_set(item) != "TAROT" and _item_label(item) not in TAROT_NAMES:
+            continue
+        max_target_counts[index] = max(max_target_counts.get(index, -1), len(action.card_indices))
+
+    if not max_target_counts:
+        return actions
+
+    kept: list[Action] = []
+    for action in actions:
+        index = _action_index(action)
+        if index is not None and len(action.card_indices) < max_target_counts.get(index, -1):
+            continue
+        kept.append(action)
+    return tuple(kept)
 
 
 def pack_action_value(

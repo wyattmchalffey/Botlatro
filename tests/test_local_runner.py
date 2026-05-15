@@ -7,7 +7,7 @@ import context  # noqa: F401
 from balatro_ai.api.actions import Action, ActionType
 from balatro_ai.api.state import Card, GamePhase, GameState, Joker, with_derived_legal_actions
 from balatro_ai.search.shop_sampler import ShopSampler
-from balatro_ai.sim.local_runner import LocalBalatroSimulator, LocalSimOptions, run_local_seed
+from balatro_ai.sim.local_runner import LocalBalatroSimulator, LocalSimOptions, run_local_seed, run_local_seed_with_trace
 
 
 def tiny_sim_data() -> dict[str, object]:
@@ -87,6 +87,19 @@ class LocalRunnerTests(unittest.TestCase):
         self.assertTrue(state.modifiers["blinds"]["small"]["skip_tag"]["key"].startswith("tag_"))
         self.assertNotIn("tag", state.modifiers["blinds"]["boss"])
         self.assertIn(ActionType.SELECT_BLIND, {action.action_type for action in state.legal_actions})
+
+    def test_trace_records_played_hand_audit(self) -> None:
+        result, trace = run_local_seed_with_trace(
+            bot=ScriptedClearBot(),
+            options=LocalSimOptions(seed=1, max_steps=3, boss_pool=("The Club",)),
+        )
+
+        play_rows = [row for row in trace if row.get("play_audit")]
+
+        self.assertFalse(result.won)
+        self.assertTrue(play_rows)
+        self.assertIn("hand_type", play_rows[0]["play_audit"])
+        self.assertIn("predicted_score", play_rows[0]["play_audit"])
 
     def test_needle_uses_source_truth_one_x_score_multiplier(self) -> None:
         sim = LocalBalatroSimulator(seed=1, sampler=ShopSampler(tiny_sim_data()), boss_pool=("The Needle",))
@@ -389,7 +402,7 @@ class LocalRunnerTests(unittest.TestCase):
         opened = sim.step(Action(ActionType.SKIP_BLIND))
 
         self.assertEqual(opened.phase, GamePhase.BOOSTER_OPENED)
-        self.assertEqual(opened.pack, ("Buffoon Pack",))
+        self.assertEqual(opened.pack, ("Joker", "Greedy Joker"))
         self.assertEqual({item["set"] for item in opened.modifiers["pack_cards"]}, {"JOKER"})
 
         returned = sim.step(Action(ActionType.CHOOSE_PACK_CARD, target_id="skip", metadata={"kind": "skip"}))
@@ -736,6 +749,91 @@ class LocalRunnerTests(unittest.TestCase):
         self.assertEqual(next_state.current_score, 266)
         self.assertFalse(next_state.jokers[0].metadata.get("state"))
         self.assertEqual(next_state.jokers[1].metadata["state"]["debuff"], True)
+
+    def test_spectral_pack_open_draws_target_hand_for_card_selection(self) -> None:
+        data = tiny_sim_data()
+        data["spectrals"] = [{"key": "c_trance", "name": "Trance", "set": "Spectral", "cost": 4}]
+        sim = LocalBalatroSimulator(
+            seed=1,
+            sampler=ShopSampler(data),
+            initial_deck=(Card("A", "S"), Card("K", "H"), Card("Q", "D"), Card("J", "C")),
+            boss_pool=("The Club",),
+        )
+        pack = {
+            "label": "Spectral Pack",
+            "key": "p_spectral_normal_1",
+            "set": "BOOSTER",
+            "kind": "Spectral",
+            "config": {"extra": 2, "choose": 1},
+            "cost": {"buy": 0},
+        }
+        sim.state = GameState(
+            phase=GamePhase.SHOP,
+            money=20,
+            deck_size=4,
+            known_deck=sim.initial_deck or (),
+            modifiers={"hand_size": 3, "booster_packs": (pack,)},
+        )
+
+        opened = sim.step(Action(ActionType.OPEN_PACK, target_id="pack", amount=0, metadata={"kind": "pack", "index": 0}))
+
+        target_choices = [
+            action
+            for action in opened.legal_actions
+            if action.action_type == ActionType.CHOOSE_PACK_CARD and action.target_id == "card" and action.amount == 0
+        ]
+
+        self.assertEqual(opened.phase, GamePhase.BOOSTER_OPENED)
+        self.assertEqual(len(opened.hand), 3)
+        self.assertEqual(opened.deck_size, 1)
+        self.assertEqual({action.card_indices for action in target_choices}, {(0,), (1,), (2,)})
+
+    def test_spectral_tag_pack_draws_target_hand_and_exposes_all_choices(self) -> None:
+        data = tiny_sim_data()
+        data["spectrals"] = [{"key": "c_trance", "name": "Trance", "set": "Spectral", "cost": 4}]
+        data["boosters"] = [
+            {
+                "key": "p_spectral_normal_1",
+                "name": "Spectral Pack",
+                "set": "Booster",
+                "kind": "Spectral",
+                "config": {"extra": 2, "choose": 1},
+                "cost": 4,
+                "weight": 1,
+            }
+        ]
+        sim = LocalBalatroSimulator(
+            seed=1,
+            sampler=ShopSampler(data),
+            initial_deck=(Card("A", "S"), Card("K", "H"), Card("Q", "D"), Card("J", "C")),
+            boss_pool=("The Club",),
+        )
+        state = GameState(
+            phase=GamePhase.BLIND_SELECT,
+            money=4,
+            deck_size=4,
+            known_deck=sim.initial_deck or (),
+            jokers=(Joker("Hallucination"),),
+            modifiers={"hand_size": 3, "tags": ("Ethereal Tag",), "probability_multiplier": 2},
+        )
+
+        opened = with_derived_legal_actions(sim._apply_new_blind_choice_tags(state))
+        target_choices = [
+            action
+            for action in opened.legal_actions
+            if action.action_type == ActionType.CHOOSE_PACK_CARD and action.target_id == "card"
+        ]
+
+        self.assertEqual(opened.phase, GamePhase.BOOSTER_OPENED)
+        self.assertEqual(opened.money, 4)
+        self.assertEqual(opened.consumables, ("The Empress",))
+        self.assertEqual(opened.modifiers["created_tarot_count"], 1)
+        self.assertEqual(opened.pack, ("Trance", "Trance"))
+        self.assertEqual(len(opened.modifiers["pack_cards"]), 2)
+        self.assertEqual(len(opened.hand), 3)
+        self.assertEqual(opened.deck_size, 1)
+        self.assertEqual({action.amount for action in target_choices}, {0, 1})
+        self.assertEqual({action.card_indices for action in target_choices}, {(0,), (1,), (2,)})
 
     def test_run_local_seed_records_local_result(self) -> None:
         deck = tuple(Card("A", "S") for _ in range(52))

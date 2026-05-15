@@ -120,6 +120,7 @@ SPECTRAL_NAMES = frozenset(
         "Black Hole",
     }
 )
+HAND_REQUIRED_SPECTRALS = frozenset({"Familiar", "Grim", "Incantation", "Sigil", "Ouija", "Immolate"})
 TAROT_ENHANCEMENTS = {
     "The Magician": "LUCKY",
     "The Empress": "MULT",
@@ -1838,6 +1839,9 @@ def _state_after_spectral_used(
     jokers = state.jokers
     indices = tuple(card_indices)
 
+    if spectral_name in HAND_REQUIRED_SPECTRALS and not state.hand:
+        raise ValueError(f"{spectral_name} requires a visible hand")
+
     if spectral_name in SPECTRAL_SEALS:
         _require_selected_indices(state, indices, min_count=1, max_count=1, label=spectral_name)
         hand = _hand_with_replaced_cards(hand, indices, lambda card: _card_with_seal(card, SPECTRAL_SEALS[spectral_name]))
@@ -1851,8 +1855,6 @@ def _state_after_spectral_used(
         source = state.hand[indices[0]]
         created = (_copy_card(source), _copy_card(source))
         hand = _sort_hand_cards(hand + created)
-        deck_size += len(created)
-        known_deck = known_deck + created if known_deck else ()
         jokers = _jokers_after_playing_cards_added(jokers, created)
     elif spectral_name in {"Familiar", "Grim", "Incantation", "Immolate"}:
         destroyed_cards = _destroyed_hand_cards_for_consumable(state, destroyed_hand_card_indices)
@@ -1867,8 +1869,6 @@ def _state_after_spectral_used(
             jokers = _jokers_after_playing_cards_destroyed(jokers, destroyed_cards, glass_shattered=())
         created = tuple(created_hand_cards)
         hand = _sort_hand_cards(hand + created)
-        deck_size += len(created)
-        known_deck = known_deck + created if known_deck else ()
         jokers = _jokers_after_playing_cards_added(jokers, created)
     elif spectral_name == "Sigil":
         if sigil_suit is None:

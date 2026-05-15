@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import context  # noqa: F401
 from balatro_ai.api.actions import Action, ActionType
@@ -47,6 +48,39 @@ class PackSearchTests(unittest.TestCase):
         self.assertIsNotNone(action)
         self.assertEqual(action.action_type, ActionType.CHOOSE_PACK_CARD)
         self.assertEqual(action.metadata["search"], "pack_value")
+
+    def test_best_pack_action_prefers_max_tarot_targets(self) -> None:
+        one_target = Action(
+            ActionType.CHOOSE_PACK_CARD,
+            card_indices=(0,),
+            target_id="card",
+            amount=0,
+            metadata={"kind": "card", "index": 0},
+        )
+        two_targets = Action(
+            ActionType.CHOOSE_PACK_CARD,
+            card_indices=(0, 1),
+            target_id="card",
+            amount=0,
+            metadata={"kind": "card", "index": 0},
+        )
+        state = GameState(
+            phase=GamePhase.BOOSTER_OPENED,
+            hand=(Card("2", "S"), Card("K", "H")),
+            pack=("Strength",),
+            modifiers={"pack_cards": ({"label": "Strength", "set": "TAROT"},)},
+            legal_actions=(one_target, two_targets),
+        )
+
+        with patch(
+            "balatro_ai.search.pack_search.pack_action_value",
+            side_effect=lambda _state, action, **_kwargs: 10.0 if len(action.card_indices) == 1 else 1.0,
+        ) as value_mock:
+            action = best_pack_action(state, value_fn=lambda _state: 0.0)
+
+        self.assertIsNotNone(action)
+        self.assertEqual(action.card_indices, (0, 1))
+        self.assertEqual(value_mock.call_count, 1)
 
     def test_pack_value_rewards_justice_targeted_glass_card(self) -> None:
         choose_justice = Action(

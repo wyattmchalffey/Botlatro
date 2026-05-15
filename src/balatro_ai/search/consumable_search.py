@@ -94,12 +94,14 @@ def best_consumable_action(
     candidates = tuple(action for action in use_actions if consumable_action_is_supported(state, action))
     if not candidates:
         return None
+    candidates = _prefer_max_targeted_tarot_actions(state, candidates)
     candidates = _candidate_consumable_actions(state, candidates, limit=search_config.max_actions)
 
     evaluator = value_fn or _default_value_fn(search_config, root_state=state)
     baseline = evaluator(state)
     best_action: Action | None = None
     best_value = float("-inf")
+    best_target_count = -1
     for action_index, action in enumerate(candidates):
         try:
             value = consumable_action_value(
@@ -113,13 +115,38 @@ def best_consumable_action(
             )
         except (ValueError, IndexError, TypeError, AttributeError):
             continue
-        if value > best_value:
+        target_count = len(action.card_indices)
+        if value > best_value or (value == best_value and target_count > best_target_count):
             best_action = action
             best_value = value
+            best_target_count = target_count
 
     if best_action is None or best_value < _minimum_delta(state, search_config):
         return None
     return _annotated_action(best_action, search_value=best_value)
+
+
+def _prefer_max_targeted_tarot_actions(state: GameState, actions: tuple[Action, ...]) -> tuple[Action, ...]:
+    max_target_counts: dict[int, int] = {}
+    for action in actions:
+        index = _action_index(action)
+        if index is None:
+            continue
+        name = _action_consumable_name(state, action)
+        if name not in TAROT_NAMES:
+            continue
+        max_target_counts[index] = max(max_target_counts.get(index, -1), len(action.card_indices))
+
+    if not max_target_counts:
+        return actions
+
+    kept: list[Action] = []
+    for action in actions:
+        index = _action_index(action)
+        if index is not None and len(action.card_indices) < max_target_counts.get(index, -1):
+            continue
+        kept.append(action)
+    return tuple(kept)
 
 
 def consumable_action_value(

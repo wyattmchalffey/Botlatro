@@ -332,6 +332,46 @@ class SearchBotTests(unittest.TestCase):
         self.assertIsNotNone(action)
         self.assertEqual(action.action_type, ActionType.USE_CONSUMABLE)
 
+    def test_consumable_search_prefers_max_tarot_targets(self) -> None:
+        one_target = Action(
+            ActionType.USE_CONSUMABLE,
+            card_indices=(0,),
+            target_id="consumable",
+            amount=0,
+            metadata={"kind": "consumable", "index": 0},
+        )
+        two_targets = Action(
+            ActionType.USE_CONSUMABLE,
+            card_indices=(0, 1),
+            target_id="consumable",
+            amount=0,
+            metadata={"kind": "consumable", "index": 0},
+        )
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            ante=2,
+            blind="Small Blind",
+            required_score=800,
+            hand=(Card("2", "S"), Card("K", "H")),
+            consumables=("Strength",),
+            legal_actions=(one_target, two_targets),
+        )
+
+        with patch(
+            "balatro_ai.search.consumable_search.consumable_action_value",
+            side_effect=lambda _state, action, **_kwargs: 10.0 if len(action.card_indices) == 1 else 1.0,
+        ) as value_mock:
+            action = best_consumable_action(
+                state,
+                config=ConsumableSearchConfig(min_blind_delta=-999.0),
+                value_fn=lambda _state: 0.0,
+            )
+
+        self.assertIsNotNone(action)
+        self.assertEqual(action.action_type, ActionType.USE_CONSUMABLE)
+        self.assertEqual(action.card_indices, (0, 1))
+        self.assertEqual(value_mock.call_count, 1)
+
     def test_high_priestess_value_drops_when_consumable_slots_are_full(self) -> None:
         use_high_priestess = Action(
             ActionType.USE_CONSUMABLE,

@@ -1720,6 +1720,18 @@ class ForwardSimTests(unittest.TestCase):
         self.assertEqual(tuple(card.short_name for card in next_state.hand), ("KH", "KH"))
         self.assertEqual(next_state.consumables, ())
 
+    def test_simulate_use_consumable_rejects_hand_required_spectral_without_hand(self) -> None:
+        state = GameState(
+            phase=GamePhase.SHOP,
+            consumables=("Immolate",),
+        )
+
+        with self.assertRaisesRegex(ValueError, "requires a visible hand"):
+            simulate_use_consumable(
+                state,
+                Action(ActionType.USE_CONSUMABLE, target_id="consumable", amount=0, metadata={"kind": "consumable", "index": 0}),
+            )
+
     def test_simulate_reroll_spends_cost_replaces_shop_and_updates_flash_card(self) -> None:
         state = GameState(
             phase=GamePhase.SHOP,
@@ -1848,6 +1860,72 @@ class ForwardSimTests(unittest.TestCase):
         self.assertEqual(skipped.deck_size, 10)
         self.assertEqual(skipped.hand, ())
 
+    def test_simulate_choose_pack_card_returns_cryptid_created_cards_once(self) -> None:
+        state = GameState(
+            phase=GamePhase.BOOSTER_OPENED,
+            deck_size=44,
+            known_deck=tuple(Card("2", "C") for _ in range(44)),
+            hand=(
+                Card("A", "S"),
+                Card("K", "H"),
+                Card("Q", "D"),
+                Card("J", "C"),
+                Card("T", "S"),
+                Card("9", "H"),
+                Card("8", "D"),
+                Card("7", "C"),
+            ),
+            pack=("Cryptid",),
+            modifiers={"pack_cards": ({"label": "Cryptid", "set": "SPECTRAL"},)},
+        )
+
+        next_state = simulate_choose_pack_card(
+            state,
+            Action(
+                ActionType.CHOOSE_PACK_CARD,
+                card_indices=(0,),
+                target_id="card",
+                amount=0,
+                metadata={"kind": "card", "index": 0},
+            ),
+        )
+
+        self.assertEqual(next_state.phase, GamePhase.SHOP)
+        self.assertEqual(next_state.deck_size, 54)
+        self.assertEqual(len(next_state.known_deck), 54)
+        self.assertEqual(next_state.hand, ())
+
+    def test_simulate_choose_pack_card_returns_familiar_created_cards_once(self) -> None:
+        state = GameState(
+            phase=GamePhase.BOOSTER_OPENED,
+            deck_size=44,
+            known_deck=tuple(Card("2", "C") for _ in range(44)),
+            hand=(
+                Card("A", "S"),
+                Card("K", "H"),
+                Card("Q", "D"),
+                Card("J", "C"),
+                Card("T", "S"),
+                Card("9", "H"),
+                Card("8", "D"),
+                Card("7", "C"),
+            ),
+            pack=("Familiar",),
+            modifiers={"pack_cards": ({"label": "Familiar", "set": "SPECTRAL"},)},
+        )
+
+        next_state = simulate_choose_pack_card(
+            state,
+            Action(ActionType.CHOOSE_PACK_CARD, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),
+            created_hand_cards=(Card("6", "S"), Card("5", "H"), Card("4", "D")),
+            destroyed_hand_card_indices=(0,),
+        )
+
+        self.assertEqual(next_state.phase, GamePhase.SHOP)
+        self.assertEqual(next_state.deck_size, 54)
+        self.assertEqual(len(next_state.known_deck), 54)
+        self.assertEqual(next_state.hand, ())
+
     def test_simulate_choose_pack_card_skip_returns_to_shop(self) -> None:
         state = GameState(
             phase=GamePhase.BOOSTER_OPENED,
@@ -1865,21 +1943,31 @@ class ForwardSimTests(unittest.TestCase):
         self.assertEqual(next_state.modifiers["pack_cards"], ())
         self.assertEqual(next_state.consumables, ())
 
-    def test_simulate_choose_pack_card_skip_updates_red_card(self) -> None:
-        state = GameState(
-            phase=GamePhase.BOOSTER_OPENED,
-            pack=("Joker",),
-            jokers=(Joker("Red Card", metadata={"current_mult": 0}),),
-            modifiers={"pack_cards": ({"label": "Joker", "set": "JOKER"},)},
+    def test_simulate_choose_pack_card_skip_updates_red_card_for_any_pack_kind(self) -> None:
+        pack_cards = (
+            {"label": "Joker", "set": "JOKER"},
+            {"label": "Mars", "set": "PLANET"},
+            {"label": "The Wheel of Fortune", "set": "TAROT"},
+            {"label": "Ectoplasm", "set": "SPECTRAL"},
+            {"label": "JS", "set": "BASE", "rank": "J", "suit": "S"},
         )
 
-        next_state = simulate_choose_pack_card(
-            state,
-            Action(ActionType.CHOOSE_PACK_CARD, target_id="skip", metadata={"kind": "skip", "index": True}),
-        )
+        for pack_card in pack_cards:
+            with self.subTest(pack_card=pack_card["label"]):
+                state = GameState(
+                    phase=GamePhase.BOOSTER_OPENED,
+                    pack=(str(pack_card["label"]),),
+                    jokers=(Joker("Red Card", metadata={"current_mult": 0}),),
+                    modifiers={"pack_cards": (pack_card,)},
+                )
 
-        self.assertEqual(next_state.phase, GamePhase.SHOP)
-        self.assertEqual(next_state.jokers[0].metadata["current_mult"], 3)
+                next_state = simulate_choose_pack_card(
+                    state,
+                    Action(ActionType.CHOOSE_PACK_CARD, target_id="skip", metadata={"kind": "skip", "index": True}),
+                )
+
+                self.assertEqual(next_state.phase, GamePhase.SHOP)
+                self.assertEqual(next_state.jokers[0].metadata["current_mult"], 3)
 
     def test_simulate_choose_pack_card_uses_planet_from_pack_immediately(self) -> None:
         state = GameState(

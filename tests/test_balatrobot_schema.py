@@ -418,6 +418,32 @@ class BalatroBotSchemaTests(unittest.TestCase):
         self.assertIn((0,), {action.card_indices for action in use_actions})
         self.assertNotIn((), {action.card_indices for action in use_actions})
 
+    def test_hand_required_non_targeted_spectrals_need_visible_hand(self) -> None:
+        shop_state = GameState.from_mapping(
+            {
+                "state": "SHOP",
+                "hand": {"cards": []},
+                "consumables": {
+                    "cards": [
+                        {"key": "c_familiar"},
+                        {"key": "c_sigil"},
+                        {"key": "c_ouija"},
+                        {"key": "c_immolate"},
+                    ]
+                },
+            }
+        )
+        blind_state = GameState.from_mapping(
+            {
+                "state": "SELECTING_HAND",
+                "hand": {"cards": [{"rank": "A", "suit": "S"}]},
+                "consumables": {"cards": [{"key": "c_familiar"}]},
+            }
+        )
+
+        self.assertFalse(any(action.action_type == ActionType.USE_CONSUMABLE for action in shop_state.legal_actions))
+        self.assertTrue(any(action.action_type == ActionType.USE_CONSUMABLE for action in blind_state.legal_actions))
+
     def test_malformed_bridge_consumable_use_action_is_replaced_with_targeted_actions(self) -> None:
         state = GameState.from_mapping(
             {

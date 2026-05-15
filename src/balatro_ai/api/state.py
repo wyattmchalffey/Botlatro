@@ -143,6 +143,7 @@ NON_TARGETED_CONSUMABLES = frozenset(
         "Black Hole",
     }
 )
+HAND_REQUIRED_NON_TARGETED_CONSUMABLES = frozenset({"Familiar", "Grim", "Incantation", "Sigil", "Ouija", "Immolate"})
 CONSUMABLE_KEY_TO_NAME = {
     "c_fool": "The Fool",
     "c_magician": "The Magician",
@@ -967,6 +968,8 @@ def _consumable_target_index_sets(
     if name in PLANET_CONSUMABLES:
         return ((),)
     if name in NON_TARGETED_CONSUMABLES:
+        if name in HAND_REQUIRED_NON_TARGETED_CONSUMABLES and (not allow_hand_targets or not state.hand):
+            return ()
         if name in {"The Wheel of Fortune", "Ankh", "Hex", "Ectoplasm"} and not state.jokers:
             return ()
         if name in {"Hex", "Ectoplasm"} and not any(joker.edition is None for joker in state.jokers):

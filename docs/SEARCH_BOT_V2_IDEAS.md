@@ -1,38 +1,52 @@
 # Search Bot V2 Ideas
 
-Starting point: `search_bot_v2` is a separate module/class copied from current `search_bot_v1` behavior, with only the emitted bot name changed. The current anchor is the known-discard rollback target, and v2 edits should happen in `src/balatro_ai/bots/search_bot_v2.py` so v1 stays comparable.
+Starting point: `search_bot_v2` is a separate experiment lane layered over
+`basic_strategy_bot`. It calls search modules for shop, pack, consumable, and
+hand decisions, while keeping Basic Strategy as the fallback and as a guard for
+some play/discard decisions.
+
+Current anchor: `basic_strategy_bot` is the confirmed baseline. On the strict
+200-seed local-sim set it is confirmed at `23/200` White Stake wins (`11.5%`)
+after the broad all-hand discard evaluator was reverted. `search_bot_v2` should
+not be treated as the active baseline until it beats that same-seed result.
 
 Recent signal:
 
-- 50-seed known-discard smoke: `9/50` wins, `18.0%`.
-- 200-seed current-search smoke on the first 200 baseline seeds: `9/200` wins, `4.5%`.
-- Same first 200 baseline seeds: `basic_strategy_bot` had `10/200` wins, `5.0%`.
-- Current search had `13` persistent bridge/action errors after retry.
-- On non-error paired seeds, current search averaged `-0.52` ante versus baseline.
-- Current search gained `7` wins baseline missed, lost `8` baseline wins, and shared `2` wins.
+- Current confirmed Basic Strategy strict set: `23/200` wins, `11.5%`.
+- The broad all-hand discard evaluator was tested and reverted after a clear
+  regression. Do not reintroduce broad discard rewrites without a tight gate and
+  same-seed A/B.
+- `search_bot_v2` currently has no confirmed 200-seed result beating Basic
+  Strategy. Small samples are too noisy and the search path can be much slower.
+- Older live-bridge v1 numbers below are historical debugging context, not the
+  current winrate baseline.
 
 ## Highest Priority
 
-1. Fix bridge/action error paths before tuning winrate.
-   - Error seeds include Aura/Trance exact-target failures, invalid `use` state, and card-index drift.
-   - Add strict target validation for Spectral/Tarot use actions before returning them from consumable/shop search.
-   - Add stale-state recovery or action refresh when bridge-visible pack/consumable state changes underneath the search.
+1. Make v2 prove itself against the current Basic baseline.
+   - Run same-seed local-sim A/Bs against `.data/codex-revert-confirm-strict200.jsonl` seeds.
+   - Keep changes only if they improve wins or average ante without large runtime regressions.
+   - Track flips against Basic Strategy, not only aggregate winrate.
 
-2. Audit lost baseline wins before changing heuristics.
-   - Lost baseline-win seeds: `1522815768`, `519744964`, `1625296097`, `93680211`, `745875321`, `176970671`, `864513115`, `1294971832`.
-   - Compare first divergent shop/play decision against baseline and current v1.
-   - Mark each as search over-spend, wrong sell, wrong pack, wrong discard/play, or bridge/action error.
+2. Keep Basic Strategy as the safety guard.
+   - V2 should continue to ask Basic Strategy for blind actions and only
+     override when the search result has a clear modeled edge.
+   - Be especially careful with play-vs-discard flips, which can erase
+     hard-won early-ante survival.
 
-3. Preserve gained wins.
-   - Gained seeds: `1358050382`, `1062307830`, `290344638`, `1665990098`, `922933749`, `1421419275`, `717950687`.
-   - Any v2 tuning should run these as a canary so we do not remove the few decisions search is clearly improving.
+3. Prefer narrow, auditable experiments.
+   - Good candidates: shop budget gates, pack ordering when buying/opening both
+     actions is already planned, replacement-sell safety, and high-pressure
+     reroll valuation.
+   - Avoid broad "evaluate everything" rewrites until each hand family has
+     focused tests and same-seed evidence.
 
 ## Candidate Experiments
 
 1. Add a shop-search safety budget tied to clear capacity.
-   - The 200-seed run ended with much lower final money than baseline (`25.7` vs `45.4`).
-   - Try reducing speculative pack/reroll/buy value when the build is not above the next-blind clear bar.
-   - Keep this narrower than the removed pack/sell penalty work: only gate spending, do not add complex unresolved-sell accounting first.
+   - Try reducing speculative pack/reroll/buy value when the build is not above
+     the next-blind clear bar.
+   - Keep this narrow: gate spending and compare same-seed flips.
 
 2. Improve early blind play/discard safety.
    - Several current losses are Ante 1-2, where shop search cannot help yet.
@@ -48,9 +62,14 @@ Recent signal:
    - Celestial packs should matter when a real hand-plan exists, but should be weaker when open joker slots and missing joker roles are the immediate bottleneck.
 
 5. Add same-seed canary command for v2.
-   - Use the first 50 baseline seeds plus gained/lost win seeds.
-   - A v2 change should pass legality, preserve most gained wins, and improve at least one lost baseline win before a 200-seed smoke.
+   - Use the strict 200-seed Basic baseline plus any gained/lost flip seeds from
+     a recent A/B.
+   - A v2 change should pass legality, avoid runtime blowups, and improve net
+     flips before a larger smoke.
 
 ## Suggested First V2 Branch
 
-Start with legality/error cleanup, not winrate tuning. A smoke with `13/200` persistent bridge/action errors makes the winrate noisy, and these errors are likely costing real seeds. After that, audit the eight lost baseline wins and choose one narrow shop-budget or sell-replacement change.
+Start with a same-seed A/B harness around the current strict 200-seed Basic
+baseline. Then choose one narrow shop-budget or sell-replacement change and
+measure net flips. Do not chase Phase 8 until the rule/search teacher is much
+closer to `40%` to `50%+` White Stake winrate.

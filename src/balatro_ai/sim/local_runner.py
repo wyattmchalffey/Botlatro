@@ -826,7 +826,15 @@ class LocalBalatroSimulator:
             pack = self.sampler.sample_booster_of_kind(state, kind, self._rng, prefer_mega=kind != "Spectral")
             if pack is None:
                 return state
-            opened = _open_free_tag_pack(state, pack, self.sampler.sample_pack_contents(state, pack, self._rng))
+            contents = self.sampler.sample_pack_contents(state, pack, self._rng)
+            pack_state, drawn_cards = _target_hand_draw_for_pack(state, pack, self._rng)
+            opened = _open_free_tag_pack(
+                pack_state,
+                pack,
+                contents,
+                created_consumables=self._hallucination_consumables(state),
+                drawn_cards=drawn_cards,
+            )
             # Source truth opens at most one free tag pack per blind-choice event.
             return replace(opened, modifiers={**opened.modifiers, "tags": tags[:index] + tags[index + 1 :]})
         return state
@@ -979,7 +987,14 @@ class LocalBalatroSimulator:
     def _open_pack(self, state: GameState, action: Action) -> GameState:
         pack = _indexed_item(_modifier_items(state.modifiers, "booster_packs"), action)
         contents = self.sampler.sample_pack_contents(state, pack, self._rng)
-        opened = simulate_open_pack(state, action, contents, created_consumables=self._hallucination_consumables(state))
+        state, drawn_cards = _target_hand_draw_for_pack(state, pack, self._rng)
+        opened = simulate_open_pack(
+            state,
+            action,
+            contents,
+            created_consumables=self._hallucination_consumables(state),
+            drawn_cards=drawn_cards,
+        )
         modifiers = dict(opened.modifiers)
         modifiers["pack_choices_remaining"] = _pack_choices(pack)
         return replace(opened, modifiers=modifiers)
@@ -1331,6 +1346,7 @@ def _run_local_seed_impl(
         ) if trace_decisions else None
         try:
             action = bot.choose_action(state)
+            pre_state = state
             if trace_row is not None:
                 trace_row["action"] = _jsonable(action.to_json())
                 trace_row["action_stable_key"] = action.stable_key
@@ -1340,6 +1356,9 @@ def _run_local_seed_impl(
                     trace_row["shop_audit"] = _jsonable(action.metadata["shop_audit"])
             state = simulator.step(action)
             if trace_row is not None:
+                play_audit = _local_play_audit_payload(pre_state, state, action)
+                if play_audit:
+                    trace_row["play_audit"] = _jsonable(play_audit)
                 trace_row.update(_local_trace_post_state_payload(state))
                 trace_rows.append(trace_row)
         except Exception as exc:  # noqa: BLE001 - benchmarking should record bad local transitions.
@@ -1427,6 +1446,39 @@ def _local_trace_post_state_payload(state: GameState) -> dict[str, Any]:
         "post_vouchers": list(state.vouchers),
         "post_run_over": state.run_over,
         "post_won": state.won,
+    }
+
+
+def _local_play_audit_payload(pre_state: GameState, post_state: GameState, action: Action) -> dict[str, Any]:
+    if action.action_type != ActionType.PLAY_HAND or not action.card_indices:
+        return {}
+
+    selected_cards = tuple(pre_state.hand[index] for index in action.card_indices)
+    held_cards = tuple(card for index, card in enumerate(pre_state.hand) if index not in action.card_indices)
+    evaluation = evaluate_played_cards(
+        selected_cards,
+        pre_state.hand_levels,
+        debuffed_suits=debuffed_suits_for_blind(pre_state.blind),
+        blind_name=pre_state.blind,
+        jokers=pre_state.jokers,
+        discards_remaining=pre_state.discards_remaining,
+        hands_remaining=pre_state.hands_remaining,
+        held_cards=held_cards,
+        deck_size=pre_state.deck_size,
+        money=pre_state.money,
+        played_hand_types_this_round=_played_hand_types_this_round(pre_state),
+        played_hand_counts=_played_hand_counts(pre_state),
+    )
+    return {
+        "cards": [card.short_name for card in selected_cards],
+        "held_cards": [card.short_name for card in held_cards],
+        "hand_before": [card.short_name for card in pre_state.hand],
+        "hand_type": evaluation.hand_type.value,
+        "predicted_score": evaluation.score,
+        "actual_score_delta": post_state.current_score - pre_state.current_score,
+        "score_before": pre_state.current_score,
+        "score_after": post_state.current_score,
+        "played_hand_types_this_round": list(_played_hand_types_this_round(pre_state)),
     }
 
 
@@ -2077,19 +2129,27 @@ def _with_first_eligible_tag_edition(
     return applied, updated
 
 
-def _open_free_tag_pack(state: GameState, pack: Mapping[str, Any], contents: Iterable[Mapping[str, Any]]) -> GameState:
+def _open_free_tag_pack(
+    state: GameState,
+    pack: Mapping[str, Any],
+    contents: Iterable[Mapping[str, Any]],
+    *,
+    created_consumables: Iterable[object] = (),
+    drawn_cards: Iterable[Card] = (),
+) -> GameState:
     modifiers = dict(state.modifiers)
-    pack_cards = tuple(contents)
-    modifiers["pack_cards"] = pack_cards
+    modifiers["booster_packs"] = (_couponed_payload(pack),)
+    opened = simulate_open_pack(
+        replace(state, modifiers=modifiers),
+        Action(ActionType.OPEN_PACK, target_id="pack", amount=0, metadata={"kind": "pack", "index": 0}),
+        contents,
+        created_consumables=created_consumables,
+        drawn_cards=drawn_cards,
+    )
+    modifiers = dict(opened.modifiers)
     modifiers["pack_choices_remaining"] = _pack_choices(pack)
     modifiers["tag_pack_return_phase"] = GamePhase.BLIND_SELECT.value
-    return replace(
-        state,
-        phase=GamePhase.BOOSTER_OPENED,
-        pack=(_item_label(pack),),
-        modifiers=modifiers,
-        legal_actions=(),
-    )
+    return replace(opened, modifiers=modifiers, legal_actions=())
 
 
 def _orbital_hand_for_tag(tag: str, modifiers: Mapping[str, object]) -> str | None:
@@ -2288,6 +2348,30 @@ def _pack_choices(pack: Mapping[str, Any]) -> int:
         return max(1, _int_value(config["choose"], default=1))
     key = str(pack.get("key", ""))
     return 2 if "mega" in key else 1
+
+
+def _pack_draws_target_hand(pack: Mapping[str, Any]) -> bool:
+    kind = str(pack.get("kind", "")).lower()
+    label = _item_label(pack).lower()
+    key = str(pack.get("key", "")).lower()
+    return (
+        kind in {"arcana", "spectral"}
+        or "arcana" in label
+        or "spectral" in label
+        or key.startswith(("p_arcana", "p_spectral"))
+    )
+
+
+def _target_hand_draw_for_pack(
+    state: GameState,
+    pack: Mapping[str, Any],
+    rng: Random,
+) -> tuple[GameState, tuple[Card, ...]]:
+    if not _pack_draws_target_hand(pack):
+        return state, ()
+    shuffled = _with_shuffled_known_deck(state, rng)
+    draw_count = min(_hand_size(shuffled), shuffled.deck_size)
+    return shuffled, _draw_from_known_deck(shuffled, draw_count)
 
 
 def _without_pack_choice_counter(modifiers: Mapping[str, object]) -> dict[str, object]:

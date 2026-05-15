@@ -66,7 +66,7 @@ class ShopSearchConfig:
     reroll_samples: int = 32
     seed: int = 0
     leaf_weight: float = 0.35
-    min_search_value: float = 0.0
+    min_search_value: float = float("-inf")
     trace_top_paths: int = 0
 
 
@@ -324,21 +324,18 @@ def shop_action_search_value(
 
 
 def _basic_shop_action_value(state: GameState, action: Action, context: ShopSearchContext) -> float:
-    try:
-        from balatro_ai.bots.basic_strategy_bot import _ShopContext, _shop_action_value, _shop_pressure
+    from balatro_ai.bots.basic_strategy_bot import _ShopContext, _shop_action_value, _shop_pressure
 
-        return _shop_action_value(
-            state,
-            action,
-            _shop_pressure(state),
-            _ShopContext(
-                rerolls_in_shop=context.rerolls_in_shop,
-                packs_opened_in_shop=context.packs_opened_in_shop,
-                filled_last_joker_slot=context.filled_last_joker_slot,
-            ),
-        )
-    except (ImportError, IndexError, ValueError, TypeError, AttributeError):
-        return 0.0
+    return _shop_action_value(
+        state,
+        action,
+        _shop_pressure(state),
+        _ShopContext(
+            rerolls_in_shop=context.rerolls_in_shop,
+            packs_opened_in_shop=context.packs_opened_in_shop,
+            filled_last_joker_slot=context.filled_last_joker_slot,
+        ),
+    )
 
 
 def _safe_shop_blocks_reroll_override(state: GameState) -> bool:
@@ -1131,6 +1128,7 @@ def _expand_action(
         )
     leaf_terms = leaf_terms_fn(next_state) if leaf_terms_fn is not None else None
     leaf_score = leaf_terms.total if leaf_terms is not None else leaf_value_fn(next_state)
+    immediate += _discount_voucher_ordering_bonus(node.state, action, next_state)
     immediate += _action_potential_shaping(
         node,
         action,
@@ -1156,6 +1154,24 @@ def _expand_action(
         terminal=terminal,
         protected_jokers=protected_jokers,
     )
+
+
+def _discount_voucher_ordering_bonus(state: GameState, action: Action, next_state: GameState) -> float:
+    if action.action_type != ActionType.BUY or _action_kind(action, default="") != "voucher":
+        return 0.0
+    voucher = _buy_action_item(state, action)
+    if _item_label(voucher) not in {"Clearance Sale", "Liquidation"}:
+        return 0.0
+
+    savings = 0
+    for key in ("shop_cards", "booster_packs"):
+        before_items = _modifier_items(state.modifiers, key)
+        after_items = _modifier_items(next_state.modifiers, key)
+        for before_item, after_item in zip(before_items, after_items, strict=False):
+            savings += max(0, _item_cost(state, before_item) - _item_cost(next_state, after_item))
+    if savings <= 0:
+        return 0.0
+    return min(24.0, savings * 4.0)
 
 
 def _action_potential_shaping(

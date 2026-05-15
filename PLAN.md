@@ -487,6 +487,9 @@ Milestone:
 
 - Search bot beats rule bot by a statistically meaningful amount over the
   same seed set.
+- Do not treat `search_bot_v2` as the active baseline until a same-seed A/B
+  shows it beating `basic_strategy_bot` without unacceptable runtime or
+  early-ante regressions.
 
 Example:
 
@@ -495,10 +498,28 @@ Rule bot: 42% White Stake win rate
 Search bot: 57% White Stake win rate
 ```
 
+Current project anchor:
+
+```text
+Confirmed rule bot: basic_strategy_bot
+Current strict 200-seed local-sim result: 23/200 wins, 11.5%
+Current search_bot_v2 status: experimental, not confirmed stronger
+```
+
 ## Phase 8: First Neural Model
 
 Do not start with end-to-end RL. First train a model to imitate the best
 rule/search decisions.
+
+Phase 8 should wait until the teacher policy is useful enough to imitate. A
+rough working threshold is:
+
+- `40%` White Stake win rate: start collecting serious imitation/evaluation
+  data if the policy is stable.
+- `50%+` White Stake win rate: practical gate for starting Phase 8 in earnest.
+
+Weak exploratory datasets are fine, but they should not be treated as the main
+neural-bot training target.
 
 Model inputs:
 
@@ -843,5 +864,5 @@ A rule/search bot that can beat White Stake consistently across 100 fixed seeds.
 ```
 
 After that, move to neural models. Starting with deep reinforcement learning
-would likely make the project slower instead of faster.
-
+or imitation from a weak teacher would likely make the project slower instead
+of faster.
