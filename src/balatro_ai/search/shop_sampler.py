@@ -475,7 +475,9 @@ def basic_strategy_shop_item_value(state: GameState, item: Mapping[str, Any]) ->
     """Value one visible shop-card item through the current rule bot heuristic."""
 
     from balatro_ai.api.actions import Action, ActionType
-    from balatro_ai.bots.basic_strategy_bot import _ShopContext, _shop_action_value, _shop_pressure
+    from balatro_ai.bots.basic_strategy.profile import _ShopContext
+    from balatro_ai.bots.basic_strategy.shop_pressure import _shop_pressure
+    from balatro_ai.bots.basic_strategy.shop_values import _shop_action_value
 
     if _item_buy_cost(item) > state.money:
         return 0.0

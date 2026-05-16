@@ -146,10 +146,6 @@ def _is_spectral_card(card: object) -> bool:
     return _card_set(card) == "SPECTRAL" or _card_label(card) in SPECTRAL_CARD_NAMES
 
 
-def _is_consumable_card(card: object) -> bool:
-    return _is_tarot_card(card) or _is_planet_card(card) or _is_spectral_card(card)
-
-
 def _is_playing_card(card: object) -> bool:
     if not isinstance(card, dict):
         return False

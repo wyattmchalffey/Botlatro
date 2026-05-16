@@ -72,13 +72,6 @@ def _indexed_shop_item(items: tuple[object, ...], index: int) -> object | None:
     return None
 
 
-def _indexed_shop_item_payload(items: tuple[object, ...], index: int) -> dict[str, object] | None:
-    item = _indexed_shop_item(items, index)
-    if item is None:
-        return None
-    return _shop_item_payload(item)
-
-
 def _shop_item_payload(item: object) -> dict[str, object]:
     if not isinstance(item, dict):
         return {"name": str(item)}

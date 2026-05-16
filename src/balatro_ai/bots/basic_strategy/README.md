@@ -68,6 +68,12 @@ computed elsewhere.
 it only memoizes expensive state, card, joker, and score-key calculations during
 one `choose_action()` call.
 
+`decision_context.py` owns the per-action context object passed through
+`BasicStrategyBot` policy branches. It carries the shop and blind memory views
+and lazily exposes derived evaluator inputs such as build profile, shop
+pressure, and preferred hand. New shared evaluation surfaces should attach here
+instead of adding another ad hoc helper lookup.
+
 `cards.py` adapts raw shop card dictionaries and simulator card/joker objects.
 It contains card labels/costs, card categories, joker and consumable slot
 limits, rank/suit parsing, edition bonuses, and conversion from shop payloads
@@ -122,8 +128,8 @@ as visible shop and pack choices.
 current chip/mult/xmult parsing and mutation, metadata lookup, role
 classification, static role scores, and lightweight state helpers such as
 Castle target suit and Mail-In Rebate rank. It should stay below action policy;
-shop-specific value judgments about whether a joker is good remain in
-`basic_strategy_bot.py` until the joker valuation area is split as a unit.
+shop-specific value judgments about whether a joker is good live in
+`shop_jokers.py`.
 
 `joker_ordering.py` searches joker permutations when order can affect score,
 including Blueprint/Brainstorm copy positions and chips/mult/xmult ordering. It
@@ -141,8 +147,8 @@ fallbacks, and valuing Red Card pack skips without owning broader pack pricing.
 
 `play_scoring.py` turns legal play actions into `_PlayCandidate` records, scores
 them against current boss restrictions, applies hand-sequencing bonuses, and
-chooses the best immediate play. Tactical blind policy still lives in
-`basic_strategy_bot.py`; this module only evaluates and orders play actions.
+chooses the best immediate play. Tactical blind policy lives in
+`blind_tactics.py`; this module only evaluates and orders play actions.
 
 `preferred_hunt.py` owns preferred-hand hunt policy in blinds: deciding when to
 discard or burn a redraw hand to chase the build's preferred hand family, how
@@ -232,9 +238,10 @@ drawing gold cards, blue/gold seals, and discard-triggered cash effects.
 Keep extracted helper modules mostly one-way:
 
 `basic_strategy_bot.py` may import from helper modules. Helper modules should
-avoid importing `basic_strategy_bot.py`. When a helper would need live scoring
-or pressure logic from the main bot, leave that helper in `basic_strategy_bot.py`
-until the whole scoring area is split together.
+prefer importing peer helper modules instead of reaching through
+`basic_strategy_bot.py`. A few compatibility shims still look up
+`basic_strategy_bot.py` through `sys.modules` so older tests/tools that monkeypatch
+private facade names keep working; avoid adding new shims.
 
 This keeps the refactor mechanical and makes behavior-preserving checks easier:
 move one cluster, import it back through `basic_strategy_bot.py`, run targeted

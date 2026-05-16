@@ -6,15 +6,13 @@ from dataclasses import dataclass, field
 
 from balatro_ai.api.actions import Action, ActionType
 from balatro_ai.api.state import GamePhase, GameState
-from balatro_ai.bots.basic_strategy_bot import (
-    BasicStrategyBot,
-    _best_play_action,
-    _blind_select_action,
-    _first_action_of_type,
-    _joker_rearrange_action,
-    _tactical_blind_action,
-    decision_cache_scope,
-)
+from balatro_ai.bots.basic_strategy.actions import _blind_select_action, _first_action_of_type
+from balatro_ai.bots.basic_strategy.blind_tactics import _tactical_blind_action
+from balatro_ai.bots.basic_strategy.cache import decision_cache_scope
+from balatro_ai.bots.basic_strategy.cards import _normal_joker_open_slots
+from balatro_ai.bots.basic_strategy.joker_ordering import _joker_rearrange_action
+from balatro_ai.bots.basic_strategy.play_scoring import _best_play_action
+from balatro_ai.bots.basic_strategy_bot import BasicStrategyBot
 from balatro_ai.search.consumable_search import ConsumableSearchConfig, best_consumable_action
 from balatro_ai.search.discard_search import DiscardSearchConfig
 from balatro_ai.search.hand_search import HandSearchConfig, best_hand_action
@@ -232,25 +230,6 @@ def _is_joker_item(item: object) -> bool:
     key = str(item.get("key", ""))
     label = _item_label(item).lower()
     return item_set == "JOKER" or key.startswith("j_") or "joker" in label
-
-
-def _normal_joker_open_slots(state: GameState) -> int:
-    return max(0, _normal_joker_slot_limit(state) - _normal_joker_slots_used(state))
-
-
-def _normal_joker_slots_used(state: GameState) -> int:
-    return sum(1 for joker in state.jokers if "negative" not in (joker.edition or "").lower())
-
-
-def _normal_joker_slot_limit(state: GameState) -> int:
-    for key in ("joker_slot_limit", "joker_slots"):
-        raw = state.modifiers.get(key)
-        try:
-            if raw is not None:
-                return max(0, int(raw))
-        except (TypeError, ValueError):
-            continue
-    return 5
 
 
 def _joker_item_uses_normal_slot(item: object) -> bool:

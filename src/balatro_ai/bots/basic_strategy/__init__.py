@@ -21,6 +21,7 @@ Module map:
 * ``cards``: card payload adapters, card categories, slot limits, rank/suit
   parsing, editions, and shop-card-to-joker conversion.
 * ``data``: static strategy tables and hand/joker/voucher valuation constants.
+* ``decision_context``: per-action derived context and lazy evaluator seam.
 * ``discard_policy``: generic discard selection and hand-pace policy.
 * ``discard_state``: state projection, draw counts, and discard-trigger effects.
 * ``draw_evaluation``: straight/flush/rank/full-house draw evaluation helpers.

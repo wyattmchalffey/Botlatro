@@ -15,6 +15,7 @@ from balatro_ai.bots.basic_strategy.cards import (
     _normal_joker_open_slots,
 )
 from balatro_ai.bots.basic_strategy.profile import (
+    _BuildProfile,
     _ShopContext,
     _ShopPressure,
     _build_profile_payload,
@@ -47,9 +48,32 @@ from balatro_ai.bots.basic_strategy.shop_values import (
 from balatro_ai.bots.config import active_config
 
 
-def _shop_action(state: GameState, context: _ShopContext | None = None) -> Action | None:
+_SHOP_POLICY_ACTION_TYPES = frozenset(
+    {
+        ActionType.BUY,
+        ActionType.SELL,
+        ActionType.REROLL,
+        ActionType.OPEN_PACK,
+        ActionType.END_SHOP,
+        ActionType.USE_CONSUMABLE,
+    }
+)
+
+
+def _has_shop_policy_action(state: GameState) -> bool:
+    return any(action.action_type in _SHOP_POLICY_ACTION_TYPES for action in state.legal_actions)
+
+
+def _shop_action(
+    state: GameState,
+    context: _ShopContext | None = None,
+    *,
+    pressure: _ShopPressure | None = None,
+    profile: _BuildProfile | None = None,
+) -> Action | None:
     context = context or _ShopContext()
-    pressure = _shop_pressure(state)
+    pressure = pressure or _shop_pressure(state)
+    profile = profile or _build_profile(state)
     replacement = _replacement_sell_action(state, pressure)
     if replacement is not None:
         return replacement
@@ -90,6 +114,7 @@ def _shop_action(state: GameState, context: _ShopContext | None = None) -> Actio
                     threshold=threshold,
                     decision="sequence_info_first",
                     context=context,
+                    profile=profile,
                 ),
             )
         return _annotated_action(
@@ -106,12 +131,14 @@ def _shop_action(state: GameState, context: _ShopContext | None = None) -> Actio
                 threshold=threshold,
                 decision="take",
                 context=context,
+                profile=profile,
             ),
         )
     forced_action = _pressure_forced_shop_action(
         state,
         pressure,
         context,
+        profile=profile,
         best_action=best_action,
         best_value=best_value,
         threshold=threshold,
@@ -133,6 +160,7 @@ def _shop_action(state: GameState, context: _ShopContext | None = None) -> Actio
                 threshold=threshold,
                 decision="forced_spend",
                 context=context,
+                profile=profile,
             ),
         )
     end_shop = _first_action_of_type(state, ActionType.END_SHOP)
@@ -152,6 +180,7 @@ def _shop_action(state: GameState, context: _ShopContext | None = None) -> Actio
                 threshold=threshold,
                 decision="skip",
                 context=context,
+                profile=profile,
             ),
         )
     return None
@@ -162,11 +191,11 @@ def _pressure_forced_shop_action(
     pressure: _ShopPressure,
     context: _ShopContext,
     *,
+    profile: _BuildProfile,
     best_action: Action | None,
     best_value: float,
     threshold: float,
 ) -> tuple[Action, float] | None:
-    profile = _build_profile(state)
     if not _pressure_spend_mode(state, pressure, profile):
         return None
     if best_action is None or best_action.action_type == ActionType.END_SHOP:
@@ -316,8 +345,10 @@ def _shop_decision_audit(
     threshold: float,
     decision: str,
     context: _ShopContext | None = None,
+    profile: _BuildProfile | None = None,
 ) -> dict[str, object]:
     context = context or _ShopContext()
+    profile = profile or _build_profile(state)
     options = [
         _shop_option_payload(state, action, _shop_action_value(state, action, pressure, context))
         for action in state.legal_actions
@@ -330,7 +361,7 @@ def _shop_decision_audit(
     ]
     return {
         "decision": decision,
-        "build_profile": _build_profile_payload(_build_profile(state)),
+        "build_profile": _build_profile_payload(profile),
         "money_plan": _money_plan_payload(state, pressure),
         "pressure": _pressure_payload(pressure),
         "threshold": round(threshold, 2),

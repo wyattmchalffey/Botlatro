@@ -162,7 +162,79 @@ def _best_play_from_hand(*args, **kwargs):
 
     strategy_module = sys.modules.get("balatro_ai.bots.basic_strategy_bot")
     patched = getattr(strategy_module, "best_play_from_hand", None) if strategy_module is not None else None
-    return (patched or _default_best_play_from_hand)(*args, **kwargs)
+    if patched is not None and patched is not _default_best_play_from_hand:
+        return patched(*args, **kwargs)
+
+    cache = _decision_scoped_cache("best_play_from_hand_content")
+    cache_key = _best_play_from_hand_cache_key(args, kwargs)
+    if cache is not None and cache_key is not None and cache_key in cache:
+        return cache[cache_key]
+
+    evaluation = _default_best_play_from_hand(*args, **kwargs)
+    if cache is not None and cache_key is not None:
+        cache[cache_key] = evaluation
+    return evaluation
+
+
+def _best_play_from_hand_cache_key(
+    args: tuple[object, ...],
+    kwargs: dict[str, object],
+) -> tuple[object, ...] | None:
+    argument_names = (
+        "hand",
+        "hand_levels",
+        "max_cards",
+        "debuffed_suits",
+        "blind_name",
+        "jokers",
+        "discards_remaining",
+        "hands_remaining",
+        "deck_size",
+        "money",
+        "played_hand_types_this_round",
+        "played_hand_counts",
+        "_joker_context",
+    )
+    if len(args) > len(argument_names):
+        return None
+    values: dict[str, object] = {
+        "hand": (),
+        "hand_levels": None,
+        "max_cards": 5,
+        "debuffed_suits": None,
+        "blind_name": "",
+        "jokers": (),
+        "discards_remaining": 0,
+        "hands_remaining": 0,
+        "deck_size": 0,
+        "money": 0,
+        "played_hand_types_this_round": (),
+        "played_hand_counts": None,
+        "_joker_context": None,
+    }
+    for index, value in enumerate(args):
+        values[argument_names[index]] = value
+    for name, value in kwargs.items():
+        if name not in values:
+            return None
+        values[name] = value
+    if values["_joker_context"] is not None:
+        return None
+
+    return (
+        tuple(_card_cache_key(card) for card in tuple(values["hand"])),
+        _freeze_for_cache(values["hand_levels"] or {}),
+        int(values["max_cards"]),
+        _freeze_for_cache(values["debuffed_suits"] or frozenset()),
+        str(values["blind_name"]),
+        _jokers_cache_key(tuple(values["jokers"])),
+        int(values["discards_remaining"]),
+        int(values["hands_remaining"]),
+        int(values["deck_size"]),
+        int(values["money"]),
+        _freeze_for_cache(values["played_hand_types_this_round"] or ()),
+        _freeze_for_cache(values["played_hand_counts"] or {}),
+    )
 
 
 def _optimistic_completion_score(

@@ -646,13 +646,14 @@ def _action_reason(state: GameState, action: Action, context) -> str:
 
 
 def _blind_context():
-    from balatro_ai.bots.basic_strategy_bot import _BlindContext
+    from balatro_ai.bots.basic_strategy.hand_models import _BlindContext
 
     return _BlindContext()
 
 
 def _context_from_state(state: GameState):
-    from balatro_ai.bots.basic_strategy_bot import _BlindContext, _played_hand_types_this_round
+    from balatro_ai.bots.basic_strategy.hand_models import _BlindContext
+    from balatro_ai.bots.basic_strategy.play_scoring import _played_hand_types_this_round
 
     discards_taken = 0
     for key in ("round_discards_used", "discards_used", "discards_used_this_round"):
@@ -666,25 +667,25 @@ def _context_from_state(state: GameState):
 
 
 def _best_play_action(state: GameState, context):
-    from balatro_ai.bots.basic_strategy_bot import _best_play_action as basic_best_play_action
+    from balatro_ai.bots.basic_strategy.play_scoring import _best_play_action as basic_best_play_action
 
     return basic_best_play_action(state, context)
 
 
 def _score_play_action(state: GameState, action: Action, context=None) -> int:
-    from balatro_ai.bots.basic_strategy_bot import _score_play_action as basic_score_play_action
+    from balatro_ai.bots.basic_strategy.play_scoring import _score_play_action as basic_score_play_action
 
     return basic_score_play_action(state, action, context)
 
 
 def _estimated_hands_needed(remaining_score: int, score: int | float) -> int:
-    from balatro_ai.bots.basic_strategy_bot import _estimated_hands_needed as basic_estimated_hands_needed
+    from balatro_ai.bots.basic_strategy.discard_policy import _estimated_hands_needed as basic_estimated_hands_needed
 
     return basic_estimated_hands_needed(remaining_score, score)
 
 
 def _basic_best_discard_action(state: GameState, *, current_best_score: int, context):
-    from balatro_ai.bots.basic_strategy_bot import _best_discard_action as basic_best_discard_action
+    from balatro_ai.bots.basic_strategy.discard_policy import _best_discard_action as basic_best_discard_action
 
     return basic_best_discard_action(state, current_best_score=current_best_score, context=context)
 

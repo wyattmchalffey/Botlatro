@@ -603,7 +603,7 @@ def _planet_use_bonus(state: GameState, hand_type: HandType) -> float:
     if any(joker.name == "Constellation" for joker in state.jokers):
         bonus += 8.0
     try:
-        from balatro_ai.bots.basic_strategy_bot import _planet_capacity_gain
+        from balatro_ai.bots.basic_strategy.shop_cards import _planet_capacity_gain
 
         bonus += min(14.0, _planet_capacity_gain(state, hand_type) * 0.02)
     except (ImportError, TypeError, ValueError, AttributeError):
@@ -865,7 +865,7 @@ def _best_current_hand_type(state: GameState) -> HandType | None:
 
 def _preferred_hand_type(state: GameState) -> HandType | None:
     try:
-        from balatro_ai.bots.basic_strategy_bot import _preferred_hand_type as basic_preferred_hand_type
+        from balatro_ai.bots.basic_strategy.hand_preferences import _preferred_hand_type as basic_preferred_hand_type
 
         return basic_preferred_hand_type(state)
     except (ImportError, TypeError, ValueError, AttributeError):

@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
-from math import ceil
+from dataclasses import dataclass, field
 
 from balatro_ai.api.actions import Action, ActionType
-from balatro_ai.api.state import Card, GamePhase, GameState, Joker
+from balatro_ai.api.state import GamePhase, GameState
 from balatro_ai.bots.basic_strategy.actions import (
     _action_index_for_strategy,
     _annotated_action,
@@ -163,7 +162,6 @@ from balatro_ai.bots.basic_strategy.cards import (
     _has_consumable_room,
     _is_black_hole_card,
     _is_blue_seal,
-    _is_consumable_card,
     _is_face_card_for_state,
     _is_gold_enhancement,
     _is_gold_seal,
@@ -246,6 +244,7 @@ from balatro_ai.bots.basic_strategy.data import (
     VOUCHER_VALUES,
     WHITE_STAKE_SAMPLE_HANDS,
 )
+from balatro_ai.bots.basic_strategy.decision_context import _DecisionContext
 from balatro_ai.bots.basic_strategy.hand_models import (
     _BlindContext,
     _PlayCandidate,
@@ -279,7 +278,6 @@ from balatro_ai.bots.basic_strategy.draw_evaluation import (
     _full_house_completion_cards_for_ranks,
     _full_house_target_draw_evaluations,
     _hand_matches_preferred_family,
-    _preferred_draw_strength,
     _preferred_hand_family,
     _preferred_target_draw_evaluation,
     _rank_completion_cards_for_rank,
@@ -449,7 +447,6 @@ from balatro_ai.bots.basic_strategy.shop_items import (
     _action_payload,
     _has_shop_decision_surface,
     _indexed_shop_item,
-    _indexed_shop_item_payload,
     _item_payload_for_action,
     _shop_item_for_action,
     _shop_item_payload,
@@ -459,6 +456,7 @@ from balatro_ai.bots.basic_strategy.shop_flow import (
     _owned_joker_value_payloads,
     _pressure_forced_shop_action,
     _replacement_sell_action,
+    _has_shop_policy_action,
     _shop_action,
     _shop_decision_audit,
     _shop_information_first_action,
@@ -702,7 +700,18 @@ class BasicStrategyBot:
         if cash_out is not None:
             return cash_out
 
-        shop_action = _shop_action(state, self._shop_context())
+        context = self._decision_context(state)
+
+        shop_action = (
+            _shop_action(
+                state,
+                context.shop,
+                pressure=context.shop_pressure,
+                profile=context.build_profile,
+            )
+            if _has_shop_policy_action(state)
+            else None
+        )
         if shop_action is not None:
             if shop_action.action_type == ActionType.END_SHOP:
                 held_consumable = _held_consumable_action(state)
@@ -724,7 +733,7 @@ class BasicStrategyBot:
         if stale_empty_pack is not None:
             return stale_empty_pack
 
-        pack_choice = _pack_choice_action(state, self._shop_context())
+        pack_choice = _pack_choice_action(state, context.shop)
         if pack_choice is not None:
             self._record_shop_action(state, pack_choice)
             return pack_choice
@@ -733,7 +742,7 @@ class BasicStrategyBot:
         if held_consumable is not None:
             return held_consumable
 
-        blind_context = self._blind_context(state)
+        blind_context = context.blind
         joker_rearrange = _joker_rearrange_action(state, blind_context)
         if joker_rearrange is not None:
             return joker_rearrange
@@ -751,6 +760,13 @@ class BasicStrategyBot:
             rerolls_in_shop=self._rerolls_in_shop,
             packs_opened_in_shop=self._packs_opened_in_shop,
             filled_last_joker_slot=self._filled_last_joker_slot_in_shop,
+        )
+
+    def _decision_context(self, state: GameState) -> _DecisionContext:
+        return _DecisionContext(
+            state=state,
+            shop=self._shop_context(),
+            blind=self._blind_context(state),
         )
 
     def _blind_context(self, state: GameState) -> _BlindContext:
