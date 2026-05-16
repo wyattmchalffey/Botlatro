@@ -346,6 +346,24 @@ class ShopSamplerTests(unittest.TestCase):
 
         self.assertEqual(contents[0]["name"], "Jupiter")
 
+    def test_soul_and_black_hole_are_singletons_within_pack_without_showman(self) -> None:
+        class AlwaysHighRandom(Random):
+            def random(self) -> float:
+                return 0.999
+
+        data = tiny_shop_data()
+        data["boosters"] = [{"key": "p_spectral_normal_1", "name": "Spectral Pack", "set": "Booster", "kind": "Spectral", "config": {"extra": 3}}]
+        data["spectrals"] = [
+            {"key": "c_hex", "name": "Hex", "set": "Spectral", "cost": 4},
+            {"key": "c_soul", "name": "The Soul", "set": "Spectral", "cost": 4},
+            {"key": "c_black_hole", "name": "Black Hole", "set": "Spectral", "cost": 4},
+        ]
+        sampler = ShopSampler(data)
+
+        contents = sampler.sample_pack_contents(GameState(), data["boosters"][0], AlwaysHighRandom())
+
+        self.assertEqual([card["name"] for card in contents], ["Black Hole", "The Soul", "Hex"])
+
 
 if __name__ == "__main__":
     unittest.main()

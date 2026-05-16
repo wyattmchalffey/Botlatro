@@ -10,6 +10,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+CANONICAL_200_SEED_COUNT = 200
+CANONICAL_200_SOURCE_LABEL = "white:basic-strategy-2026-04-30-1000"
+CANONICAL_200_SOURCE_SIZE = 1000
+CANONICAL_200_SEED_SET_LABEL = f"{CANONICAL_200_SOURCE_LABEL}:first200"
+CANONICAL_200_WINDOW_COUNT = CANONICAL_200_SOURCE_SIZE // CANONICAL_200_SEED_COUNT
+
+
 @dataclass(frozen=True, slots=True)
 class SeedSet:
     label: str
@@ -27,6 +34,44 @@ class SeedSet:
 
 
 def make_seed_set(label: str, size: int) -> SeedSet:
+    """Return a deterministic seed set.
+
+    The 200-seed benchmark size is pinned globally so smoke labels cannot
+    accidentally create incomparable 200-run baselines. Use
+    ``make_explicit_seed_set``/``--seed-list`` for a deliberate custom set.
+    """
+
+    return make_benchmark_seed_set(label=label, size=size)
+
+
+def make_benchmark_seed_set(label: str, size: int, *, seed_window: int = 1) -> SeedSet:
+    if size == CANONICAL_200_SEED_COUNT:
+        return make_canonical_200_seed_set(seed_window)
+    if seed_window != 1:
+        raise ValueError("Seed windows are only available for 200-seed benchmarks")
+    return _make_hashed_seed_set(label, size)
+
+
+def make_canonical_200_seed_set(seed_window: int = 1) -> SeedSet:
+    if seed_window < 1 or seed_window > CANONICAL_200_WINDOW_COUNT:
+        raise ValueError(
+            f"Canonical 200-seed window must be between 1 and {CANONICAL_200_WINDOW_COUNT}"
+        )
+    source = _make_hashed_seed_set(CANONICAL_200_SOURCE_LABEL, CANONICAL_200_SOURCE_SIZE)
+    start = (seed_window - 1) * CANONICAL_200_SEED_COUNT
+    end = start + CANONICAL_200_SEED_COUNT
+    label = (
+        CANONICAL_200_SEED_SET_LABEL
+        if seed_window == 1
+        else f"{CANONICAL_200_SOURCE_LABEL}:{start + 1}-{end}"
+    )
+    return SeedSet(
+        label=label,
+        seeds=source.seeds[start:end],
+    )
+
+
+def _make_hashed_seed_set(label: str, size: int) -> SeedSet:
     if size < 0:
         raise ValueError("Seed set size must be non-negative")
 

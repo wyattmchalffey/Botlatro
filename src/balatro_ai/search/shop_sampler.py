@@ -293,7 +293,9 @@ class ShopSampler:
         for index in range(size):
             card = self._sample_pack_card(state, kind, rng, index=index, used_jokers=used_jokers)
             contents.append(card)
-            if not _allow_duplicate_shop_cards(state) and _is_joker_payload(card):
+            if not _allow_duplicate_shop_cards(state) and (
+                _is_joker_payload(card) or _is_singleton_pack_payload(card)
+            ):
                 used_jokers.update(_item_identifiers(card))
         return tuple(contents)
 
@@ -396,8 +398,55 @@ class ShopSampler:
             forced_planet = _most_played_planet_record(self.data, state)
             if forced_planet is not None:
                 return _payload_from_record(forced_planet, state, key_append=key_append)
+        legendary = self._maybe_legendary_spectral_payload(
+            state, normalized_kind, rng, used_jokers=used_jokers, key_append=key_append
+        )
+        if legendary is not None:
+            return legendary
         card_type = _pack_card_type(kind, rng)
         return self.sample_card_of_type(state, card_type, rng, used_jokers=used_jokers, key_append=key_append)
+
+    def _maybe_legendary_spectral_payload(
+        self,
+        state: GameState,
+        normalized_kind: str,
+        rng: Random,
+        *,
+        used_jokers: set[str],
+        key_append: str,
+    ) -> dict[str, Any] | None:
+        # Source: functions/common_events.lua create_card.
+        # The Soul rolls 0.3% per slot for Tarot (Arcana) and Spectral pools.
+        # Black Hole rolls 0.3% per slot for Planet (Celestial) and Spectral pools.
+        # For Spectral packs both rolls happen independently; Black Hole wins ties.
+        # Dedupe matches Balatro: Soul/Black Hole only spawn once per run unless
+        # Showman is owned.
+        if normalized_kind not in {"arcana", "celestial", "spectral"}:
+            return None
+        showman = _allow_duplicate_shop_cards(state)
+        soul_eligible = normalized_kind in {"arcana", "spectral"} and (
+            showman or not used_jokers.intersection({"The Soul", "c_soul"})
+        )
+        black_hole_eligible = normalized_kind in {"celestial", "spectral"} and (
+            showman or not used_jokers.intersection({"Black Hole", "c_black_hole"})
+        )
+        selected_name: str | None = None
+        if soul_eligible and rng.random() > 0.997:
+            selected_name = "The Soul"
+        if black_hole_eligible and rng.random() > 0.997:
+            selected_name = "Black Hole"  # overrides Soul if both hit, matching source
+        if selected_name is None:
+            return None
+        record = self._spectral_legendary_record(selected_name)
+        if record is None:
+            return None
+        return _payload_from_record(record, state, key_append=key_append)
+
+    def _spectral_legendary_record(self, name: str) -> Mapping[str, Any] | None:
+        for record in self.data.get("spectrals", ()):
+            if isinstance(record, Mapping) and str(record.get("name")) == name:
+                return record
+        return None
 
     def _pool_records(self, pool_type: str, state: GameState) -> list[Mapping[str, Any]]:
         if pool_type in SHOP_TYPE_TO_DATA_KEY:
@@ -888,6 +937,10 @@ def _item_identifiers(item: Mapping[str, Any]) -> set[str]:
 
 def _is_joker_payload(item: Mapping[str, Any]) -> bool:
     return str(item.get("set", "")).upper() == "JOKER" or str(item.get("key", "")).startswith("j_")
+
+
+def _is_singleton_pack_payload(item: Mapping[str, Any]) -> bool:
+    return bool(_item_identifiers(item) & {"The Soul", "c_soul", "Black Hole", "c_black_hole"})
 
 
 def _identifier_set(raw: object) -> set[str]:

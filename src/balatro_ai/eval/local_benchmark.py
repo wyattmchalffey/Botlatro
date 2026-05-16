@@ -13,7 +13,7 @@ import sys
 
 from balatro_ai.bots.registry import create_bot
 from balatro_ai.eval.metrics import RunResult, summarize_runs
-from balatro_ai.eval.seed_sets import make_explicit_seed_set, make_seed_set, parse_seed_values
+from balatro_ai.eval.seed_sets import make_benchmark_seed_set, make_explicit_seed_set, parse_seed_values
 from balatro_ai.sim.local_runner import LocalSimOptions, run_local_seed, run_local_seed_with_trace
 
 
@@ -24,8 +24,19 @@ _HASH_REEXEC_GUARD = "BOTLATRO_LOCAL_BENCHMARK_HASH_REEXEC"
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run a fast local-simulator benchmark.")
     parser.add_argument("--bot", required=True, help="Bot name to benchmark.")
-    parser.add_argument("--seeds", type=int, default=100, help="Number of deterministic seeds.")
+    parser.add_argument(
+        "--seeds",
+        type=int,
+        default=100,
+        help="Number of deterministic seeds. The 200-seed size uses the canonical first200 set.",
+    )
     parser.add_argument("--seed-list", default="", help="Comma/space-separated exact seeds; overrides --seeds.")
+    parser.add_argument(
+        "--seed-window",
+        type=int,
+        default=1,
+        help="Canonical 200-seed window: 1 = seeds 1-200, 2 = seeds 201-400, etc.",
+    )
     parser.add_argument("--stake", default="white", help="Stake label; first pass is tuned for white.")
     parser.add_argument("--label", default="local", help="Seed-set label.")
     parser.add_argument("--max-steps", type=int, default=1000, help="Maximum simulator steps per run.")
@@ -55,7 +66,11 @@ def main(argv: list[str] | None = None) -> int:
     seed_set = (
         make_explicit_seed_set(label=f"{args.stake}:{args.label}:explicit", seeds=seed_values)
         if seed_values
-        else make_seed_set(label=f"{args.stake}:{args.label}", size=args.seeds)
+        else make_benchmark_seed_set(
+            label=f"{args.stake}:{args.label}",
+            size=args.seeds,
+            seed_window=args.seed_window,
+        )
     )
     indexed_results: dict[int, RunResult] = {}
     indexed_traces: dict[int, tuple[dict[str, object], ...]] = {}
@@ -112,6 +127,8 @@ def main(argv: list[str] | None = None) -> int:
             encoding="utf-8",
         )
     summary = summarize_runs(tuple(results))
+    print(f"Seed label: {seed_set.label}")
+    print(f"First seed: {seed_set.seeds[0] if seed_set.seeds else '-'}")
     print(summary.to_text())
     return 0
 

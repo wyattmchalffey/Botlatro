@@ -18,7 +18,7 @@ from balatro_ai.bots.registry import create_bot
 from balatro_ai.data.replay_logger import ReplayLogger
 from balatro_ai.eval.metrics import BenchmarkSummary, RunResult, summarize_runs
 from balatro_ai.eval.run_seed import REPLAY_MODES, RunSeedOptions, run_single_seed
-from balatro_ai.eval.seed_sets import SeedSet, make_explicit_seed_set, make_seed_set
+from balatro_ai.eval.seed_sets import SeedSet, make_benchmark_seed_set, make_explicit_seed_set
 
 ProgressCallback = Callable[[str], None]
 StopCallback = Callable[[], bool]
@@ -32,6 +32,7 @@ class BenchmarkOptions:
     profile_name: str = "P1"
     unlock_state: str = "all"
     seeds: int = 100
+    seed_window: int = 1
     seed_values: tuple[int, ...] | None = None
     label: str = "default"
     endpoints: tuple[str, ...] = ("http://127.0.0.1:12346",)
@@ -230,7 +231,14 @@ def _retry_failed_seed_results(
 
 
 def _is_retryable_seed_failure(result: RunResult) -> bool:
-    return bool(result.death_reason and result.death_reason.startswith("error:"))
+    death = result.death_reason
+    if not death or not death.startswith("error:"):
+        return False
+    # RunTimeout is wall-clock, not a bridge fault. Retrying just re-rolls the
+    # wall-clock budget and biases benchmarks toward fast bots.
+    if death.startswith("error:RunTimeout"):
+        return False
+    return True
 
 
 def _healthy_endpoints(options: BenchmarkOptions) -> tuple[str, ...]:
@@ -335,7 +343,11 @@ def _run_seed(*, seed: int, endpoint: str, options: BenchmarkOptions) -> RunResu
 def _seed_set_from_options(options: BenchmarkOptions) -> SeedSet:
     if options.seed_values is not None:
         return make_explicit_seed_set(label=f"{options.stake}:{options.label}:explicit", seeds=options.seed_values)
-    return make_seed_set(label=f"{options.stake}:{options.label}", size=options.seeds)
+    return make_benchmark_seed_set(
+        label=f"{options.stake}:{options.label}",
+        size=options.seeds,
+        seed_window=options.seed_window,
+    )
 
 
 def _empty_summary(options: BenchmarkOptions) -> BenchmarkSummary:

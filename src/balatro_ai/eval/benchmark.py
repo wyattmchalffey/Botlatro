@@ -7,14 +7,25 @@ from pathlib import Path
 
 from balatro_ai.eval.runner import BenchmarkOptions, endpoint_urls, run_benchmark
 from balatro_ai.eval.run_seed import REPLAY_MODES
-from balatro_ai.eval.seed_sets import make_explicit_seed_set, make_seed_set, parse_seed_values
+from balatro_ai.eval.seed_sets import make_benchmark_seed_set, make_explicit_seed_set, parse_seed_values
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Prepare a Botlatro benchmark run.")
     parser.add_argument("--bot", required=True, help="Bot name to benchmark.")
-    parser.add_argument("--seeds", type=int, default=100, help="Number of deterministic seeds.")
+    parser.add_argument(
+        "--seeds",
+        type=int,
+        default=100,
+        help="Number of deterministic seeds. The 200-seed size uses the canonical first200 set.",
+    )
     parser.add_argument("--seed-list", default="", help="Comma/space-separated exact seeds; overrides --seeds.")
+    parser.add_argument(
+        "--seed-window",
+        type=int,
+        default=1,
+        help="Canonical 200-seed window: 1 = seeds 1-200, 2 = seeds 201-400, etc.",
+    )
     parser.add_argument("--stake", default="white", help="Stake name.")
     parser.add_argument("--deck", default="RED", help="Deck enum to start with, e.g. RED.")
     parser.add_argument("--profile-name", default="P1", help="Balatro profile used by the benchmark.")
@@ -66,7 +77,11 @@ def main(argv: list[str] | None = None) -> int:
     seed_set = (
         make_explicit_seed_set(label=f"{args.stake}:{args.label}:explicit", seeds=seed_values)
         if seed_values
-        else make_seed_set(label=f"{args.stake}:{args.label}", size=args.seeds)
+        else make_benchmark_seed_set(
+            label=f"{args.stake}:{args.label}",
+            size=args.seeds,
+            seed_window=args.seed_window,
+        )
     )
     print(f"Bot: {args.bot}")
     print(f"Stake: {args.stake}")
@@ -74,6 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Profile: {args.profile_name}")
     print(f"Unlocks: {args.unlock_state}")
     print(f"Seeds: {len(seed_set.seeds)}")
+    print(f"Seed label: {seed_set.label}")
     print(f"First seed: {seed_set.seeds[0] if seed_set.seeds else '-'}")
 
     if not args.execute:
@@ -94,6 +110,7 @@ def main(argv: list[str] | None = None) -> int:
             profile_name=args.profile_name,
             unlock_state=args.unlock_state,
             seeds=args.seeds,
+            seed_window=args.seed_window,
             seed_values=seed_values or None,
             label=args.label,
             endpoints=endpoints,
