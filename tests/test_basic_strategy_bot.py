@@ -2442,7 +2442,7 @@ class BasicStrategyBotTests(unittest.TestCase):
         self.assertGreater(pressure["raw_ratio"], 1.0)
         self.assertLess(pressure["capacity_safety_factor"], 1.0)
 
-    def test_shop_skips_arcana_pack_when_hand_targets_are_hidden(self) -> None:
+    def test_shop_skips_early_arcana_pack_when_shop_hand_is_empty(self) -> None:
         state = GameState(
             ante=4,
             blind="Small Blind",
@@ -3536,6 +3536,36 @@ class BasicStrategyBotTests(unittest.TestCase):
             action.metadata["shop_audit"]["threshold"],
         )
 
+    def test_shop_buys_planet_for_direct_use_when_consumable_slots_are_full(self) -> None:
+        state = GameState(
+            ante=6,
+            blind="Small Blind",
+            required_score=43500,
+            money=28,
+            consumables=("Judgement", "Judgement"),
+            jokers=(
+                Joker("Constellation"),
+                Joker("Photograph"),
+                Joker("Swashbuckler"),
+                Joker("Raised Fist"),
+                Joker("Devious Joker"),
+            ),
+            modifiers={
+                "shop_cards": (
+                    {"label": "Saturn", "key": "c_saturn", "set": "PLANET", "cost": {"buy": 3}},
+                )
+            },
+            legal_actions=(
+                Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),
+                Action(ActionType.END_SHOP),
+            ),
+        )
+
+        action = BasicStrategyBot(seed=1).choose_action(state)
+
+        self.assertEqual(action.action_type, ActionType.BUY)
+        self.assertEqual(action.metadata["shop_audit"]["decision"], "take")
+
     def test_constellation_commits_to_planet_buys(self) -> None:
         base = GameState(
             ante=5,
@@ -3574,7 +3604,7 @@ class BasicStrategyBotTests(unittest.TestCase):
             strategy._pack_capacity_gain(base, pack, pressure) + 20.0,
         )
 
-    def test_late_safe_build_skips_pack_without_capacity_gain(self) -> None:
+    def test_late_pressured_build_opens_arcana_pack_without_visible_hand(self) -> None:
         state = GameState(
             ante=7,
             blind="Big Blind",
@@ -3600,8 +3630,9 @@ class BasicStrategyBotTests(unittest.TestCase):
 
         action = BasicStrategyBot(seed=1).choose_action(state)
 
-        self.assertEqual(action.action_type, ActionType.END_SHOP)
-        self.assertEqual(action.metadata["shop_audit"]["decision"], "skip")
+        self.assertEqual(action.action_type, ActionType.OPEN_PACK)
+        self.assertIn("pressure=", action.metadata["reason"])
+        self.assertEqual(action.metadata["shop_audit"]["decision"], "take")
 
     def test_late_rich_shop_opens_celestial_pack_for_incremental_upgrades(self) -> None:
         state = GameState(

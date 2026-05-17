@@ -457,7 +457,11 @@ class LocalBalatroSimulator:
         raise LocalSimError(f"Unsupported local action: {action.action_type.value}")
 
     def _buy(self, state: GameState, action: Action) -> GameState:
-        bought = simulate_buy(state, action)
+        injections: dict[str, object] = {}
+        item = _buy_action_item(state, action)
+        if item is not None and _item_is_consumable(item):
+            injections = self._consumable_injections(state, _item_label(item), storage_use=False)
+        bought = simulate_buy(state, action, **injections)
         if not _is_overstock_voucher_buy(state, action):
             return bought
         current_shop = _modifier_items(bought.modifiers, "shop_cards")
@@ -2222,10 +2226,35 @@ def _is_overstock_voucher_buy(state: GameState, action: Action) -> bool:
     return _item_label(voucher_cards[index]) in {"Overstock", "Overstock Plus"}
 
 
+def _buy_action_item(state: GameState, action: Action) -> object | None:
+    if action.action_type != ActionType.BUY:
+        return None
+    kind = str(action.metadata.get("kind", action.target_id or ""))
+    key = "voucher_cards" if kind == "voucher" else "shop_cards" if kind == "card" else ""
+    if not key:
+        return None
+    index = _action_index(action)
+    items = _modifier_items(state.modifiers, key)
+    if index is None or not 0 <= index < len(items):
+        return None
+    return items[index]
+
+
+def _item_is_consumable(item: object) -> bool:
+    key = _item_key(item).lower()
+    return _item_set(item) in {"TAROT", "PLANET", "SPECTRAL"} or key.startswith("c_")
+
+
 def _item_label(item: object) -> str:
     if isinstance(item, Mapping):
         return str(item.get("label", item.get("name", item.get("key", "unknown"))))
     return str(item)
+
+
+def _item_key(item: object) -> str:
+    if isinstance(item, Mapping):
+        return str(item.get("key", ""))
+    return ""
 
 
 def _item_set(item: object) -> str:
