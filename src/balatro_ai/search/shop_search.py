@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from random import Random
 from typing import Any
@@ -291,7 +291,7 @@ def shop_action_search_value(
             return _consumable_sell_search_value(state, action)
         if index is None or not 0 <= index < len(state.jokers):
             return 0.0
-        from balatro_ai.bots.basic_strategy_bot import _owned_joker_value
+        from balatro_ai.bots.basic_strategy.shop_jokers import _owned_joker_value
 
         sold = state.jokers[index]
         return max(0.0, float(sold.sell_value or 0) - (_owned_joker_value(state, sold, remove_index=index) * 0.15))
@@ -324,7 +324,9 @@ def shop_action_search_value(
 
 
 def _basic_shop_action_value(state: GameState, action: Action, context: ShopSearchContext) -> float:
-    from balatro_ai.bots.basic_strategy_bot import _ShopContext, _shop_action_value, _shop_pressure
+    from balatro_ai.bots.basic_strategy.profile import _ShopContext
+    from balatro_ai.bots.basic_strategy.shop_pressure import _shop_pressure
+    from balatro_ai.bots.basic_strategy.shop_values import _shop_action_value
 
     return _shop_action_value(
         state,
@@ -340,7 +342,7 @@ def _basic_shop_action_value(state: GameState, action: Action, context: ShopSear
 
 def _safe_shop_blocks_reroll_override(state: GameState) -> bool:
     try:
-        from balatro_ai.bots.basic_strategy_bot import _shop_pressure
+        from balatro_ai.bots.basic_strategy.shop_pressure import _shop_pressure
 
         pressure = _shop_pressure(state)
         return pressure.ratio < 1.0 and pressure.raw_ratio < 1.05
@@ -367,7 +369,8 @@ def shop_leaf_terms(
 ) -> ShopLeafTerms:
     """Break the shop leaf value into auditable terms."""
 
-    from balatro_ai.bots.basic_strategy_bot import _build_profile, _owned_joker_value
+    from balatro_ai.bots.basic_strategy.build_profile import _build_profile
+    from balatro_ai.bots.basic_strategy.shop_jokers import _owned_joker_value
 
     profile = _build_profile(state)
     raw_owned_value = sum(_owned_joker_value(state, joker, remove_index=index) for index, joker in enumerate(state.jokers))
@@ -467,7 +470,8 @@ def shop_survival_value(state: GameState) -> float:
     """Estimate how well this shop leaf survives the upcoming score ramp."""
 
     try:
-        from balatro_ai.bots.basic_strategy_bot import _build_profile, _shop_pressure
+        from balatro_ai.bots.basic_strategy.build_profile import _build_profile
+        from balatro_ai.bots.basic_strategy.shop_pressure import _shop_pressure
 
         pressure = _shop_pressure(state)
         profile = _build_profile(state)
@@ -495,7 +499,7 @@ def shop_capacity_headroom_value(state: GameState) -> float:
     """Reward scoring cushion beyond the next shop-pressure target."""
 
     try:
-        from balatro_ai.bots.basic_strategy_bot import _shop_pressure
+        from balatro_ai.bots.basic_strategy.shop_pressure import _shop_pressure
 
         pressure = _shop_pressure(state)
         capacity_ratio = pressure.build_capacity / max(1.0, pressure.target_score)
@@ -617,7 +621,7 @@ def _conditional_joker_buy_penalty(state: GameState, action: Action) -> float:
 
     try:
         next_state = simulate_buy(state, action)
-        from balatro_ai.bots.basic_strategy_bot import _build_profile
+        from balatro_ai.bots.basic_strategy.build_profile import _build_profile
 
         profile = _build_profile(next_state)
     except (ImportError, TypeError, ValueError, IndexError, AttributeError):
@@ -662,7 +666,7 @@ def _stable_mult_ratio_after_conditional_credit(state: GameState, profile: Any) 
 
 def _upcoming_shop_boss_name(state: GameState) -> str | None:
     try:
-        from balatro_ai.bots.basic_strategy_bot import _upcoming_boss_blind_name
+        from balatro_ai.bots.basic_strategy.shop_forecast import _upcoming_boss_blind_name
 
         return _upcoming_boss_blind_name(state)
     except (ImportError, TypeError, ValueError, AttributeError):
@@ -671,7 +675,7 @@ def _upcoming_shop_boss_name(state: GameState) -> str | None:
 
 def _shop_build_score(state: GameState) -> float:
     try:
-        from balatro_ai.bots.basic_strategy_bot import _sample_build_score
+        from balatro_ai.bots.basic_strategy.build_scoring import _sample_build_score
 
         return max(0.0, float(_sample_build_score(state, state.jokers)))
     except (ImportError, TypeError, ValueError, AttributeError):
@@ -700,7 +704,7 @@ def _probability_from_pressure_ratio(ratio: float) -> float:
 
 def _shop_pressure_metrics(state: GameState) -> tuple[float, float, float]:
     try:
-        from balatro_ai.bots.basic_strategy_bot import _shop_pressure
+        from balatro_ai.bots.basic_strategy.shop_pressure import _shop_pressure
 
         pressure = _shop_pressure(state)
         capacity_ratio = float(pressure.build_capacity) / max(1.0, float(pressure.target_score))
@@ -863,7 +867,8 @@ def _shop_money_value(state: GameState) -> float:
 
     money = max(0, state.money)
     try:
-        from balatro_ai.bots.basic_strategy_bot import _desired_money_reserve, _interest_cap_money, _shop_pressure
+        from balatro_ai.bots.basic_strategy.shop_money import _desired_money_reserve, _interest_cap_money
+        from balatro_ai.bots.basic_strategy.shop_pressure import _shop_pressure
 
         pressure = _shop_pressure(state)
         interest_cap = _interest_cap_money(state)
@@ -902,7 +907,7 @@ def _held_consumable_leaf_value(state: GameState, name: str) -> float:
     if name in PLANET_TO_HAND:
         value = 4.0
         try:
-            from balatro_ai.bots.basic_strategy_bot import _preferred_hand_type
+            from balatro_ai.bots.basic_strategy.hand_preferences import _preferred_hand_type
 
             if _preferred_hand_type(state) == PLANET_TO_HAND[name]:
                 value += 3.0
@@ -941,7 +946,9 @@ def _shop_money_floor_penalty(state: GameState) -> float:
 
     floor = _minimum_safe_shop_money(state)
     try:
-        from balatro_ai.bots.basic_strategy_bot import _desired_money_reserve, _has_money_scaling_joker, _shop_pressure
+        from balatro_ai.bots.basic_strategy.shop_money import _desired_money_reserve
+        from balatro_ai.bots.basic_strategy.shop_pressure import _shop_pressure
+        from balatro_ai.bots.basic_strategy.shop_safety import _has_money_scaling_joker
 
         pressure = _shop_pressure(state)
         if pressure.raw_ratio >= 1.25:
@@ -990,7 +997,7 @@ _ECONOMY_FLOOR_CREDITS = {
 
 def _economy_floor_credit(state: GameState) -> int:
     try:
-        from balatro_ai.bots.basic_strategy_bot import _shop_pressure
+        from balatro_ai.bots.basic_strategy.shop_pressure import _shop_pressure
 
         pressure = _shop_pressure(state)
         if pressure.raw_ratio >= 1.0 or pressure.ratio >= 0.95:
@@ -1044,7 +1051,8 @@ def _spend_opportunity_penalty(state: GameState, cost: int) -> float:
     if cost <= 0:
         return 0.0
     try:
-        from balatro_ai.bots.basic_strategy_bot import _money_after_spend_penalty, _shop_pressure
+        from balatro_ai.bots.basic_strategy.shop_money import _money_after_spend_penalty
+        from balatro_ai.bots.basic_strategy.shop_pressure import _shop_pressure
 
         return _money_after_spend_penalty(state, cost, _shop_pressure(state))
     except (ImportError, TypeError, ValueError, AttributeError):
@@ -1518,7 +1526,23 @@ def _hallucination_consumables(state: GameState, *, sampler: ShopSampler, rng: R
         if _roll_odds(rng, 2, probability_multiplier=probability_multiplier)
     )
     count = min(room, count)
-    return tuple(sampler.sample_card_of_type(state, "Tarot", rng) for _ in range(count))
+    used_consumables = set(state.consumables)
+    created: list[object] = []
+    for _ in range(count):
+        card = sampler.sample_card_of_type(state, "Tarot", rng, used_consumables=used_consumables)
+        created.append(card)
+        used_consumables.update(_sampled_item_identifiers(card))
+    return tuple(created)
+
+
+def _sampled_item_identifiers(item: object) -> set[str]:
+    if not isinstance(item, Mapping):
+        return {str(item)}
+    identifiers = {str(item.get("label", item.get("name", item.get("key", ""))))}
+    key = str(item.get("key", ""))
+    if key:
+        identifiers.add(key)
+    return {identifier for identifier in identifiers if identifier}
 
 
 def _perkeo_consumables(state: GameState, rng: Random) -> tuple[str, ...]:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 
 from balatro_ai.api.state import GameState
+from balatro_ai.bots.basic_strategy.blind_solver import _blind_capacity_from_score
 from balatro_ai.bots.basic_strategy.cache import _identity_cached_value
 from balatro_ai.bots.basic_strategy.cards import _normal_joker_open_slots, _normal_joker_slots_used
 from balatro_ai.bots.basic_strategy.data import PREFERRED_HAND_HUNT_TYPES, RARE_HAND_TYPES
@@ -40,9 +41,9 @@ def _shop_pressure_uncached(state: GameState) -> _ShopPressure:
     score_state = _shop_pressure_score_state(state, boss_name, raw_target=raw_target)
     current_score = _sample_build_score(score_state, score_state.jokers) * _shop_hand_realism_factor(score_state)
     effective_hands = _shop_pressure_effective_hands(state, boss_name)
-    raw_capacity = max(1.0, current_score * effective_hands * 0.85)
+    raw_capacity = _blind_capacity_from_score(current_score, effective_hands)
     capacity_safety_factor = _shop_capacity_safety_factor(state) * boss_capacity_factor
-    capacity = max(1.0, raw_capacity * capacity_safety_factor)
+    capacity = _blind_capacity_from_score(current_score, effective_hands, capacity_safety_factor=capacity_safety_factor)
     raw_ratio = raw_target / raw_capacity
     ratio = max(target / capacity, _early_build_pressure_floor(state))
     return _ShopPressure(

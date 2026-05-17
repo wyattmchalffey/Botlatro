@@ -652,28 +652,6 @@ def _rank_fill_cards(existing_cards: tuple[Card, ...], rank: str, count: int) ->
     return tuple(Card(rank, suit) for suit in fill_suits[:count])
 
 
-def _preferred_draw_strength(kept_cards: tuple[Card, ...], preferred: HandType) -> int:
-    if not kept_cards:
-        return 0
-    rank_counts = Counter(card.rank for card in kept_cards)
-    suit_counts = Counter(card.suit for card in kept_cards)
-    max_rank = max(rank_counts.values(), default=0)
-    max_suit = max(suit_counts.values(), default=0)
-
-    if preferred in {HandType.STRAIGHT, HandType.STRAIGHT_FLUSH}:
-        return _straight_draw_potential(kept_cards)
-    if preferred == HandType.FLUSH_HOUSE:
-        return min(max_suit, max_rank + 1)
-    if preferred in FLUSH_ARCHETYPE_HANDS:
-        return max_suit
-    if preferred == HandType.FULL_HOUSE:
-        pair_count = sum(1 for count in rank_counts.values() if count >= 2)
-        return max(max_rank, 2 + pair_count)
-    if preferred in {HandType.FOUR_OF_A_KIND, HandType.FIVE_OF_A_KIND, HandType.FLUSH_FIVE}:
-        return max_rank
-    return max_rank
-
-
 def _hand_matches_preferred_family(hand_type: HandType, preferred: HandType) -> bool:
     return hand_type in _preferred_hand_family(preferred)
 

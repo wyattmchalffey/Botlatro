@@ -21,6 +21,13 @@ from balatro_ai.bots.basic_strategy.blind_setup import (
     _opening_joker_setup_play_action,
     _strategic_joker_discard_action,
 )
+from balatro_ai.bots.basic_strategy.blind_solver import (
+    _BlindSolution,
+    _ClearLine,
+    _best_clear_line,
+    _best_discard_for_solution,
+    _solve_blind,
+)
 from balatro_ai.bots.basic_strategy.discard_policy import (
     _best_discard_action as _default_best_discard_action,
     _discard_can_reduce_hands_needed,
@@ -44,10 +51,12 @@ def _tactical_blind_action(
     state: GameState,
     best_play: Action,
     context: _BlindContext | None = None,
+    solution: _BlindSolution | None = None,
 ) -> Action:
     context = context or _BlindContext()
-    score = _score_play_action(state, best_play, context)
-    remaining_score = max(0, state.required_score - state.current_score)
+    solution = solution or _solve_blind(state, context, best_play=best_play)
+    score = solution.best_play_score
+    remaining_score = solution.remaining_score
     if score >= remaining_score > 0:
         economy_hunt = _winning_economy_hunt_discard_action(state, best_play, score, remaining_score, context)
         if economy_hunt is not None:
@@ -87,6 +96,13 @@ def _tactical_blind_action(
     if clear_line_redraw is not None:
         return clear_line_redraw
 
+    clear_line = _best_clear_line(state, score, remaining_score, context)
+    if clear_line is not None:
+        banner_play = _banner_vetoed_play_action(state, best_play, clear_line.action, score, remaining_score, context)
+        if banner_play is not None:
+            return banner_play
+        return _annotated_action(clear_line.action, reason=_clear_line_reason(state, clear_line, score))
+
     if (
         remaining_score == 0
         or score >= remaining_score
@@ -95,7 +111,7 @@ def _tactical_blind_action(
     ):
         return _annotated_action(best_play, reason=_play_reason(state, best_play, context))
 
-    best_discard = _best_discard_action(state, current_best_score=score, context=context)
+    best_discard = _best_discard_for_solution(state, solution, context)
     if (
         best_discard is not None
         and state.hands_remaining <= 1
@@ -140,6 +156,15 @@ def _tactical_blind_action(
             return banner_play
         return _annotated_action(best_discard, reason=_discard_reason(state, best_play, best_discard, context))
     return _annotated_action(best_play, reason=_play_reason(state, best_play, context))
+
+
+def _clear_line_reason(state: GameState, line: _ClearLine, current_score: int) -> str:
+    remaining_score = max(0, state.required_score - state.current_score)
+    return (
+        f"blind_solver_clear_line target={line.hand_type.value} current_score={current_score} "
+        f"projected_score={line.projected_score} remaining={remaining_score} "
+        f"p={line.completion_probability:.2f} completion={line.completion_score} {line.detail}"
+    )
 
 
 def _best_discard_action(*args, **kwargs):

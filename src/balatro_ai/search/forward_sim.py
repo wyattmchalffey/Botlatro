@@ -394,6 +394,16 @@ def simulate_buy(
     next_shop_cards: Iterable[object] | None = None,
     next_voucher_cards: Iterable[object] | None = None,
     next_booster_packs: Iterable[object] | None = None,
+    created_consumables: Iterable[object] = (),
+    created_jokers: Iterable[object] = (),
+    created_hand_cards: Iterable[Card] = (),
+    destroyed_hand_card_indices: Iterable[int] = (),
+    aura_edition: str | None = None,
+    wheel_of_fortune_joker_index: int | None = None,
+    wheel_of_fortune_edition: str | None = None,
+    sigil_suit: str | None = None,
+    ouija_rank: str | None = None,
+    spectral_joker_index: int | None = None,
 ) -> GameState:
     """Apply a deterministic shop buy transition."""
 
@@ -419,9 +429,10 @@ def simulate_buy(
     cost = _effective_item_buy_cost(state, item)
     if cost > state.money:
         raise ValueError(f"Cannot buy {_item_label(item)} for ${cost} with ${state.money}")
-    if _item_is_consumable(item) and not _has_consumable_room(state):
+    buy_and_use_consumable = _item_is_consumable(item) and not _has_consumable_room(state)
+    if buy_and_use_consumable and not _shop_consumable_can_be_used_directly(state, item, action):
         raise ValueError(
-            f"Cannot buy {_item_label(item)} with full consumable slots: "
+            f"Cannot buy/use {_item_label(item)} with full consumable slots: "
             f"{len(state.consumables)}/{_consumable_slot_limit(state)}"
         )
     if _item_is_joker(item) and _joker_item_uses_normal_slot(item) and _normal_joker_open_slots(state) <= 0:
@@ -437,7 +448,25 @@ def simulate_buy(
     next_modifiers = _with_modifier_items(state.modifiers, item_key, remaining_items)
     if edition_tag_name is not None and index == edition_target_index:
         next_modifiers = _modifiers_after_shop_edition_tag_used(next_modifiers, edition_tag_name)
-    acquired = _state_after_acquiring_item(replace(state, modifiers=next_modifiers), item, force_voucher=kind == "voucher")
+    purchase_state = replace(state, money=state.money - cost, modifiers=next_modifiers)
+    if buy_and_use_consumable:
+        acquired = _state_after_pack_choice(
+            purchase_state,
+            item,
+            card_indices=action.card_indices,
+            created_consumables=created_consumables,
+            created_jokers=created_jokers,
+            created_hand_cards=created_hand_cards,
+            destroyed_hand_card_indices=destroyed_hand_card_indices,
+            aura_edition=aura_edition,
+            wheel_of_fortune_joker_index=wheel_of_fortune_joker_index,
+            wheel_of_fortune_edition=wheel_of_fortune_edition,
+            sigil_suit=sigil_suit,
+            ouija_rank=ouija_rank,
+            spectral_joker_index=spectral_joker_index,
+        )
+    else:
+        acquired = _state_after_acquiring_item(replace(state, modifiers=next_modifiers), item, force_voucher=kind == "voucher")
     if kind == "voucher":
         acquired = _state_after_voucher_purchase_effects(acquired, item)
     final_modifiers = acquired.modifiers
@@ -449,7 +478,7 @@ def simulate_buy(
         final_modifiers = _with_modifier_items(final_modifiers, "booster_packs", tuple(next_booster_packs))
     next_state = replace(
         acquired,
-        money=state.money - cost,
+        money=acquired.money if buy_and_use_consumable else state.money - cost,
         modifiers=final_modifiers,
         shop=tuple(_item_label(item) for item in _modifier_items(final_modifiers, "shop_cards")),
         legal_actions=(),
@@ -2431,6 +2460,61 @@ def _item_is_consumable(item: object) -> bool:
         or label in TAROT_NAMES
         or label in SPECTRAL_NAMES
         or label in PLANET_TO_HAND
+    )
+
+
+def _shop_consumable_can_be_used_directly(state: GameState, item: object, action: Action) -> bool:
+    name = _item_label(item)
+    indices = tuple(action.card_indices)
+    if name in PLANET_TO_HAND or name == "Black Hole":
+        return not indices
+    if name in TAROT_NAMES:
+        return _tarot_direct_use_targets_are_valid(state, name, indices)
+    if name in SPECTRAL_NAMES:
+        return _spectral_direct_use_targets_are_valid(state, name, indices)
+    return False
+
+
+def _tarot_direct_use_targets_are_valid(state: GameState, name: str, indices: tuple[int, ...]) -> bool:
+    if name in TAROT_ENHANCEMENTS:
+        return _selected_index_count_is_valid(
+            state,
+            indices,
+            min_count=1,
+            max_count=2 if name in {"The Magician", "The Empress", "The Hierophant"} else 1,
+        )
+    if name in TAROT_SUIT_CONVERSIONS:
+        return _selected_index_count_is_valid(state, indices, min_count=1, max_count=3)
+    if name == "Strength":
+        return _selected_index_count_is_valid(state, indices, min_count=1, max_count=2)
+    if name == "Death":
+        return _selected_index_count_is_valid(state, indices, min_count=2, max_count=2)
+    if name == "The Hanged Man":
+        return _selected_index_count_is_valid(state, indices, min_count=1, max_count=2)
+    return not indices
+
+
+def _spectral_direct_use_targets_are_valid(state: GameState, name: str, indices: tuple[int, ...]) -> bool:
+    if name in SPECTRAL_SEALS or name in {"Aura", "Cryptid"}:
+        return _selected_index_count_is_valid(state, indices, min_count=1, max_count=1)
+    if name in HAND_REQUIRED_SPECTRALS and not state.hand:
+        return False
+    if name == "Black Hole":
+        return not indices
+    return not indices
+
+
+def _selected_index_count_is_valid(
+    state: GameState,
+    indices: tuple[int, ...],
+    *,
+    min_count: int,
+    max_count: int,
+) -> bool:
+    return (
+        min_count <= len(indices) <= max_count
+        and len(set(indices)) == len(indices)
+        and all(0 <= index < len(state.hand) for index in indices)
     )
 
 

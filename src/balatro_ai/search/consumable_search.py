@@ -419,12 +419,26 @@ def _created_consumables_of_type(
     storage_use: bool,
 ) -> tuple[Mapping[str, Any], ...]:
     count = min(max_count, _consumable_open_slots_after_use(state, storage_use=storage_use))
-    return tuple(sampler.sample_card_of_type(state, card_type, rng) for _ in range(count))
+    used_consumables = set(state.consumables)
+    created: list[Mapping[str, Any]] = []
+    for _ in range(count):
+        card = sampler.sample_card_of_type(state, card_type, rng, used_consumables=used_consumables)
+        created.append(card)
+        used_consumables.update(_sampled_item_identifiers(card))
+    return tuple(created)
 
 
 def _consumable_open_slots_after_use(state: GameState, *, storage_use: bool) -> int:
     used_storage_count = max(0, len(state.consumables) - (1 if storage_use else 0))
     return max(0, _consumable_slot_limit(state) - used_storage_count)
+
+
+def _sampled_item_identifiers(item: Mapping[str, Any]) -> set[str]:
+    identifiers = {str(item.get("label", item.get("name", item.get("key", ""))))}
+    key = str(item.get("key", ""))
+    if key:
+        identifiers.add(key)
+    return {identifier for identifier in identifiers if identifier}
 
 
 def _spectral_created_hand_cards(name: str, rng: Random) -> tuple[Card, ...]:
@@ -603,7 +617,7 @@ def _planet_use_bonus(state: GameState, hand_type: HandType) -> float:
     if any(joker.name == "Constellation" for joker in state.jokers):
         bonus += 8.0
     try:
-        from balatro_ai.bots.basic_strategy_bot import _planet_capacity_gain
+        from balatro_ai.bots.basic_strategy.shop_cards import _planet_capacity_gain
 
         bonus += min(14.0, _planet_capacity_gain(state, hand_type) * 0.02)
     except (ImportError, TypeError, ValueError, AttributeError):
@@ -865,7 +879,7 @@ def _best_current_hand_type(state: GameState) -> HandType | None:
 
 def _preferred_hand_type(state: GameState) -> HandType | None:
     try:
-        from balatro_ai.bots.basic_strategy_bot import _preferred_hand_type as basic_preferred_hand_type
+        from balatro_ai.bots.basic_strategy.hand_preferences import _preferred_hand_type as basic_preferred_hand_type
 
         return basic_preferred_hand_type(state)
     except (ImportError, TypeError, ValueError, AttributeError):

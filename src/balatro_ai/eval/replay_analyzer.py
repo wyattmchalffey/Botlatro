@@ -12,7 +12,7 @@ from statistics import mean
 from typing import Iterable
 
 from balatro_ai.api.state import Card, Joker
-from balatro_ai.bots.basic_strategy_bot import _joker_roles
+from balatro_ai.bots.basic_strategy.jokers import _joker_roles
 from balatro_ai.rules.hand_evaluator import evaluate_played_cards
 
 

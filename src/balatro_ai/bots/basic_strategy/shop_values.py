@@ -10,7 +10,6 @@ from balatro_ai.bots.basic_strategy.cards import (
     _card_cost,
     _card_label,
     _card_modifier,
-    _has_consumable_room,
     _is_black_hole_card,
     _is_joker_card,
     _is_planet_card,
@@ -100,7 +99,10 @@ def _shop_action_value(
         if index >= len(packs):
             return 0.0
         pack = packs[index]
-        if _shop_pack_can_trigger_hidden_target_error(state, pack):
+        if _shop_pack_can_trigger_hidden_target_error(state, pack) and not _pressured_target_hand_pack_is_worth_opening(
+            state,
+            pressure,
+        ):
             return 0.0
         if state.money - _card_cost(pack) < 4 and pressure.ratio < 1.15:
             return 0.0
@@ -184,16 +186,10 @@ def _shop_card_value(state: GameState, card: object) -> float:
     if _is_joker_card(card):
         return _joker_card_value(state, card)
     if _is_black_hole_card(card):
-        if not _has_consumable_room(state):
-            return 0.0
         return _black_hole_card_value(state)
     if _is_planet_card(card):
-        if not _has_consumable_room(state):
-            return 0.0
         return _planet_card_value(state, card)
     if _is_tarot_card(card):
-        if not _has_consumable_room(state):
-            return 0.0
         if _pack_card_requires_targets(card) and not _target_required_tarot_is_supported(state, card):
             return 0.0
         return _tarot_card_value(state, card)
@@ -399,3 +395,9 @@ def _shop_safety_pack_bonus(
 def _shop_pack_can_trigger_hidden_target_error(state: GameState, pack: object) -> bool:
     name = _card_label(pack).lower()
     return "arcana" in name and not state.hand
+
+
+def _pressured_target_hand_pack_is_worth_opening(state: GameState, pressure: _ShopPressure) -> bool:
+    if state.ante < 5:
+        return False
+    return pressure.ratio >= 2.0 or pressure.raw_ratio >= 1.2

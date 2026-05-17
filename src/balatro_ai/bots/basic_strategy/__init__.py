@@ -13,6 +13,7 @@ Module map:
 * ``banner_policy``: Banner discard-veto EV policy.
 * ``blind_setup``: tempo-spending blind setup plays/discards for joker value.
 * ``blind_reasons``: trace/reason string formatters for blind decisions.
+* ``blind_solver``: shared blind-state solution used by tactics and shop pressure.
 * ``blind_state``: small shared blind-state predicates.
 * ``blind_tactics``: top-level blind play/discard action router.
 * ``build_profile``: joker role scoring, durability, and build-profile policy.
@@ -21,6 +22,7 @@ Module map:
 * ``cards``: card payload adapters, card categories, slot limits, rank/suit
   parsing, editions, and shop-card-to-joker conversion.
 * ``data``: static strategy tables and hand/joker/voucher valuation constants.
+* ``decision_context``: per-action derived context and lazy evaluator seam.
 * ``discard_policy``: generic discard selection and hand-pace policy.
 * ``discard_state``: state projection, draw counts, and discard-trigger effects.
 * ``draw_evaluation``: straight/flush/rank/full-house draw evaluation helpers.

@@ -38,15 +38,22 @@ discard would make the blind less likely to clear.
 `blind_state.py` contains tiny blind-state predicates shared by blind helpers,
 such as detecting whether the current blind is a boss blind.
 
-`blind_tactics.py` is the top-level blind play/discard router. It computes the
-current best-play score and orders tactical branches such as winning economy
-hunts, first-blind hunts, joker setup, preferred-hand hunts, Banner vetoes,
-panic/safety/chase discards, and final play annotations.
+`blind_tactics.py` is the top-level blind play/discard router. It consumes the
+shared blind solution and orders tactical branches such as winning economy
+hunts, first-blind hunts, joker setup, preferred-hand hunts, generic clear-line
+hunts, Banner vetoes, panic/safety/chase discards, and final play annotations.
 
 `blind_setup.py` contains early-blind setup policies that deliberately spend a
 play or discard for joker value while preserving a safe clear path, including
 DNA/Sixth Sense single-card setup plays, Mystic Summit discard activation, and
 other joker-triggered strategic discards.
+
+`blind_solver.py` owns the shared blind solution surface. It computes the best
+current play, generic best discard, clear-line discard candidates across
+multiple hand families, and the common capacity formula used by shop pressure.
+Blind tactics consume the solution instead of recomputing their own local view,
+and shop-pressure helpers use the same capacity arithmetic when asking whether
+the build is strong enough for upcoming blinds.
 
 `build_profile.py` computes the run's current build profile from owned jokers,
 money, and preferred hand signals. It owns joker role scores, late durability
@@ -67,6 +74,12 @@ computed elsewhere.
 `cache.py` owns decision-scoped caching. It should not contain strategy rules;
 it only memoizes expensive state, card, joker, and score-key calculations during
 one `choose_action()` call.
+
+`decision_context.py` owns the per-action context object passed through
+`BasicStrategyBot` policy branches. It carries the shop and blind memory views
+and lazily exposes derived evaluator inputs such as build profile, shop
+pressure, preferred hand, and blind solution. New shared evaluation surfaces
+should attach here instead of adding another ad hoc helper lookup.
 
 `cards.py` adapts raw shop card dictionaries and simulator card/joker objects.
 It contains card labels/costs, card categories, joker and consumable slot
@@ -122,8 +135,8 @@ as visible shop and pack choices.
 current chip/mult/xmult parsing and mutation, metadata lookup, role
 classification, static role scores, and lightweight state helpers such as
 Castle target suit and Mail-In Rebate rank. It should stay below action policy;
-shop-specific value judgments about whether a joker is good remain in
-`basic_strategy_bot.py` until the joker valuation area is split as a unit.
+shop-specific value judgments about whether a joker is good live in
+`shop_jokers.py`.
 
 `joker_ordering.py` searches joker permutations when order can affect score,
 including Blueprint/Brainstorm copy positions and chips/mult/xmult ordering. It
@@ -141,8 +154,8 @@ fallbacks, and valuing Red Card pack skips without owning broader pack pricing.
 
 `play_scoring.py` turns legal play actions into `_PlayCandidate` records, scores
 them against current boss restrictions, applies hand-sequencing bonuses, and
-chooses the best immediate play. Tactical blind policy still lives in
-`basic_strategy_bot.py`; this module only evaluates and orders play actions.
+chooses the best immediate play. Tactical blind policy lives in
+`blind_tactics.py`; this module only evaluates and orders play actions.
 
 `preferred_hunt.py` owns preferred-hand hunt policy in blinds: deciding when to
 discard or burn a redraw hand to chase the build's preferred hand family, how
@@ -232,9 +245,10 @@ drawing gold cards, blue/gold seals, and discard-triggered cash effects.
 Keep extracted helper modules mostly one-way:
 
 `basic_strategy_bot.py` may import from helper modules. Helper modules should
-avoid importing `basic_strategy_bot.py`. When a helper would need live scoring
-or pressure logic from the main bot, leave that helper in `basic_strategy_bot.py`
-until the whole scoring area is split together.
+prefer importing peer helper modules instead of reaching through
+`basic_strategy_bot.py`. A few compatibility shims still look up
+`basic_strategy_bot.py` through `sys.modules` so older tests/tools that monkeypatch
+private facade names keep working; avoid adding new shims.
 
 This keeps the refactor mechanical and makes behavior-preserving checks easier:
 move one cluster, import it back through `basic_strategy_bot.py`, run targeted

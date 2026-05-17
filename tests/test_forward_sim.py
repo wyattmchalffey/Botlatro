@@ -1379,16 +1379,50 @@ class ForwardSimTests(unittest.TestCase):
         self.assertEqual(after_consumable.money, 2)
         self.assertEqual(after_consumable.consumables, ("Mars",))
 
-        full_consumable_state = GameState(
+        full_planet_state = GameState(
+            phase=GamePhase.SHOP,
+            money=5,
+            consumables=("Jupiter", "Saturn"),
+            modifiers={"shop_cards": ({"label": "Mars", "set": "PLANET", "cost": {"buy": 3}},)},
+        )
+
+        after_full_planet = simulate_buy(
+            full_planet_state,
+            Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),
+        )
+
+        self.assertEqual(after_full_planet.money, 2)
+        self.assertEqual(after_full_planet.consumables, ("Jupiter", "Saturn"))
+        self.assertEqual(after_full_planet.hand_levels["Four of a Kind"], 2)
+        self.assertEqual(after_full_planet.shop, ())
+
+        full_tarot_state = GameState(
             phase=GamePhase.SHOP,
             money=5,
             consumables=("Jupiter", "Saturn"),
             modifiers={"shop_cards": ({"label": "Temperance", "set": "TAROT", "cost": {"buy": 3}},)},
         )
 
-        with self.assertRaisesRegex(ValueError, "full consumable slots"):
+        after_full_tarot = simulate_buy(
+            full_tarot_state,
+            Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),
+        )
+
+        self.assertEqual(after_full_tarot.money, 2)
+        self.assertEqual(after_full_tarot.consumables, ("Jupiter", "Saturn"))
+        self.assertEqual(after_full_tarot.modifiers["tarot_cards_used"]["Temperance"], 1)
+        self.assertEqual(after_full_tarot.shop, ())
+
+        targeted_tarot_state = GameState(
+            phase=GamePhase.SHOP,
+            money=5,
+            consumables=("Jupiter", "Saturn"),
+            modifiers={"shop_cards": ({"label": "The Star", "set": "TAROT", "cost": {"buy": 3}},)},
+        )
+
+        with self.assertRaisesRegex(ValueError, "buy/use"):
             simulate_buy(
-                full_consumable_state,
+                targeted_tarot_state,
                 Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),
             )
 

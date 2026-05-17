@@ -226,7 +226,7 @@ def _is_searchable_pack_item(item: object) -> bool:
 def _pack_item_value(state: GameState, action: Action) -> float:
     if _is_skip_action(action):
         try:
-            from balatro_ai.bots.basic_strategy_bot import _pack_skip_value
+            from balatro_ai.bots.basic_strategy.pack_choice import _pack_skip_value
 
             return _pack_skip_value(state)
         except (ImportError, TypeError, ValueError, AttributeError):
@@ -236,7 +236,7 @@ def _pack_item_value(state: GameState, action: Action) -> float:
     if index is None or not 0 <= index < len(pack_cards):
         return 0.0
     try:
-        from balatro_ai.bots.basic_strategy_bot import _pack_card_value
+        from balatro_ai.bots.basic_strategy.shop_values import _pack_card_value
 
         return _pack_card_value(state, pack_cards[index]) + _pack_target_value_bonus(state, action, pack_cards[index])
     except (ImportError, TypeError, ValueError, AttributeError):
@@ -412,7 +412,7 @@ def _owned_joker_value(state: GameState, index: int) -> float:
     if not 0 <= index < len(state.jokers):
         return 0.0
     try:
-        from balatro_ai.bots.basic_strategy_bot import _owned_joker_value as basic_owned_joker_value
+        from balatro_ai.bots.basic_strategy.shop_jokers import _owned_joker_value as basic_owned_joker_value
 
         return basic_owned_joker_value(state, state.jokers[index], remove_index=index)
     except (ImportError, TypeError, ValueError, AttributeError):
