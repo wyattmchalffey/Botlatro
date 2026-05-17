@@ -664,16 +664,17 @@ class LocalBalatroSimulator:
             stochastic_outcomes=stochastic_outcomes.__dict__ if hasattr(stochastic_outcomes, "__dict__") else {},
         )
         room = _consumable_open_slots(state)
+        used_consumables = set(state.consumables)
         created: list[Mapping[str, Any]] = []
         if room <= 0:
             return ()
         if _sixth_sense_triggers(state, selected_cards):
             count = min(room, _active_joker_count(state, "Sixth Sense"))
-            created.extend(self.sampler.sample_card_of_type(state, "Spectral", self._rng) for _ in range(count))
+            created.extend(self._sample_created_consumables_of_type(state, "Spectral", count, used_consumables=used_consumables))
             room -= count
         if room > 0 and evaluation.hand_type == HandType.STRAIGHT_FLUSH:
             count = min(room, _active_joker_count(state, "Seance"))
-            created.extend(self.sampler.sample_card_of_type(state, "Spectral", self._rng) for _ in range(count))
+            created.extend(self._sample_created_consumables_of_type(state, "Spectral", count, used_consumables=used_consumables))
             room -= count
         tarot_count = 0
         if room > 0 and evaluation.hand_type in {HandType.STRAIGHT, HandType.STRAIGHT_FLUSH} and any(
@@ -693,7 +694,7 @@ class LocalBalatroSimulator:
             if self._roll_odds(4, probability_multiplier=_probability_multiplier(state))
         )
         tarot_count = min(room, tarot_count)
-        created.extend(self.sampler.sample_card_of_type(state, "Tarot", self._rng) for _ in range(tarot_count))
+        created.extend(self._sample_created_consumables_of_type(state, "Tarot", tarot_count, used_consumables=used_consumables))
         room -= tarot_count
         if (
             room > 0
@@ -704,7 +705,7 @@ class LocalBalatroSimulator:
                 1 for card in held_cards_after_hook if not card.debuffed and str(card.seal or "").lower() == "blue"
             )
             count = min(room, blue_seal_count)
-            created.extend(self.sampler.sample_card_of_type(state, "Planet", self._rng) for _ in range(count))
+            created.extend(self._sample_created_consumables_of_type(state, "Planet", count, used_consumables=used_consumables))
         return tuple(created)
 
     def _roll_odds(self, odds: int | float, *, probability_multiplier: float) -> bool:
@@ -1152,7 +1153,23 @@ class LocalBalatroSimulator:
         max_count: int,
     ) -> tuple[Mapping[str, Any], ...]:
         count = min(max_count, self._consumable_open_slots_after_use(state, storage_use=storage_use))
-        return tuple(self.sampler.sample_card_of_type(state, card_type, self._rng) for _ in range(count))
+        return self._sample_created_consumables_of_type(state, card_type, count)
+
+    def _sample_created_consumables_of_type(
+        self,
+        state: GameState,
+        card_type: str,
+        count: int,
+        *,
+        used_consumables: set[str] | None = None,
+    ) -> tuple[Mapping[str, Any], ...]:
+        used = set(state.consumables) if used_consumables is None else used_consumables
+        created: list[Mapping[str, Any]] = []
+        for _ in range(max(0, count)):
+            card = self.sampler.sample_card_of_type(state, card_type, self._rng, used_consumables=used)
+            created.append(card)
+            used.update(_sampled_item_identifiers(card))
+        return tuple(created)
 
     def _consumable_open_slots_after_use(self, state: GameState, *, storage_use: bool) -> int:
         return max(0, _consumable_open_slots(state) + (1 if storage_use else 0))
@@ -1227,7 +1244,7 @@ class LocalBalatroSimulator:
     def _cartomancer_consumables(self, state: GameState) -> tuple[Mapping[str, Any], ...]:
         room = _consumable_open_slots(state)
         count = min(room, _active_joker_count(state, "Cartomancer"))
-        return tuple(self.sampler.sample_card_of_type(state, "Tarot", self._rng) for _ in range(count))
+        return self._sample_created_consumables_of_type(state, "Tarot", count)
 
     def _riff_raff_jokers(self, state: GameState) -> tuple[Mapping[str, Any], ...]:
         room = _normal_joker_open_slots(state)
@@ -1250,7 +1267,7 @@ class LocalBalatroSimulator:
             if self._roll_odds(2, probability_multiplier=probability_multiplier)
         )
         count = min(room, count)
-        return tuple(self.sampler.sample_card_of_type(state, "Tarot", self._rng) for _ in range(count))
+        return self._sample_created_consumables_of_type(state, "Tarot", count)
 
     def _perkeo_consumables(self, state: GameState) -> tuple[str, ...]:
         if not state.consumables:
@@ -2255,6 +2272,14 @@ def _item_key(item: object) -> str:
     if isinstance(item, Mapping):
         return str(item.get("key", ""))
     return ""
+
+
+def _sampled_item_identifiers(item: object) -> set[str]:
+    identifiers = {_item_label(item)}
+    key = _item_key(item)
+    if key:
+        identifiers.add(key)
+    return identifiers
 
 
 def _item_set(item: object) -> str:

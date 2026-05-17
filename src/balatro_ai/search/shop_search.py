@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from random import Random
 from typing import Any
@@ -1526,7 +1526,23 @@ def _hallucination_consumables(state: GameState, *, sampler: ShopSampler, rng: R
         if _roll_odds(rng, 2, probability_multiplier=probability_multiplier)
     )
     count = min(room, count)
-    return tuple(sampler.sample_card_of_type(state, "Tarot", rng) for _ in range(count))
+    used_consumables = set(state.consumables)
+    created: list[object] = []
+    for _ in range(count):
+        card = sampler.sample_card_of_type(state, "Tarot", rng, used_consumables=used_consumables)
+        created.append(card)
+        used_consumables.update(_sampled_item_identifiers(card))
+    return tuple(created)
+
+
+def _sampled_item_identifiers(item: object) -> set[str]:
+    if not isinstance(item, Mapping):
+        return {str(item)}
+    identifiers = {str(item.get("label", item.get("name", item.get("key", ""))))}
+    key = str(item.get("key", ""))
+    if key:
+        identifiers.add(key)
+    return {identifier for identifier in identifiers if identifier}
 
 
 def _perkeo_consumables(state: GameState, rng: Random) -> tuple[str, ...]:

@@ -105,6 +105,7 @@ class ShopSampler:
         rng = rng or Random()
         slots = self.shop_slot_count(state) if n_slots is None else max(0, n_slots)
         used_jokers = set(_used_joker_identifiers(state))
+        used_consumables = set(_used_consumable_identifiers(state))
         allow_duplicates = _allow_duplicate_shop_cards(state)
         cards: list[dict[str, Any]] = []
         for slot_index in range(slots):
@@ -114,11 +115,14 @@ class ShopSampler:
                 card_type,
                 rng,
                 used_jokers=used_jokers,
+                used_consumables=used_consumables,
                 key_append=f"sho{slot_index}",
             )
             cards.append(card)
             if not allow_duplicates and _is_joker_payload(card):
                 used_jokers.update(_item_identifiers(card))
+            if not allow_duplicates and _is_consumable_payload(card):
+                used_consumables.update(_item_identifiers(card))
         return tuple(cards)
 
     def fill_shop_to_slot_count(
@@ -136,11 +140,14 @@ class ShopSampler:
             return current
 
         used_jokers = set(_used_joker_identifiers(state))
+        used_consumables = set(_used_consumable_identifiers(state))
         allow_duplicates = _allow_duplicate_shop_cards(state)
         if not allow_duplicates:
             for item in current:
                 if isinstance(item, Mapping) and _is_joker_payload(item):
                     used_jokers.update(_item_identifiers(item))
+                if isinstance(item, Mapping) and _is_consumable_payload(item):
+                    used_consumables.update(_item_identifiers(item))
 
         sampled: list[dict[str, Any]] = []
         for slot_index in range(len(current), len(current) + missing_slots):
@@ -150,11 +157,14 @@ class ShopSampler:
                 card_type,
                 rng,
                 used_jokers=used_jokers,
+                used_consumables=used_consumables,
                 key_append=f"sho{slot_index}",
             )
             sampled.append(card)
             if not allow_duplicates and _is_joker_payload(card):
                 used_jokers.update(_item_identifiers(card))
+            if not allow_duplicates and _is_consumable_payload(card):
+                used_consumables.update(_item_identifiers(card))
         return current + tuple(sampled)
 
     def sample_shop_type(self, state: GameState, rng: Random | None = None) -> str:
@@ -174,6 +184,7 @@ class ShopSampler:
         rng: Random | None = None,
         *,
         used_jokers: set[str] | None = None,
+        used_consumables: set[str] | None = None,
         key_append: str = "",
     ) -> dict[str, Any]:
         """Sample one source-center payload for a shop-card type."""
@@ -181,6 +192,8 @@ class ShopSampler:
         rng = rng or Random()
         if used_jokers is None:
             used_jokers = set(_used_joker_identifiers(state))
+        if used_consumables is None:
+            used_consumables = set(_used_consumable_identifiers(state))
         if card_type == "Joker":
             record = self._sample_joker_record(state, rng, used_jokers=used_jokers)
             edition = _poll_edition(state, rng)
@@ -189,8 +202,13 @@ class ShopSampler:
             return _sample_playing_card_payload(self.data, state, card_type, rng)
 
         records = self._pool_records(card_type, state)
+        if card_type in {"Tarot", "Planet", "Spectral"} and not _allow_duplicate_shop_cards(state):
+            records = [record for record in records if not used_consumables.intersection(_item_identifiers(record))]
         if not records:
             records = _fallback_pool(self.data, card_type)
+            if card_type in {"Tarot", "Planet", "Spectral"} and not _allow_duplicate_shop_cards(state):
+                filtered = [record for record in records if not used_consumables.intersection(_item_identifiers(record))]
+                records = filtered or records
         record = rng.choice(records)
         return _payload_from_record(record, state, key_append=key_append)
 
@@ -289,14 +307,24 @@ class ShopSampler:
             return ()
         kind = _pack_kind(pack)
         used_jokers = set(_used_joker_identifiers(state))
+        used_consumables = set(_used_consumable_identifiers(state, include_visible_shop=True))
         contents: list[dict[str, Any]] = []
         for index in range(size):
-            card = self._sample_pack_card(state, kind, rng, index=index, used_jokers=used_jokers)
+            card = self._sample_pack_card(
+                state,
+                kind,
+                rng,
+                index=index,
+                used_jokers=used_jokers,
+                used_consumables=used_consumables,
+            )
             contents.append(card)
             if not _allow_duplicate_shop_cards(state) and (
                 _is_joker_payload(card) or _is_singleton_pack_payload(card)
             ):
                 used_jokers.update(_item_identifiers(card))
+            if not _allow_duplicate_shop_cards(state) and _is_consumable_payload(card):
+                used_consumables.update(_item_identifiers(card))
         return tuple(contents)
 
     def reroll_cost(self, state: GameState) -> int:
@@ -389,22 +417,44 @@ class ShopSampler:
         *,
         index: int,
         used_jokers: set[str],
+        used_consumables: set[str],
     ) -> dict[str, Any]:
         normalized_kind = kind.lower()
         key_append = f"pack{index}"
         if normalized_kind == "arcana" and _has_voucher(state, "Omen Globe") and rng.random() > 0.8:
-            return self.sample_card_of_type(state, "Spectral", rng, used_jokers=used_jokers, key_append=key_append)
+            return self.sample_card_of_type(
+                state,
+                "Spectral",
+                rng,
+                used_jokers=used_jokers,
+                used_consumables=used_consumables,
+                key_append=key_append,
+            )
         if normalized_kind == "celestial" and index == 0 and _has_voucher(state, "Telescope"):
             forced_planet = _most_played_planet_record(self.data, state)
-            if forced_planet is not None:
+            if forced_planet is not None and (
+                _allow_duplicate_shop_cards(state) or not used_consumables.intersection(_item_identifiers(forced_planet))
+            ):
                 return _payload_from_record(forced_planet, state, key_append=key_append)
         legendary = self._maybe_legendary_spectral_payload(
-            state, normalized_kind, rng, used_jokers=used_jokers, key_append=key_append
+            state,
+            normalized_kind,
+            rng,
+            used_jokers=used_jokers,
+            used_consumables=used_consumables,
+            key_append=key_append,
         )
         if legendary is not None:
             return legendary
         card_type = _pack_card_type(kind, rng)
-        return self.sample_card_of_type(state, card_type, rng, used_jokers=used_jokers, key_append=key_append)
+        return self.sample_card_of_type(
+            state,
+            card_type,
+            rng,
+            used_jokers=used_jokers,
+            used_consumables=used_consumables,
+            key_append=key_append,
+        )
 
     def _maybe_legendary_spectral_payload(
         self,
@@ -413,6 +463,7 @@ class ShopSampler:
         rng: Random,
         *,
         used_jokers: set[str],
+        used_consumables: set[str],
         key_append: str,
     ) -> dict[str, Any] | None:
         # Source: functions/common_events.lua create_card.
@@ -424,11 +475,12 @@ class ShopSampler:
         if normalized_kind not in {"arcana", "celestial", "spectral"}:
             return None
         showman = _allow_duplicate_shop_cards(state)
+        used_singletons = used_jokers | used_consumables
         soul_eligible = normalized_kind in {"arcana", "spectral"} and (
-            showman or not used_jokers.intersection({"The Soul", "c_soul"})
+            showman or not used_singletons.intersection({"The Soul", "c_soul"})
         )
         black_hole_eligible = normalized_kind in {"celestial", "spectral"} and (
-            showman or not used_jokers.intersection({"Black Hole", "c_black_hole"})
+            showman or not used_singletons.intersection({"Black Hole", "c_black_hole"})
         )
         selected_name: str | None = None
         if soul_eligible and rng.random() > 0.997:
@@ -906,6 +958,32 @@ def _used_joker_identifiers(state: GameState) -> set[str]:
     return identifiers
 
 
+def _used_consumable_identifiers(state: GameState, *, include_visible_shop: bool = False) -> set[str]:
+    identifiers: set[str] = set(state.consumables)
+    identifiers.update(_identifier_set(state.modifiers.get("used_consumables")))
+    identifiers.update(_identifier_set(state.modifiers.get("used_consumeables")))
+    if include_visible_shop:
+        for item in _modifier_card_mappings(state.modifiers.get("shop_cards")):
+            if _is_consumable_payload(item):
+                identifiers.update(_item_identifiers(item))
+    return identifiers
+
+
+def _modifier_card_mappings(raw: object) -> tuple[Mapping[str, Any], ...]:
+    if raw is None or isinstance(raw, str):
+        return ()
+    if isinstance(raw, Mapping):
+        nested = raw.get("cards")
+        if nested is not None:
+            return _modifier_card_mappings(nested)
+        if {"key", "name", "label", "set"} & set(raw):
+            return (raw,)
+        return tuple(item for item in raw.values() if isinstance(item, Mapping))
+    if isinstance(raw, Iterable):
+        return tuple(item for item in raw if isinstance(item, Mapping))
+    return ()
+
+
 def _owned_voucher_identifiers(state: GameState) -> set[str]:
     identifiers = set(state.vouchers)
     for name in state.vouchers:
@@ -939,6 +1017,10 @@ def _item_identifiers(item: Mapping[str, Any]) -> set[str]:
 
 def _is_joker_payload(item: Mapping[str, Any]) -> bool:
     return str(item.get("set", "")).upper() == "JOKER" or str(item.get("key", "")).startswith("j_")
+
+
+def _is_consumable_payload(item: Mapping[str, Any]) -> bool:
+    return str(item.get("set", "")).upper() in {"TAROT", "PLANET", "SPECTRAL"} or str(item.get("key", "")).startswith("c_")
 
 
 def _is_singleton_pack_payload(item: Mapping[str, Any]) -> bool:

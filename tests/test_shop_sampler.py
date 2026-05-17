@@ -194,6 +194,91 @@ class ShopSamplerTests(unittest.TestCase):
 
         self.assertEqual(sampled["name"], "Owned Joker")
 
+    def test_held_consumables_are_filtered_without_showman(self) -> None:
+        data = tiny_shop_data()
+        data["tarots"] = [
+            {"key": "c_judgement", "name": "Judgement", "set": "Tarot", "cost": 3},
+            {"key": "c_empress", "name": "The Empress", "set": "Tarot", "cost": 3},
+        ]
+        sampler = ShopSampler(data)
+        state = GameState(consumables=("Judgement",))
+
+        sampled = tuple(sampler.sample_card_of_type(state, "Tarot", Random(seed))["name"] for seed in range(10))
+
+        self.assertEqual(set(sampled), {"The Empress"})
+
+    def test_showman_allows_held_consumables_to_reappear(self) -> None:
+        data = tiny_shop_data()
+        data["tarots"] = [{"key": "c_judgement", "name": "Judgement", "set": "Tarot", "cost": 3}]
+        sampler = ShopSampler(data)
+        state = GameState(consumables=("Judgement",), jokers=(Joker("Showman"),))
+
+        sampled = sampler.sample_card_of_type(state, "Tarot", Random(3))
+
+        self.assertEqual(sampled["name"], "Judgement")
+
+    def test_created_consumables_do_not_duplicate_each_other_without_showman(self) -> None:
+        data = tiny_shop_data()
+        data["tarots"] = [
+            {"key": "c_judgement", "name": "Judgement", "set": "Tarot", "cost": 3},
+            {"key": "c_empress", "name": "The Empress", "set": "Tarot", "cost": 3},
+        ]
+        sampler = ShopSampler(data)
+
+        injections = sample_consumable_injections(
+            GameState(),
+            "The Emperor",
+            sampler=sampler,
+            rng=Random(1),
+            storage_use=False,
+        )
+
+        self.assertEqual({item["name"] for item in injections["created_consumables"]}, {"Judgement", "The Empress"})
+
+    def test_visible_shop_consumables_are_filtered_from_pack_contents_without_showman(self) -> None:
+        data = tiny_shop_data()
+        data["tarots"] = [
+            {"key": "c_judgement", "name": "Judgement", "set": "Tarot", "cost": 3},
+            {"key": "c_fool", "name": "The Fool", "set": "Tarot", "cost": 3},
+            {"key": "c_empress", "name": "The Empress", "set": "Tarot", "cost": 3},
+            {"key": "c_moon", "name": "The Moon", "set": "Tarot", "cost": 3},
+        ]
+        data["boosters"] = [
+            {
+                "key": "p_arcana_normal_1",
+                "name": "Arcana Pack",
+                "set": "Booster",
+                "kind": "Arcana",
+                "cost": 4,
+                "config": {"extra": 2},
+            },
+        ]
+        sampler = ShopSampler(data)
+        state = GameState(
+            consumables=("Judgement",),
+            modifiers={"shop_cards": ({"key": "c_fool", "name": "The Fool", "set": "Tarot", "cost": 3},)},
+        )
+
+        contents = sampler.sample_pack_contents(state, data["boosters"][0], Random(1))
+
+        self.assertEqual({item["name"] for item in contents}, {"The Empress", "The Moon"})
+
+    def test_visible_shop_consumables_do_not_block_fresh_shop_rolls(self) -> None:
+        data = tiny_shop_data()
+        data["slot_rates"] = {"Joker": 0, "Tarot": 1, "Planet": 0, "Base": 0, "Spectral": 0}
+        data["tarots"] = [
+            {"key": "c_fool", "name": "The Fool", "set": "Tarot", "cost": 3},
+            {"key": "c_empress", "name": "The Empress", "set": "Tarot", "cost": 3},
+        ]
+        sampler = ShopSampler(data)
+        state = GameState(
+            modifiers={"shop_cards": ({"key": "c_fool", "name": "The Fool", "set": "Tarot", "cost": 3},)}
+        )
+
+        sampled = {sampler.sample_shop(state, n_slots=1, rng=Random(seed))[0]["name"] for seed in range(20)}
+
+        self.assertEqual(sampled, {"The Fool", "The Empress"})
+
     def test_voucher_requires_prior_voucher(self) -> None:
         sampler = ShopSampler(tiny_shop_data())
 
