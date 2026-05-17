@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from balatro_ai.api.state import GameState, Joker
+from balatro_ai.bots.basic_strategy.blind_solver import _blind_capacity_from_score
 from balatro_ai.bots.basic_strategy.build_profile import (
     _build_profile,
     _joker_late_durability_factor,
@@ -371,8 +372,11 @@ def _shop_build_capacity_for_jokers(
     score_state = _shop_pressure_score_state(score_state, pressure.boss_name, raw_target=raw_target)
     current_score = _sample_build_score(score_state, score_state.jokers) * _shop_hand_realism_factor(score_state)
     effective_hands = _shop_pressure_effective_hands(state, pressure.boss_name)
-    raw_capacity = max(1.0, current_score * effective_hands * 0.85)
-    return max(1.0, raw_capacity * pressure.capacity_safety_factor)
+    return _blind_capacity_from_score(
+        current_score,
+        effective_hands,
+        capacity_safety_factor=pressure.capacity_safety_factor,
+    )
 
 
 def _future_headroom_required_score(state: GameState) -> float:

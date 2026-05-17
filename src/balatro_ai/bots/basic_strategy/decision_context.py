@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from balatro_ai.api.state import GameState
+from balatro_ai.bots.basic_strategy.blind_solver import _BlindSolution, _solve_blind
 from balatro_ai.bots.basic_strategy.build_profile import _build_profile
 from balatro_ai.bots.basic_strategy.hand_models import _BlindContext
 from balatro_ai.bots.basic_strategy.hand_preferences import _preferred_hand_type
@@ -32,6 +33,7 @@ class _DecisionContext:
     _build_profile_value: _BuildProfile | None = field(default=None, init=False, repr=False)
     _shop_pressure_value: _ShopPressure | None = field(default=None, init=False, repr=False)
     _preferred_hand_value: HandType | None | object = field(default=_UNSET, init=False, repr=False)
+    _blind_solution_value: _BlindSolution | None = field(default=None, init=False, repr=False)
 
     @property
     def build_profile(self) -> _BuildProfile:
@@ -44,6 +46,12 @@ class _DecisionContext:
         if self._shop_pressure_value is None:
             self._shop_pressure_value = _shop_pressure(self.state)
         return self._shop_pressure_value
+
+    @property
+    def blind_solution(self) -> _BlindSolution:
+        if self._blind_solution_value is None:
+            self._blind_solution_value = _solve_blind(self.state, self.blind)
+        return self._blind_solution_value
 
     @property
     def preferred_hand(self) -> HandType | None:

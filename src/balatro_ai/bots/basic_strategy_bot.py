@@ -46,6 +46,15 @@ from balatro_ai.bots.basic_strategy.blind_setup import (
     _strategic_discard_is_safe,
     _strategic_joker_discard_action,
 )
+from balatro_ai.bots.basic_strategy.blind_solver import (
+    CLEAR_LINE_HAND_TYPES,
+    _BlindSolution,
+    _ClearLine,
+    _best_clear_line,
+    _best_discard_for_solution,
+    _blind_capacity_from_score,
+    _solve_blind,
+)
 from balatro_ai.bots.basic_strategy.blind_tactics import _tactical_blind_action
 from balatro_ai.bots.basic_strategy.blind_reasons import (
     _ante_one_upgrade_discard_reason,
@@ -747,11 +756,12 @@ class BasicStrategyBot:
         if joker_rearrange is not None:
             return joker_rearrange
 
-        best_play = _best_play_action(state, blind_context)
+        blind_solution = context.blind_solution
+        best_play = blind_solution.best_play
         if best_play is None:
             return self._fallback.choose_action(state)
 
-        action = _tactical_blind_action(state, best_play, blind_context)
+        action = _tactical_blind_action(state, best_play, blind_context, solution=blind_solution)
         self._record_blind_action(state, action, blind_context)
         return action
 

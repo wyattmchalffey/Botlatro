@@ -336,6 +336,35 @@ class BasicStrategyBotTests(unittest.TestCase):
         self.assertIn("preferred_hand_hunt", action.metadata["reason"])
         self.assertIn("completion=1320", action.metadata["reason"])
 
+    def test_blind_solver_hunts_nonpreferred_clear_flush_line(self) -> None:
+        state = GameState(
+            ante=3,
+            blind="Big Blind",
+            required_score=300,
+            current_score=0,
+            hands_remaining=2,
+            discards_remaining=4,
+            deck_size=44,
+            hand=(
+                Card("A", "H"),
+                Card("K", "H"),
+                Card("Q", "H"),
+                Card("9", "H"),
+                Card("2", "S"),
+                Card("3", "C"),
+                Card("4", "D"),
+                Card("5", "S"),
+            ),
+            legal_actions=_all_blind_actions(8),
+        )
+
+        action = BasicStrategyBot(seed=1).choose_action(state)
+
+        self.assertEqual(action.action_type, ActionType.DISCARD)
+        self.assertEqual(set(action.card_indices), {4, 5, 6, 7})
+        self.assertIn("blind_solver_clear_line", action.metadata["reason"])
+        self.assertIn("target=Flush", action.metadata["reason"])
+
     def test_boss_blind_hunts_clear_straight_draw_under_pressure(self) -> None:
         state = GameState(
             ante=5,

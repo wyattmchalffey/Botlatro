@@ -13,6 +13,7 @@ Module map:
 * ``banner_policy``: Banner discard-veto EV policy.
 * ``blind_setup``: tempo-spending blind setup plays/discards for joker value.
 * ``blind_reasons``: trace/reason string formatters for blind decisions.
+* ``blind_solver``: shared blind-state solution used by tactics and shop pressure.
 * ``blind_state``: small shared blind-state predicates.
 * ``blind_tactics``: top-level blind play/discard action router.
 * ``build_profile``: joker role scoring, durability, and build-profile policy.

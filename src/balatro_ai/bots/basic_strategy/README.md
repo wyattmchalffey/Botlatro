@@ -38,15 +38,22 @@ discard would make the blind less likely to clear.
 `blind_state.py` contains tiny blind-state predicates shared by blind helpers,
 such as detecting whether the current blind is a boss blind.
 
-`blind_tactics.py` is the top-level blind play/discard router. It computes the
-current best-play score and orders tactical branches such as winning economy
-hunts, first-blind hunts, joker setup, preferred-hand hunts, Banner vetoes,
-panic/safety/chase discards, and final play annotations.
+`blind_tactics.py` is the top-level blind play/discard router. It consumes the
+shared blind solution and orders tactical branches such as winning economy
+hunts, first-blind hunts, joker setup, preferred-hand hunts, generic clear-line
+hunts, Banner vetoes, panic/safety/chase discards, and final play annotations.
 
 `blind_setup.py` contains early-blind setup policies that deliberately spend a
 play or discard for joker value while preserving a safe clear path, including
 DNA/Sixth Sense single-card setup plays, Mystic Summit discard activation, and
 other joker-triggered strategic discards.
+
+`blind_solver.py` owns the shared blind solution surface. It computes the best
+current play, generic best discard, clear-line discard candidates across
+multiple hand families, and the common capacity formula used by shop pressure.
+Blind tactics consume the solution instead of recomputing their own local view,
+and shop-pressure helpers use the same capacity arithmetic when asking whether
+the build is strong enough for upcoming blinds.
 
 `build_profile.py` computes the run's current build profile from owned jokers,
 money, and preferred hand signals. It owns joker role scores, late durability
@@ -71,8 +78,8 @@ one `choose_action()` call.
 `decision_context.py` owns the per-action context object passed through
 `BasicStrategyBot` policy branches. It carries the shop and blind memory views
 and lazily exposes derived evaluator inputs such as build profile, shop
-pressure, and preferred hand. New shared evaluation surfaces should attach here
-instead of adding another ad hoc helper lookup.
+pressure, preferred hand, and blind solution. New shared evaluation surfaces
+should attach here instead of adding another ad hoc helper lookup.
 
 `cards.py` adapts raw shop card dictionaries and simulator card/joker objects.
 It contains card labels/costs, card categories, joker and consumable slot
