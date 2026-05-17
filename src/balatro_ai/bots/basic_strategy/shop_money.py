@@ -95,7 +95,11 @@ def _interest_cap_money(state: GameState) -> int:
 
 def _late_pressure_interest_floor(state: GameState, pressure: _ShopPressure) -> int:
     cap = _interest_cap_money(state)
-    if state.ante < 5:
+    if state.ante < 4:
+        return cap
+    if state.ante == 4 and cap <= BASE_INTEREST_CAP_MONEY:
+        return cap
+    if state.ante == 4 and pressure.ratio < 3.0 and pressure.raw_ratio < 1.75:
         return cap
     if pressure.ratio >= 3.0 or pressure.raw_ratio >= 1.75:
         return max(20, int(cap * 0.65))

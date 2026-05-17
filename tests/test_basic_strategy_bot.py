@@ -2823,6 +2823,35 @@ class BasicStrategyBotTests(unittest.TestCase):
         self.assertEqual(action.metadata["shop_audit"]["money_plan"]["interest_cap_money"], 50)
         self.assertGreaterEqual(state.money - 5, 50)
 
+    def test_ante_four_severe_pressure_can_spend_below_raised_interest_cap(self) -> None:
+        state = GameState(
+            ante=4,
+            blind="Small Blind",
+            money=51,
+            vouchers=("Seed Money",),
+            jokers=(
+                Joker("Supernova"),
+                Joker("Jolly Joker"),
+                Joker("Banner"),
+                Joker("Raised Fist"),
+                Joker("Photograph"),
+            ),
+        )
+        pressure = strategy._ShopPressure(
+            target_score=14500.0,
+            build_capacity=2433.0,
+            ratio=5.96,
+            raw_ratio=3.40,
+            safety_multiplier=1.45,
+            capacity_safety_factor=0.83,
+            boss_name="The Water",
+        )
+
+        self.assertEqual(strategy._interest_cap_money(state), 50)
+        self.assertEqual(strategy._desired_money_reserve(state, pressure), 32)
+        self.assertEqual(strategy._spendable_money(state, pressure), 19)
+        self.assertEqual(strategy._minimum_reroll_bank(state, pressure), 37)
+
     def test_money_scaling_joker_holds_extra_bank_before_rerolling(self) -> None:
         state = GameState(
             ante=6,
@@ -3385,6 +3414,35 @@ class BasicStrategyBotTests(unittest.TestCase):
         self.assertEqual(money_plan["interest_cap_money"], 100)
         self.assertEqual(money_plan["reserve_money"], 65)
         self.assertEqual(money_plan["spendable_money"], 28)
+
+    def test_late_shop_closer_rerolls_above_interest_cap_when_score_is_short(self) -> None:
+        state = GameState(
+            ante=6,
+            blind="Small Blind",
+            money=148,
+            vouchers=("Seed Money", "Money Tree"),
+            jokers=(
+                Joker("Supernova"),
+                Joker("Jolly Joker"),
+                Joker("Banner"),
+                Joker("Raised Fist"),
+                Joker("Photograph"),
+            ),
+            modifiers={"cleared_blind": {"kind": "BIG"}},
+        )
+        pressure = strategy._ShopPressure(
+            target_score=58000.0,
+            build_capacity=40145.0,
+            ratio=1.44,
+            raw_ratio=0.79,
+            safety_multiplier=1.45,
+            capacity_safety_factor=0.83,
+            boss_name="The Water",
+        )
+        profile = strategy._build_profile(state)
+
+        self.assertTrue(strategy._late_pressure_closer_mode(state, pressure, profile))
+        self.assertGreater(strategy._late_pressure_closer_reroll_limit(state, pressure, profile), 0)
 
     def test_ante_eight_bank_conversion_dips_below_high_interest_cap_for_missing_xmult(self) -> None:
         state = GameState(

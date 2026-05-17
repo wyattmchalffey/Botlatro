@@ -44,7 +44,13 @@ def _minimum_reroll_bank(state: GameState, pressure: _ShopPressure | None = None
                 if pressure is not None
                 else None
             )
-            if closing_cap is None:
+            raised_cap_under_severe_pressure = (
+                pressure is not None
+                and state.ante == 4
+                and _interest_cap_money(state) > 25
+                and (pressure.ratio >= 3.0 or pressure.raw_ratio >= 1.75)
+            )
+            if closing_cap is None and not raised_cap_under_severe_pressure:
                 reserve = max(reserve, _interest_cap_money(state))
         return reserve + reroll_cost
     if state.ante <= 1 and not _has_real_scoring_joker(state) and not _visible_early_power_path(state):
@@ -274,6 +280,8 @@ def _late_pressure_closer_mode(
         return True
     if _shop_has_followup_big_blind_shop(state):
         return pressure.raw_ratio >= 1.75 or pressure.ratio >= 3.0
+    if state.ante >= 6 and spendable >= 30 and pressure.ratio >= 1.25 and pressure.raw_ratio >= 0.70:
+        return True
     if pressure.raw_ratio >= 1.2:
         return True
     if pressure.ratio >= 1.75:
