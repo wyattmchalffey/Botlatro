@@ -261,6 +261,8 @@ def _shop_cleared_blind_kind(state: GameState) -> str:
 
 
 def _boss_capacity_factor(state: GameState, boss_name: str) -> float:
+    if boss_name == "The Plant":
+        return _plant_capacity_factor(state)
     if boss_name == "Verdant Leaf":
         return 0.58
     if boss_name == "Crimson Heart":
@@ -287,6 +289,13 @@ def _boss_capacity_factor(state: GameState, boss_name: str) -> float:
         return 0.95
     if boss_name in {"The Club", "The Goad", "The Head", "The Window"}:
         return _suit_boss_capacity_factor(state, boss_name)
+    return 1.0
+
+
+def _plant_capacity_factor(state: GameState) -> float:
+    names = _active_joker_names(state)
+    if "Pareidolia" in names:
+        return 0.08
     return 1.0
 
 

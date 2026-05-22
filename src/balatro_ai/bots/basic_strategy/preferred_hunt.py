@@ -290,6 +290,12 @@ def _preferred_hunt_discard_detail_limit(
     limit = _discard_detail_limit(state)
     if preferred in {HandType.STRAIGHT, HandType.STRAIGHT_FLUSH}:
         limit = max(limit, 48 if clear_line_only else 32)
+        if state.ante >= 7:
+            limit = min(limit, 18 if clear_line_only else 14)
+        if len(state.hand) >= 10:
+            limit = min(limit, 10)
+        if len(state.hand) >= 9 and len(state.jokers) >= 6:
+            limit = min(limit, 12)
     return limit
 
 
@@ -321,13 +327,24 @@ def _preferred_hand_hunt_redraw_play_action(
     if not candidates:
         return None
 
-    ranked: list[tuple[tuple[float, float, int, float, int], _PlayCandidate, _StraightDrawEvaluation]] = []
+    candidate_pool: list[tuple[tuple[int, int, int], _PlayCandidate, tuple[Card, ...]]] = []
     for candidate in candidates:
         if _hand_matches_preferred_family(candidate.hand_type, preferred):
             continue
         kept_cards = tuple(card for index, card in enumerate(state.hand) if index not in candidate.action.card_indices)
-        if _straight_draw_potential(kept_cards) < 3:
+        potential = _straight_draw_potential(kept_cards)
+        if potential < 3:
             continue
+        candidate_pool.append(((potential, candidate.score, -_action_index_sum(candidate.action)), candidate, kept_cards))
+
+    if not candidate_pool:
+        return None
+
+    redraw_limit = 14 if len(state.hand) >= 10 else 32
+    candidate_pool = sorted(candidate_pool, key=lambda item: item[0], reverse=True)[:redraw_limit]
+
+    ranked: list[tuple[tuple[float, float, int, float, int], _PlayCandidate, _StraightDrawEvaluation]] = []
+    for _, candidate, kept_cards in candidate_pool:
         draw_count = _discard_draw_count(state, candidate.action, len(kept_cards))
         straight_eval = _straight_draw_evaluation(state, kept_cards, draw_count=draw_count, context=context)
         if straight_eval is None or straight_eval.present_count < 3:

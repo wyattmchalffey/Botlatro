@@ -285,14 +285,26 @@ def _discard_action_playstyle_bonus(
         if face_count >= 3:
             bonus += 520.0 + face_count * 120.0
     if "Ride the Bus" in names and "Pareidolia" not in names:
-        bonus += 90.0 * sum(1 for card in discarded_cards if _is_face_card_for_state(state, card))
+        bonus += _ride_the_bus_face_discard_bonus(state) * sum(
+            1 for card in discarded_cards if _is_face_card_for_state(state, card)
+        )
     if "Green Joker" in names:
-        bonus -= 280.0 + _current_plus_for_joker(state, "Green Joker", suffix="mult") * 30.0
+        bonus -= _green_joker_discard_penalty(state)
     if "Delayed Gratification" in names:
         bonus -= 420.0
     if "Ramen" in names:
         bonus -= 80.0 * len(discarded_cards)
     return bonus
+
+
+def _ride_the_bus_face_discard_bonus(state: GameState) -> float:
+    current_mult = max(0, _current_plus_for_joker(state, "Ride the Bus", suffix="mult"))
+    return 95.0 + min(280.0, current_mult * 50.0)
+
+
+def _green_joker_discard_penalty(state: GameState) -> float:
+    current_mult = max(0, _current_plus_for_joker(state, "Green Joker", suffix="mult"))
+    return 85.0 + min(140.0, current_mult * 8.0)
 
 
 def _is_first_discard_window(state: GameState, context: _BlindContext) -> bool:

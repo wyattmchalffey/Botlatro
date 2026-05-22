@@ -90,6 +90,8 @@ from balatro_ai.bots.basic_strategy.build_scoring import (
     _jokers_after_buy_for_scoring,
     _jokers_after_sell_for_scoring,
     _normal_slot_joker_card,
+    _repeatable_build_score,
+    _repeatable_build_score_uncached,
     _sample_build_score,
     _sample_build_score_uncached,
     _sample_hand_build_score,
@@ -438,6 +440,7 @@ from balatro_ai.bots.basic_strategy.profile import (
     _pressure_payload,
     _role_requirement,
 )
+from balatro_ai.bots.basic_strategy.run_plan import _RunPlan, _run_plan, _run_plan_payload
 from balatro_ai.bots.basic_strategy.rare_hands import (
     _has_impossible_hand_manipulation_path,
     _rare_hand_deck_manipulation_need,
@@ -522,6 +525,7 @@ from balatro_ai.bots.basic_strategy.shop_packs import (
     _celestial_candidate_hand_types,
     _celestial_pack_capacity_gain,
     _is_buffoon_pack,
+    _is_standard_pack,
     _late_pack_is_worth_opening,
     _late_pack_limit,
     _minimum_late_pack_capacity_gain,
@@ -530,6 +534,7 @@ from balatro_ai.bots.basic_strategy.shop_packs import (
     _rare_hand_pack_bonus,
     _rare_hand_pack_capacity_bonus,
     _score_loss_after_spending,
+    _standard_pack_has_build_payoff,
 )
 from balatro_ai.bots.basic_strategy.shop_forecast import (
     _blind_name_from_mapping,
@@ -582,6 +587,7 @@ from balatro_ai.bots.basic_strategy.shop_reroll import (
     _late_reroll_limit,
     _minimum_reroll_bank,
     _missing_critical_roles,
+    _panic_reroll_is_worth_it,
     _pressure_spend_mode,
     _pressure_spend_reserve_slack,
     _reroll_cost_escalation_penalty,
@@ -717,6 +723,7 @@ class BasicStrategyBot:
                 context.shop,
                 pressure=context.shop_pressure,
                 profile=context.build_profile,
+                run_plan=context.run_plan,
             )
             if _has_shop_policy_action(state)
             else None

@@ -166,6 +166,13 @@ draw lines are safe enough under the current blind.
 formatters for traces. It describes what the bot has and what roles it is
 missing; `build_profile.py` computes the concrete role scores.
 
+`run_plan.py` derives the bot's current strategic plan from state, build
+profile, and shop pressure. It labels the run archetype, commitment level, shop
+posture, desired score buffer, reroll budget, and pack/voucher/spectral
+permissions. It is a steering signal rather than an override: explicit hard
+blocks such as denied vouchers still win, and Standard packs only become plan
+priorities for builds with a dedicated playing-card payoff.
+
 `rare_hands.py` identifies and scores support for rare-hand plans such as Four
 of a Kind, Five of a Kind, Flush Five, and Flush House. It also contains the
 rare-hand tarot support checks and visible rank-target helpers used by joker,
@@ -199,9 +206,10 @@ late pressure reserve caps, spendable money, money-gain value, and cost/interest
 penalties used by buys, vouchers, packs, rerolls, and audit payloads.
 
 `shop_packs.py` owns booster-pack valuation and late-shop pack gating. It
-scores pack kinds, rare-hand pack support, late pack-open limits, capacity gain
-from celestial/buffoon/arcana/standard/spectral packs, and the minimum capacity
-gain needed before spending late money on another pack.
+scores pack kinds, rare-hand pack support, Standard-pack payoff checks, late
+pack-open limits, capacity gain from celestial/buffoon/arcana/standard/spectral
+packs, and the minimum capacity gain needed before spending late money on
+another pack.
 
 `shop_forecast.py` estimates upcoming blind pressure for shop decisions. It
 parses upcoming boss metadata, projects next/final required scores, applies boss
@@ -222,10 +230,10 @@ the run has real scoring, tracks money-scaling joker presence, and exposes
 hand-support checks shared by joker and tarot valuation.
 
 `shop_vouchers.py` owns voucher valuation. It blocks vouchers that are already
-owned, hard-denied, or not useful for the current boss/shop pressure, then
-applies pressure-aware adjustments for hand/discard count, hand size, shop
-slots, discounts, rerolls, editions, tarot/planet generators, interest caps,
-Retcon, Antimatter, and Observatory.
+owned, hard-denied, or not useful for the current boss/shop pressure before any
+run-plan tuning, then applies pressure-aware adjustments for hand/discard count,
+hand size, shop slots, discounts, rerolls, editions, tarot/planet generators,
+interest caps, Retcon, Antimatter, and Observatory.
 
 `shop_values.py` is the shop valuation glue used by the main shop action flow.
 It scores legal buy/open/reroll actions, computes shop/card/pack thresholds,

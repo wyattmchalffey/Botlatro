@@ -22,6 +22,7 @@ from balatro_ai.bots.basic_strategy.data import (
 )
 from balatro_ai.bots.basic_strategy.hand_preferences import _preferred_hand_type
 from balatro_ai.bots.basic_strategy.jokers import (
+    _driver_license_readiness_factor,
     _joker_current_plus_value,
     _joker_current_xmult_value,
     _joker_has_sticker,
@@ -107,7 +108,10 @@ def _joker_role_scores(state: GameState, joker: Joker) -> dict[str, float]:
 
     scores["chips"] += _static_chip_role_score(name)
     scores["mult"] += _static_mult_role_score(name)
-    scores["xmult"] += _static_xmult_role_score(name)
+    static_xmult = _static_xmult_role_score(name)
+    if name == "Driver's License":
+        static_xmult *= _driver_license_readiness_factor(state, joker)
+    scores["xmult"] += static_xmult
     if name in SCALING_JOKERS or name in JOKER_SCALING_VALUES:
         scores["scaling"] += float(JOKER_SCALING_VALUES.get(name, 24))
         if name in {"Green Joker", "Ride the Bus", "Square Joker", "Runner", "Spare Trousers"}:

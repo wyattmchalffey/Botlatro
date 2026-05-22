@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, replace
 from itertools import combinations
 import sys
 
@@ -11,6 +12,13 @@ from balatro_ai.bots.basic_strategy.actions import _annotated_action
 from balatro_ai.bots.basic_strategy.blind_reasons import (
     _ante_one_upgrade_discard_reason,
     _first_blind_discard_reason,
+)
+from balatro_ai.bots.basic_strategy.discard_state import _discard_draw_count
+from balatro_ai.bots.basic_strategy.draw_evaluation import (
+    _preferred_target_draw_evaluation,
+    _straight_draw_evaluation,
+    _straight_draw_reason_detail,
+    _target_draw_reason_detail,
 )
 from balatro_ai.bots.basic_strategy.discard_policy import _best_discard_action as _default_best_discard_action
 from balatro_ai.bots.basic_strategy.hand_models import _BlindContext
@@ -31,6 +39,27 @@ from balatro_ai.rules.hand_evaluator import HandType, RANK_VALUES, STRAIGHT_VALU
 ANTE_ONE_UPGRADE_NEAR_CLEAR_RATIO = 0.80
 ANTE_ONE_UPGRADE_TARGET_RATIO = 0.96
 ANTE_ONE_UPGRADE_MIN_GAIN = 16
+ANTE_ONE_PLAY_NEAR_CLEAR_RATIO = 0.86
+ANTE_ONE_PLAY_MIN_DISCARD_GAIN = 32
+ANTE_ONE_HUNT_MIN_CLEAR_PROBABILITY = 0.10
+ANTE_ONE_HUNT_TARGETS = (
+    HandType.FLUSH,
+    HandType.STRAIGHT,
+    HandType.FULL_HOUSE,
+    HandType.THREE_OF_A_KIND,
+    HandType.FOUR_OF_A_KIND,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class _AnteOneHuntLine:
+    action: Action
+    hand_type: HandType
+    projected_score: int
+    completion_score: int
+    completion_probability: float
+    quality: float
+    detail: str
 
 
 def _first_blind_one_hand_hunt_action(
@@ -52,7 +81,28 @@ def _first_blind_one_hand_hunt_action(
     ):
         return None
 
-    best_discard = _best_discard_action(state, current_best_score=score, context=context)
+    hunt_line = _ante_one_best_one_hand_hunt_line(state, score, remaining_score, context)
+    if hunt_line is not None:
+        if _ante_one_should_play_near_clear(state, best_play, hunt_line, score, remaining_score, context):
+            return _annotated_action(
+                best_play,
+                reason=(
+                    "first_blind_near_clear_play "
+                    f"current_score={score} projected_score={hunt_line.projected_score} "
+                    f"hunt_p={hunt_line.completion_probability:.2f} remaining={remaining_score}"
+                ),
+            )
+        return _annotated_action(
+            hunt_line.action,
+            reason=(
+                f"first_blind_one_hand_hunt target={hunt_line.hand_type.value} "
+                f"current_score={score} projected_score={hunt_line.projected_score} "
+                f"completion={hunt_line.completion_score} p={hunt_line.completion_probability:.2f} "
+                f"discarding={len(hunt_line.action.card_indices)} {hunt_line.detail}"
+            ),
+        )
+
+    best_discard = _ante_one_best_unbiased_projected_discard(state, score, context)
     if best_discard is None:
         return None
     upgrade_discard = _ante_one_near_clear_upgrade_discard_action(
@@ -66,6 +116,195 @@ def _first_blind_one_hand_hunt_action(
     if upgrade_discard is not None:
         return upgrade_discard
     return _annotated_action(best_discard, reason=_first_blind_discard_reason(state, best_play, best_discard, context))
+
+
+def _ante_one_best_one_hand_hunt_line(
+    state: GameState,
+    score: int,
+    remaining_score: int,
+    context: _BlindContext | None = None,
+) -> _AnteOneHuntLine | None:
+    context = context or _BlindContext()
+    if state.discards_remaining <= 0 or remaining_score <= 0:
+        return None
+
+    probability_state = replace(state, known_deck=())
+    ranked: list[tuple[tuple[float, float, float, int, int], _AnteOneHuntLine]] = []
+    for action in _ante_one_discard_actions(state):
+        kept_cards = tuple(card for index, card in enumerate(state.hand) if index not in action.card_indices)
+        if not kept_cards:
+            continue
+        discarded_cards = tuple(state.hand[index] for index in action.card_indices)
+        draw_count = _discard_draw_count(state, action, len(kept_cards))
+        if draw_count <= 0:
+            continue
+        projected_score = _projected_score_after_discard(state, action, context)
+        for line in _ante_one_hunt_lines_for_action(
+            probability_state,
+            action,
+            kept_cards=kept_cards,
+            discarded_cards=discarded_cards,
+            draw_count=draw_count,
+            projected_score=projected_score,
+            context=context,
+        ):
+            if line.completion_score < remaining_score:
+                continue
+            if line.completion_probability < _ante_one_hunt_probability_floor(state, score, remaining_score):
+                continue
+            ranked.append(
+                (
+                    (
+                        line.completion_probability,
+                        min(float(line.completion_score), remaining_score * 1.4),
+                        line.quality,
+                        len(action.card_indices),
+                        -_action_index_sum(action),
+                    ),
+                    line,
+                )
+            )
+
+    if not ranked:
+        return None
+    return max(ranked, key=lambda item: item[0])[1]
+
+
+def _ante_one_hunt_lines_for_action(
+    state: GameState,
+    action: Action,
+    *,
+    kept_cards: tuple[Card, ...],
+    discarded_cards: tuple[Card, ...],
+    draw_count: int,
+    projected_score: int,
+    context: _BlindContext,
+) -> tuple[_AnteOneHuntLine, ...]:
+    lines: list[_AnteOneHuntLine] = []
+    for hand_type in ANTE_ONE_HUNT_TARGETS:
+        if hand_type == HandType.STRAIGHT:
+            straight = _straight_draw_evaluation(
+                state,
+                kept_cards,
+                discarded_cards=discarded_cards,
+                draw_count=draw_count,
+                context=context,
+            )
+            if straight is None or straight.present_count < 3:
+                continue
+            lines.append(
+                _AnteOneHuntLine(
+                    action=action,
+                    hand_type=HandType.STRAIGHT,
+                    projected_score=projected_score,
+                    completion_score=straight.completion_score,
+                    completion_probability=straight.completion_probability,
+                    quality=straight.quality,
+                    detail=_straight_draw_reason_detail(straight),
+                )
+            )
+            continue
+
+        target = _preferred_target_draw_evaluation(
+            state,
+            hand_type,
+            kept_cards,
+            discarded_cards=discarded_cards,
+            draw_count=draw_count,
+            context=context,
+        )
+        if target is None or target.present_count < _ante_one_min_present_for_target(hand_type):
+            continue
+        lines.append(
+            _AnteOneHuntLine(
+                action=action,
+                hand_type=hand_type,
+                projected_score=projected_score,
+                completion_score=target.completion_score,
+                completion_probability=target.completion_probability,
+                quality=target.quality,
+                detail=_target_draw_reason_detail(target),
+            )
+        )
+    return tuple(lines)
+
+
+def _ante_one_min_present_for_target(hand_type: HandType) -> int:
+    if hand_type in {HandType.FLUSH, HandType.STRAIGHT, HandType.FULL_HOUSE}:
+        return 3
+    if hand_type == HandType.THREE_OF_A_KIND:
+        return 2
+    return 3
+
+
+def _ante_one_hunt_probability_floor(state: GameState, score: int, remaining_score: int) -> float:
+    floor = ANTE_ONE_HUNT_MIN_CLEAR_PROBABILITY
+    if state.discards_remaining >= 3:
+        floor -= 0.03
+    if score >= remaining_score * 0.75:
+        floor += 0.04
+    return max(0.04, floor)
+
+
+def _ante_one_best_unbiased_projected_discard(
+    state: GameState,
+    score: int,
+    context: _BlindContext | None = None,
+) -> Action | None:
+    context = context or _BlindContext()
+    ranked: list[tuple[tuple[int, int, int], Action]] = []
+    for action in _ante_one_discard_actions(state):
+        projected_score = _projected_score_after_discard(state, action, context)
+        if projected_score < score:
+            continue
+        ranked.append(
+            (
+                (
+                    projected_score,
+                    len(action.card_indices),
+                    -_action_index_sum(action),
+                ),
+                action,
+            )
+        )
+    if not ranked:
+        return None
+    return max(ranked, key=lambda item: item[0])[1]
+
+
+def _ante_one_discard_actions(state: GameState) -> tuple[Action, ...]:
+    return tuple(
+        action
+        for action in state.legal_actions
+        if action.action_type == ActionType.DISCARD and action.card_indices
+    )
+
+
+def _ante_one_should_play_near_clear(
+    state: GameState,
+    best_play: Action,
+    hunt_line: _AnteOneHuntLine,
+    score: int,
+    remaining_score: int,
+    context: _BlindContext | None = None,
+) -> bool:
+    if (
+        state.ante != 1
+        or state.blind != "Small Blind"
+        or state.current_score != 0
+        or state.hands_remaining < 3
+        or state.jokers
+        or remaining_score <= 0
+        or score < remaining_score * ANTE_ONE_PLAY_NEAR_CLEAR_RATIO
+    ):
+        return False
+
+    if hunt_line.completion_probability >= _ante_one_hunt_probability_floor(state, score, remaining_score):
+        return False
+    if hunt_line.projected_score >= remaining_score:
+        return False
+    min_gain = max(ANTE_ONE_PLAY_MIN_DISCARD_GAIN, int(remaining_score * 0.10))
+    return hunt_line.projected_score < score + min_gain
 
 
 def _ante_one_near_clear_upgrade_discard_action(

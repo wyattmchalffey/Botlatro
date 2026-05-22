@@ -427,7 +427,7 @@ def simulate_buy(
     if edition is not None and index == edition_target_index:
         item = _shop_item_with_tag_edition(item, edition)
     cost = _effective_item_buy_cost(state, item)
-    if cost > state.money:
+    if not _can_afford_cost(state, cost):
         raise ValueError(f"Cannot buy {_item_label(item)} for ${cost} with ${state.money}")
     buy_and_use_consumable = _item_is_consumable(item) and not _has_consumable_room(state)
     if buy_and_use_consumable and not _shop_consumable_can_be_used_directly(state, item, action):
@@ -593,7 +593,7 @@ def simulate_reroll(
     if action.action_type != ActionType.REROLL:
         raise ValueError(f"simulate_reroll requires reroll, got {action.action_type.value}")
     cost, next_modifiers = _spend_reroll(state)
-    if cost > state.money:
+    if not _can_afford_cost(state, cost):
         raise ValueError(f"Cannot reroll for ${cost} with ${state.money}")
     shop_cards = tuple(new_shop_cards)
     next_modifiers = _with_modifier_items(next_modifiers, "shop_cards", shop_cards)
@@ -630,7 +630,7 @@ def simulate_open_pack(
         raise ValueError(f"Open-pack action index is outside booster_packs: {action.amount}")
     pack = packs[index]
     cost = _effective_item_buy_cost(state, pack)
-    if cost > state.money:
+    if not _can_afford_cost(state, cost):
         raise ValueError(f"Cannot open {_item_label(pack)} for ${cost} with ${state.money}")
     contents = tuple(pack_contents)
     hallucination_cards = _created_labels(created_consumables)
@@ -2553,6 +2553,17 @@ def _effective_item_buy_cost(state: GameState, item: object) -> int:
     return _item_buy_cost(item)
 
 
+def _can_afford_cost(state: GameState, cost: int) -> bool:
+    return state.money - max(0, cost) >= _bankrupt_at(state)
+
+
+def _bankrupt_at(state: GameState) -> int:
+    try:
+        return min(0, int(state.modifiers.get("bankrupt_at", 0)))
+    except (TypeError, ValueError):
+        return 0
+
+
 def _astronomer_makes_item_free(state: GameState, item: object) -> bool:
     if not _effective_joker_count(state.jokers, "Astronomer"):
         return False
@@ -4137,6 +4148,10 @@ def _split_action_cards(state: GameState, action: Action) -> tuple[tuple[Card, .
 
 
 def _played_hand_types_this_round(state: GameState) -> tuple[str, ...]:
+    ordered = _round_played_hand_type_order(state.modifiers)
+    if ordered:
+        return ordered
+
     hands = state.modifiers.get("hands", {})
     if not isinstance(hands, dict):
         return ()
@@ -4159,6 +4174,20 @@ def _played_hand_types_this_round(state: GameState) -> tuple[str, ...]:
     return tuple(name for _, name in sorted(played, key=lambda item: item[0]))
 
 
+def _round_played_hand_type_order(modifiers: dict[str, object]) -> tuple[str, ...]:
+    raw = modifiers.get("round_played_hand_types", ())
+    if not isinstance(raw, list | tuple):
+        return ()
+
+    ordered: list[str] = []
+    for item in raw:
+        if isinstance(item, HandType):
+            ordered.append(item.value)
+        elif item is not None:
+            ordered.append(str(item))
+    return tuple(name for name in ordered if name)
+
+
 def _played_hand_counts(state: GameState) -> dict[str, int]:
     hands = state.modifiers.get("hands", {})
     if not isinstance(hands, dict):
@@ -4175,6 +4204,7 @@ def _played_hand_counts(state: GameState) -> dict[str, int]:
 
 def _with_played_hand_type(modifiers: dict[str, object], hand_type: HandType) -> dict[str, object]:
     updated = dict(modifiers)
+    updated["round_played_hand_types"] = (*_round_played_hand_type_order(modifiers), hand_type.value)
     raw_hands = modifiers.get("hands", {})
     hands = dict(raw_hands) if isinstance(raw_hands, dict) else {}
     current = hands.get(hand_type.value, {})
@@ -4291,6 +4321,7 @@ def _with_new_round_counters(modifiers: dict[str, object]) -> dict[str, object]:
     updated = dict(modifiers)
     updated["round_hands_played"] = 0
     updated["hands_played"] = 0
+    updated["round_played_hand_types"] = ()
     updated["round_discards_used"] = 0
     updated["discards_used"] = 0
     updated["discards_used_this_round"] = 0

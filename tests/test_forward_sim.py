@@ -5,9 +5,10 @@ from dataclasses import replace
 
 import context  # noqa: F401
 from balatro_ai.api.actions import Action, ActionType
-from balatro_ai.api.state import Card, GamePhase, GameState, Joker
+from balatro_ai.api.state import Card, GamePhase, GameState, Joker, with_derived_legal_actions
 from balatro_ai.search.forward_sim import (
     StochasticPlayOutcomes,
+    _played_hand_types_this_round,
     simulate_cash_out,
     simulate_buy,
     simulate_choose_pack_card,
@@ -50,6 +51,50 @@ class ForwardSimTests(unittest.TestCase):
         self.assertEqual(tuple(card.short_name for card in next_state.hand), ("KD", "QS", "QC", "2C"))
         self.assertEqual(next_state.modifiers["hands"]["Pair"]["played_this_round"], 1)
         self.assertEqual(next_state.legal_actions, ())
+
+    def test_simulate_play_keeps_chronological_round_hand_types_for_the_mouth(self) -> None:
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            blind="The Mouth",
+            required_score=10_000,
+            current_score=0,
+            hands_remaining=4,
+            discards_remaining=0,
+            deck_size=20,
+            hand=(
+                Card("10", "S"),
+                Card("J", "H"),
+                Card("Q", "D"),
+                Card("K", "C"),
+                Card("A", "S"),
+                Card("2", "C"),
+                Card("2", "D"),
+            ),
+            modifiers={
+                "hands": {
+                    "Pair": {"level": 1, "played": 0, "played_this_round": 0, "order": 1},
+                    "Straight": {"level": 1, "played": 0, "played_this_round": 0, "order": 5},
+                }
+            },
+        )
+
+        after_straight = simulate_play(
+            state,
+            Action(ActionType.PLAY_HAND, card_indices=(0, 1, 2, 3, 4)),
+            drawn_cards=(Card("3", "S"), Card("4", "H"), Card("5", "D"), Card("6", "C"), Card("7", "S")),
+        )
+        pair_indices = tuple(index for index, card in enumerate(after_straight.hand) if card.rank == "2")
+        after_pair = simulate_play(after_straight, Action(ActionType.PLAY_HAND, card_indices=pair_indices))
+        straight_indices = tuple(
+            index
+            for index, card in enumerate(after_pair.hand)
+            if (card.rank, card.suit) in {("3", "S"), ("4", "H"), ("5", "D"), ("6", "C"), ("7", "S")}
+        )
+        after_second_straight = simulate_play(after_pair, Action(ActionType.PLAY_HAND, card_indices=straight_indices))
+
+        self.assertEqual(_played_hand_types_this_round(after_pair), ("Straight", "Pair"))
+        self.assertEqual(after_pair.current_score, after_straight.current_score)
+        self.assertGreater(after_second_straight.current_score, after_pair.current_score)
 
     def test_simulate_play_returns_round_cards_to_deck_when_blind_clears(self) -> None:
         state = GameState(
@@ -1426,6 +1471,30 @@ class ForwardSimTests(unittest.TestCase):
                 Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),
             )
 
+        derived_full_slots = with_derived_legal_actions(
+            GameState(
+                phase=GamePhase.SHOP,
+                money=9,
+                consumables=("Jupiter", "Saturn"),
+                modifiers={
+                    "shop_cards": (
+                        {"label": "Strength", "set": "TAROT", "cost": {"buy": 3}},
+                        {"label": "Temperance", "set": "TAROT", "cost": {"buy": 3}},
+                        {"label": "Mars", "set": "PLANET", "cost": {"buy": 3}},
+                    )
+                },
+            )
+        )
+
+        buy_amounts = {
+            action.amount
+            for action in derived_full_slots.legal_actions
+            if action.action_type == ActionType.BUY and action.target_id == "card"
+        }
+        self.assertNotIn(0, buy_amounts)
+        self.assertIn(1, buy_amounts)
+        self.assertIn(2, buy_amounts)
+
         card_state = GameState(
             phase=GamePhase.SHOP,
             money=5,
@@ -1473,6 +1542,46 @@ class ForwardSimTests(unittest.TestCase):
         self.assertEqual(next_state.modifiers["interest_amount"], 2)
         self.assertEqual(next_state.modifiers["probability_multiplier"], 2.0)
         self.assertTrue(next_state.modifiers["allow_duplicate_jokers"])
+
+    def test_simulate_buy_allows_credit_card_debt_floor(self) -> None:
+        state = GameState(
+            phase=GamePhase.SHOP,
+            money=0,
+            jokers=(Joker("Credit Card", sell_value=1),),
+            modifiers={
+                "bankrupt_at": -20,
+                "shop_cards": (
+                    {"label": "Jupiter", "set": "PLANET", "cost": {"buy": 3}},
+                ),
+            },
+        )
+
+        next_state = simulate_buy(
+            state,
+            Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),
+        )
+
+        self.assertEqual(next_state.money, -3)
+        self.assertEqual(next_state.consumables, ("Jupiter",))
+
+    def test_simulate_buy_rejects_past_credit_card_debt_floor(self) -> None:
+        state = GameState(
+            phase=GamePhase.SHOP,
+            money=-19,
+            jokers=(Joker("Credit Card", sell_value=1),),
+            modifiers={
+                "bankrupt_at": -20,
+                "shop_cards": (
+                    {"label": "Jupiter", "set": "PLANET", "cost": {"buy": 3}},
+                ),
+            },
+        )
+
+        with self.assertRaises(ValueError):
+            simulate_buy(
+                state,
+                Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),
+            )
 
     def test_multiple_real_oops_stack_and_unstack_probability_multiplier(self) -> None:
         state = GameState(

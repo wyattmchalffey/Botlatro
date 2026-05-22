@@ -2598,6 +2598,10 @@ def _card_identity_key(card: Card) -> tuple[str, str, str | None, str | None, st
 
 
 def _played_hand_types_this_round(state: GameState) -> tuple[str, ...]:
+    ordered = _round_played_hand_type_order(state.modifiers)
+    if ordered:
+        return ordered
+
     hands = state.modifiers.get("hands", {})
     if not isinstance(hands, Mapping):
         return ()
@@ -2609,6 +2613,18 @@ def _played_hand_types_this_round(state: GameState) -> tuple[str, ...]:
         order = _int_value(value.get("order"))
         played.extend((order, str(name)) for _ in range(max(0, played_count)))
     return tuple(name for _, name in sorted(played, key=lambda item: item[0]))
+
+
+def _round_played_hand_type_order(modifiers: Mapping[str, object]) -> tuple[str, ...]:
+    raw = modifiers.get("round_played_hand_types", ())
+    if not isinstance(raw, list | tuple):
+        return ()
+
+    ordered: list[str] = []
+    for item in raw:
+        if item is not None:
+            ordered.append(str(getattr(item, "value", item)))
+    return tuple(name for name in ordered if name)
 
 
 def _played_hand_counts(state: GameState) -> dict[str, int]:

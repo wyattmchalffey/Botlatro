@@ -11,12 +11,13 @@ from balatro_ai.bots.basic_strategy.cards import _card_cost, _card_label, _norma
 from balatro_ai.bots.basic_strategy.hand_preferences import _flexible_hand_types, _preferred_hand_type
 from balatro_ai.bots.basic_strategy.jokers import _active_joker_names
 from balatro_ai.bots.basic_strategy.profile import _ShopContext, _ShopPressure
+from balatro_ai.bots.basic_strategy.run_plan import _RunPlan
 from balatro_ai.bots.basic_strategy.rare_hands import _rare_hand_deck_manipulation_need, _rare_hand_plan
 from balatro_ai.bots.basic_strategy.shop_reroll import _late_pressure_closer_mode, _rich_late_role_hunt
 from balatro_ai.rules.hand_evaluator import HandType
 
 
-def _pack_value(state: GameState, pack: object) -> float:
+def _pack_value(state: GameState, pack: object, plan: _RunPlan | None = None) -> float:
     name = _card_label(pack).lower()
     profile = _build_profile(state)
     if "buffoon" in name:
@@ -41,10 +42,10 @@ def _pack_value(state: GameState, pack: object) -> float:
             value += 6
         value += _rare_hand_pack_bonus(state, "arcana")
     elif "standard" in name:
-        value = 18
-        value += _rare_hand_pack_bonus(state, "standard")
-        if any(joker.name in {"Hologram", "Vampire", "Midas Mask"} for joker in state.jokers):
-            value += 16
+        value = 6
+        if _standard_pack_has_build_payoff(state):
+            value += 18
+            value += _rare_hand_pack_bonus(state, "standard")
     elif "spectral" in name:
         value = 20 if state.ante <= 2 else 14
         value += _rare_hand_pack_bonus(state, "spectral")
@@ -52,11 +53,24 @@ def _pack_value(state: GameState, pack: object) -> float:
         value = 16
     if "mega" in name or "jumbo" in name:
         value += 8
+    if plan is not None and plan.prioritizes_pack(_pack_kind(pack)):
+        value += _run_plan_pack_bonus(plan)
     return float(value)
 
 
 def _is_buffoon_pack(pack: object) -> bool:
     return "buffoon" in _card_label(pack).lower()
+
+
+def _is_standard_pack(pack: object) -> bool:
+    return "standard" in _card_label(pack).lower()
+
+
+def _standard_pack_has_build_payoff(state: GameState) -> bool:
+    names = _active_joker_names(state)
+    if names & {"Hologram", "Vampire", "Midas Mask", "DNA", "Lucky Cat"}:
+        return True
+    return _rare_hand_pack_bonus(state, "standard") > 0.0
 
 
 def _rare_hand_pack_bonus(state: GameState, pack_kind: str) -> float:
@@ -88,6 +102,7 @@ def _late_pack_is_worth_opening(
     pack: object,
     pressure: _ShopPressure,
     context: _ShopContext,
+    plan: _RunPlan | None = None,
 ) -> bool:
     if state.ante < 5:
         return True
@@ -101,9 +116,39 @@ def _late_pack_is_worth_opening(
         return False
 
     floor = _minimum_late_pack_capacity_gain(state, pressure)
+    if plan is not None and plan.prioritizes_pack(_pack_kind(pack)):
+        floor *= _run_plan_pack_floor_factor(plan)
     if pressure.ratio < 0.65:
         return capacity_gain >= floor
     return capacity_gain >= floor * 0.65
+
+
+def _pack_kind(pack: object) -> str:
+    label = _card_label(pack).lower()
+    for kind in ("buffoon", "celestial", "arcana", "standard", "spectral"):
+        if kind in label:
+            return kind
+    return "unknown"
+
+
+def _run_plan_pack_bonus(plan: _RunPlan) -> float:
+    if plan.shop_posture == "panic":
+        return 18.0
+    if plan.shop_posture == "spend":
+        return 14.0
+    if plan.shop_posture == "build":
+        return 9.0
+    return 4.0
+
+
+def _run_plan_pack_floor_factor(plan: _RunPlan) -> float:
+    if plan.shop_posture == "panic":
+        return 0.35
+    if plan.shop_posture == "spend":
+        return 0.50
+    if plan.shop_posture == "build":
+        return 0.70
+    return 0.85
 
 
 def _late_pack_limit(state: GameState, pressure: _ShopPressure) -> int:
@@ -142,8 +187,10 @@ def _pack_capacity_gain(state: GameState, pack: object, pressure: _ShopPressure)
             return rare_bonus - spend_loss
         return (current * 0.06) + rare_bonus - spend_loss
     if "standard" in name:
+        if not _standard_pack_has_build_payoff(state):
+            return -spend_loss
         rate = 0.04
-        if _active_joker_names(state) & {"Hologram", "Vampire"}:
+        if _active_joker_names(state) & {"Hologram", "Vampire", "Midas Mask", "DNA", "Lucky Cat"}:
             rate += 0.08
         return (current * rate) + _rare_hand_pack_capacity_bonus(state, current, "standard") - spend_loss
     if "spectral" in name:

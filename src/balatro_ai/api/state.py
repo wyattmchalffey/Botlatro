@@ -815,15 +815,15 @@ def _derive_legal_actions(
         actions.extend(_consumable_sell_actions(state))
         actions.extend(_consumable_use_actions(state, allow_hand_targets=False))
         for index in range(len(shop_cards)):
-            if _is_affordable(shop_cards[index], state.money) and _shop_card_can_be_bought(state, shop_cards[index]):
+            if _is_affordable(shop_cards[index], state) and _shop_card_can_be_bought(state, shop_cards[index]):
                 actions.append(Action(ActionType.BUY, target_id="card", amount=index, metadata={"kind": "card", "index": index}))
         for index in range(len(voucher_cards)):
-            if _is_affordable(voucher_cards[index], state.money):
+            if _is_affordable(voucher_cards[index], state):
                 actions.append(Action(ActionType.BUY, target_id="voucher", amount=index, metadata={"kind": "voucher", "index": index}))
         for index in range(len(booster_packs)):
-            if _is_affordable(booster_packs[index], state.money):
+            if _is_affordable(booster_packs[index], state):
                 actions.append(Action(ActionType.OPEN_PACK, target_id="pack", amount=index, metadata={"kind": "pack", "index": index}))
-        if _reroll_cost(state) <= state.money:
+        if _can_afford_cost(state, _reroll_cost(state)):
             actions.append(Action(ActionType.REROLL))
         actions.append(Action(ActionType.END_SHOP))
     elif state.phase == GamePhase.BOOSTER_OPENED:
@@ -1003,11 +1003,41 @@ def _card_is_forced_selection(card: Card) -> bool:
 
 
 def _shop_card_can_be_bought(state: GameState, card: Any) -> bool:
+    if _shop_card_is_consumable(card) and not _has_consumable_room(state):
+        return bool(_consumable_target_index_sets(_card_label(card), state, allow_hand_targets=False))
     if not _is_joker_shop_card(card):
         return True
     if not _shop_joker_uses_normal_slot(card):
         return True
     return _normal_joker_slots_used(state) < _normal_joker_slot_limit(state)
+
+
+def _shop_card_is_consumable(card: Any) -> bool:
+    label = _card_label(card)
+    if label in PLANET_CONSUMABLES or label in NON_TARGETED_CONSUMABLES or label in TARGETED_CONSUMABLES:
+        return True
+    if not isinstance(card, dict):
+        return False
+    key = str(card.get("key", ""))
+    card_set = str(card.get("set", "")).upper()
+    return key.startswith("c_") or card_set in {"PLANET", "TAROT", "SPECTRAL"}
+
+
+def _has_consumable_room(state: GameState) -> bool:
+    return len(state.consumables) < _consumable_slot_limit(state)
+
+
+def _consumable_slot_limit(state: GameState) -> int:
+    limit = 2
+    for key in ("consumable_slot_limit", "consumeable_slot_limit", "consumable_slots", "consumeable_slots"):
+        raw = state.modifiers.get(key)
+        try:
+            if raw is not None:
+                limit = max(0, int(raw))
+                break
+        except (TypeError, ValueError):
+            continue
+    return limit
 
 
 def _shop_joker_uses_normal_slot(card: Any) -> bool:
@@ -1159,11 +1189,26 @@ def _with_augmented_pack_actions(state: GameState) -> GameState:
     return replace(state, legal_actions=state.legal_actions + new_actions)
 
 
-def _is_affordable(card: Any, money: int) -> bool:
+def _is_affordable(card: Any, state: GameState) -> bool:
     if not isinstance(card, dict):
         return True
     cost = _mapping_or_empty(card.get("cost"))
-    return int(cost.get("buy", 0)) <= money
+    try:
+        buy_cost = int(cost.get("buy", 0))
+    except (TypeError, ValueError):
+        buy_cost = 0
+    return _can_afford_cost(state, buy_cost)
+
+
+def _can_afford_cost(state: GameState, cost: int) -> bool:
+    return state.money - max(0, cost) >= _bankrupt_at(state)
+
+
+def _bankrupt_at(state: GameState) -> int:
+    try:
+        return min(0, int(state.modifiers.get("bankrupt_at", 0)))
+    except (TypeError, ValueError):
+        return 0
 
 
 def _reroll_cost(state: GameState) -> int:

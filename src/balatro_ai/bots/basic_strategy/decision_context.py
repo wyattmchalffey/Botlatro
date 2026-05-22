@@ -10,6 +10,7 @@ from balatro_ai.bots.basic_strategy.build_profile import _build_profile
 from balatro_ai.bots.basic_strategy.hand_models import _BlindContext
 from balatro_ai.bots.basic_strategy.hand_preferences import _preferred_hand_type
 from balatro_ai.bots.basic_strategy.profile import _BuildProfile, _ShopContext, _ShopPressure
+from balatro_ai.bots.basic_strategy.run_plan import _RunPlan, _run_plan
 from balatro_ai.bots.basic_strategy.shop_pressure import _shop_pressure
 from balatro_ai.rules.hand_evaluator import HandType
 
@@ -32,6 +33,7 @@ class _DecisionContext:
     blind: _BlindContext
     _build_profile_value: _BuildProfile | None = field(default=None, init=False, repr=False)
     _shop_pressure_value: _ShopPressure | None = field(default=None, init=False, repr=False)
+    _run_plan_value: _RunPlan | None = field(default=None, init=False, repr=False)
     _preferred_hand_value: HandType | None | object = field(default=_UNSET, init=False, repr=False)
     _blind_solution_value: _BlindSolution | None = field(default=None, init=False, repr=False)
 
@@ -46,6 +48,12 @@ class _DecisionContext:
         if self._shop_pressure_value is None:
             self._shop_pressure_value = _shop_pressure(self.state)
         return self._shop_pressure_value
+
+    @property
+    def run_plan(self) -> _RunPlan:
+        if self._run_plan_value is None:
+            self._run_plan_value = _run_plan(self.state, self.build_profile, self.shop_pressure)
+        return self._run_plan_value
 
     @property
     def blind_solution(self) -> _BlindSolution:

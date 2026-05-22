@@ -42,6 +42,9 @@ Module map:
 * ``preferred_hunt``: preferred-hand hunt discard/redraw policy.
 * ``profile``: shop pressure, build profile, and audit payload containers.
 * ``rare_hands``: rare-hand plans, support gaps, and rank-target helpers.
+* ``run_plan``: run-level archetype, commitment, shop posture, reroll budget,
+  and pack/voucher permission signals derived from the current state; hard
+  voucher blocks remain authoritative.
 * ``score_projection``: projected discard scores and optimistic completion
   scoring helpers.
 * ``shop_cards``: non-joker shop card valuation for planets, tarots, and cards.
@@ -50,7 +53,8 @@ Module map:
 * ``shop_items``: lookup and payload helpers for visible shop/pack items.
 * ``shop_jokers``: joker buy, replacement, owned-value, and role valuation.
 * ``shop_money``: shop reserves, interest caps, and spend penalties.
-* ``shop_packs``: booster pack valuation and late-pack opening policy.
+* ``shop_packs``: booster pack valuation, Standard-pack payoff checks, and
+  late-pack opening policy.
 * ``shop_pressure``: shop pressure calculation from forecast and build score.
 * ``shop_reroll``: reroll limits, late spend mode, and bank conversion policy.
 * ``shop_safety``: early-shop safety adjustments and hand-support checks.

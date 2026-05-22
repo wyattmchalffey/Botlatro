@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from balatro_ai.api.actions import Action, ActionType
-from balatro_ai.api.state import GameState
+from balatro_ai.api.state import GameState, _shop_card_can_be_bought as _api_shop_card_can_be_bought
 from balatro_ai.bots.basic_strategy.build_profile import _build_profile, _reroll_role_hunt_bonus, _urgent_late_role_hunt
 from balatro_ai.bots.basic_strategy.build_scoring import _buy_would_overfill_joker_slots, _normal_slot_joker_card
 from balatro_ai.bots.basic_strategy.cards import (
@@ -25,6 +25,7 @@ from balatro_ai.bots.basic_strategy.data import SPECTRAL_SEAL_VALUES
 from balatro_ai.bots.basic_strategy.jokers import _active_joker_names
 from balatro_ai.bots.basic_strategy.pack_targets import _target_required_tarot_is_supported
 from balatro_ai.bots.basic_strategy.profile import _BuildProfile, _ShopContext, _ShopPressure
+from balatro_ai.bots.basic_strategy.run_plan import _RunPlan, _run_plan
 from balatro_ai.bots.basic_strategy.shop_cards import (
     _black_hole_card_value,
     _planet_card_value,
@@ -45,12 +46,19 @@ from balatro_ai.bots.basic_strategy.shop_money import (
     _money_gain_value,
     _spendable_money,
 )
-from balatro_ai.bots.basic_strategy.shop_packs import _is_buffoon_pack, _late_pack_is_worth_opening, _pack_value
+from balatro_ai.bots.basic_strategy.shop_packs import (
+    _is_buffoon_pack,
+    _is_standard_pack,
+    _late_pack_is_worth_opening,
+    _pack_value,
+    _standard_pack_has_build_payoff,
+)
 from balatro_ai.bots.basic_strategy.shop_reroll import (
     _early_reroll_is_allowed,
     _late_bank_conversion_mode,
     _late_reroll_is_worth_it,
     _minimum_reroll_bank,
+    _panic_reroll_is_worth_it,
     _reroll_cost_escalation_penalty,
     _rich_late_role_hunt,
 )
@@ -64,21 +72,25 @@ def _shop_action_value(
     action: Action,
     pressure: _ShopPressure,
     context: _ShopContext | None = None,
+    plan: _RunPlan | None = None,
 ) -> float:
     context = context or _ShopContext()
     kind = str(action.metadata.get("kind", ""))
     profile = _build_profile(state)
+    plan = plan or _run_plan(state, profile, pressure)
     if action.action_type == ActionType.BUY and kind == "card":
         shop_cards = state.modifiers.get("shop_cards", ())
         index = int(action.metadata.get("index", action.amount or 0))
         if index >= len(shop_cards):
             return 0.0
         card = shop_cards[index]
+        if not _api_shop_card_can_be_bought(state, card):
+            return 0.0
         if context.filled_last_joker_slot and _normal_slot_joker_card(card):
             return 0.0
         if _buy_would_overfill_joker_slots(state, card):
             return 0.0
-        value = _shop_card_value(state, card)
+        value = _shop_card_value(state, card, pressure)
         value += _early_shop_safety_adjustment(state, card)
         value += _scaling_commitment_shop_bonus(state, card, pressure)
         if _is_joker_card(card):
@@ -92,24 +104,27 @@ def _shop_action_value(
         index = int(action.metadata.get("index", action.amount or 0))
         if index >= len(vouchers):
             return 0.0
-        return _voucher_value(state, vouchers[index], pressure) - _cost_penalty(state, vouchers[index], pressure)
+        return _voucher_value(state, vouchers[index], pressure, plan) - _cost_penalty(state, vouchers[index], pressure)
     if action.action_type == ActionType.OPEN_PACK:
         packs = state.modifiers.get("booster_packs", ())
         index = int(action.metadata.get("index", action.amount or 0))
         if index >= len(packs):
             return 0.0
         pack = packs[index]
-        if _shop_pack_can_trigger_hidden_target_error(state, pack) and not _pressured_target_hand_pack_is_worth_opening(
-            state,
-            pressure,
+        if (
+            _shop_pack_can_trigger_hidden_target_error(state, pack)
+            and not _pressured_target_hand_pack_is_worth_opening(state, pressure)
+            and not _run_plan_allows_target_hand_pack(state, plan, pack)
         ):
+            return 0.0
+        if _is_standard_pack(pack) and not _standard_pack_has_build_payoff(state):
             return 0.0
         if state.money - _card_cost(pack) < 4 and pressure.ratio < 1.15:
             return 0.0
-        if not _late_pack_is_worth_opening(state, pack, pressure, context):
+        if not _late_pack_is_worth_opening(state, pack, pressure, context, plan):
             return 0.0
         return (
-            _pack_value(state, pack)
+            _pack_value(state, pack, plan)
             + pressure.danger * 16
             + _pressure_pack_bonus(state, pack, pressure)
             + _scaling_commitment_pack_bonus(state, pack, pressure)
@@ -119,11 +134,12 @@ def _shop_action_value(
         reroll_cost = _shop_reroll_cost(state)
         if not _early_reroll_is_allowed(state, pressure):
             return 0.0
-        if state.money < _minimum_reroll_bank(state, pressure):
+        panic_reroll = _panic_reroll_is_worth_it(state, pressure, profile, context, plan)
+        if state.money < _minimum_reroll_bank(state, pressure) and not panic_reroll:
             return 0.0
         if pressure.ratio < 0.95 and state.money < 14:
             return 0.0
-        if not _late_reroll_is_worth_it(state, pressure, profile, context):
+        if not panic_reroll and not _late_reroll_is_worth_it(state, pressure, profile, context, plan):
             return 0.0
         if _normal_joker_open_slots(state) <= 0 and pressure.ratio < 1.1 and not _rich_late_role_hunt(profile):
             return 0.0
@@ -182,9 +198,9 @@ def _shop_reroll_cost(state: GameState) -> int:
     return max(0, reset_cost + increase)
 
 
-def _shop_card_value(state: GameState, card: object) -> float:
+def _shop_card_value(state: GameState, card: object, pressure: _ShopPressure | None = None) -> float:
     if _is_joker_card(card):
-        return _joker_card_value(state, card)
+        return _joker_card_value(state, card, pressure)
     if _is_black_hole_card(card):
         return _black_hole_card_value(state)
     if _is_planet_card(card):
@@ -375,7 +391,8 @@ def _shop_safety_pack_bonus(
     elif "celestial" in name:
         bonus += 6.0
     elif "standard" in name:
-        bonus += 4.0
+        if _standard_pack_has_build_payoff(state):
+            bonus += 4.0
     elif "spectral" in name:
         bonus += 3.0
     elif "buffoon" in name and ("xmult" in profile.missing_roles or "scaling" in profile.missing_roles):
@@ -395,6 +412,19 @@ def _shop_safety_pack_bonus(
 def _shop_pack_can_trigger_hidden_target_error(state: GameState, pack: object) -> bool:
     name = _card_label(pack).lower()
     return "arcana" in name and not state.hand
+
+
+def _run_plan_allows_target_hand_pack(state: GameState, plan: _RunPlan, pack: object) -> bool:
+    label = _card_label(pack).lower()
+    if "arcana" in label:
+        return (
+            state.ante >= 5
+            and plan.prioritizes_pack("arcana")
+            and plan.shop_posture in {"build", "spend", "panic"}
+        )
+    if "spectral" in label:
+        return plan.prioritizes_pack("spectral") and plan.shop_posture in {"spend", "panic"}
+    return False
 
 
 def _pressured_target_hand_pack_is_worth_opening(state: GameState, pressure: _ShopPressure) -> bool:

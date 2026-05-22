@@ -331,6 +331,28 @@ class BalatroBotSchemaTests(unittest.TestCase):
         self.assertEqual(len(buy_actions), 1)
         self.assertEqual(buy_actions[0].amount, 0)
 
+    def test_shop_actions_allow_credit_card_debt_buys(self) -> None:
+        state = GameState.from_mapping(
+            {
+                "state": "SHOP",
+                "money": 0,
+                "modifiers": {"bankrupt_at": -20},
+                "shop": {
+                    "cards": [
+                        {"label": "Jupiter", "set": "PLANET", "cost": {"buy": 3}},
+                        {"label": "Too Expensive", "cost": {"buy": 25}},
+                    ]
+                },
+                "packs": {"cards": [{"label": "Buffoon Pack", "cost": {"buy": 4}}]},
+            }
+        )
+
+        stable_keys = {action.stable_key for action in state.legal_actions}
+
+        self.assertIn("buy||card|0", stable_keys)
+        self.assertNotIn("buy||card|1", stable_keys)
+        self.assertIn("open_pack||pack|0", stable_keys)
+
     def test_shop_actions_filter_normal_joker_buys_when_slots_are_full(self) -> None:
         state = GameState.from_mapping(
             {

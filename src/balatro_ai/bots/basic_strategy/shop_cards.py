@@ -78,9 +78,20 @@ def _planet_card_value(state: GameState, card: object) -> float:
         value -= 8
         if state.ante <= 2:
             value -= 24
+    value = max(value, _early_flexible_planet_floor(state, hand_type, current_level))
     if "Constellation" in _active_joker_names(state):
         value += 18.0
     return value
+
+
+def _early_flexible_planet_floor(state: GameState, hand_type: HandType, current_level: int) -> float:
+    if state.ante > 1 or current_level > 1 or hand_type in RARE_HAND_TYPES:
+        return 0.0
+    if hand_type in {HandType.FLUSH, HandType.STRAIGHT, HandType.FULL_HOUSE, HandType.THREE_OF_A_KIND}:
+        return 36.0
+    if hand_type == HandType.TWO_PAIR:
+        return 24.0
+    return 18.0
 
 
 def _planet_capacity_gain(state: GameState, hand_type: HandType) -> float:

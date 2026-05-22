@@ -27,7 +27,11 @@ from balatro_ai.rules.hand_evaluator import (
     STRAIGHT_VALUES,
     best_play_from_hand as _default_best_play_from_hand,
     debuffed_suits_for_blind,
+    evaluate_played_cards,
 )
+
+
+PROJECTED_BEST_SCORE_CARD_LIMIT = 10
 
 
 def _projected_score_after_discard(
@@ -136,8 +140,9 @@ def _best_score_from_cards(
     if cache is not None and cache_key in cache:
         return cache[cache_key]
 
+    scoring_cards = _projection_best_score_cards(cards)
     evaluation = _best_play_from_hand(
-        cards,
+        scoring_cards,
         state.hand_levels,
         debuffed_suits=debuffed_suits_for_blind(state.blind),
         blind_name=state.blind,
@@ -155,6 +160,95 @@ def _best_score_from_cards(
     if content_cache is not None:
         content_cache[content_key] = score
     return score
+
+
+def _projection_best_score_cards(cards: tuple[Card, ...]) -> tuple[Card, ...]:
+    if len(cards) <= PROJECTED_BEST_SCORE_CARD_LIMIT:
+        return cards
+
+    suit_counts = Counter(card.suit for card in cards)
+    rank_counts = Counter(card.rank for card in cards)
+    straight_values_by_index = tuple(_projection_straight_values(card) for card in cards)
+    best_window_values = _best_projection_straight_window(straight_values_by_index)
+    best_suit = max(suit_counts, key=lambda suit: (suit_counts[suit], suit))
+
+    ranked_indices = sorted(
+        range(len(cards)),
+        key=lambda index: _projection_card_priority(
+            cards[index],
+            rank_count=rank_counts[cards[index].rank],
+            suit_count=suit_counts[cards[index].suit],
+            in_best_suit=cards[index].suit == best_suit,
+            straight_hits=len(set(straight_values_by_index[index]) & best_window_values),
+        ),
+        reverse=True,
+    )
+    selected = set(ranked_indices[:PROJECTED_BEST_SCORE_CARD_LIMIT])
+    return tuple(card for index, card in enumerate(cards) if index in selected)
+
+
+def _projection_card_priority(
+    card: Card,
+    *,
+    rank_count: int,
+    suit_count: int,
+    in_best_suit: bool,
+    straight_hits: int,
+) -> tuple[float, int, str, str]:
+    rank_value = RANK_VALUES.get(card.rank, 0)
+    score = float(rank_value)
+    score += min(4, rank_count) * 16.0
+    score += min(5, suit_count) * (7.0 if in_best_suit else 2.5)
+    score += straight_hits * 12.0
+    return (score, rank_value, card.rank, card.suit)
+
+
+def _projection_straight_values(card: Card) -> tuple[int, ...]:
+    value = STRAIGHT_VALUES.get(card.rank)
+    if value is None:
+        return ()
+    if value == 14:
+        return (14, 1)
+    return (value,)
+
+
+def _best_projection_straight_window(values_by_index: tuple[tuple[int, ...], ...]) -> set[int]:
+    best_values: set[int] = set()
+    best_count = 0
+    for start in range(1, 11):
+        window = set(range(start, start + 5))
+        count = sum(1 for values in values_by_index if window.intersection(values))
+        if count > best_count:
+            best_count = count
+            best_values = window
+    return best_values
+
+
+def _score_selected_cards(
+    state: GameState,
+    selected_cards: tuple[Card, ...],
+    context: _BlindContext | None = None,
+    *,
+    held_cards: tuple[Card, ...] = (),
+) -> int:
+    context = context or _BlindContext()
+    if not selected_cards:
+        return 0
+    evaluation = evaluate_played_cards(
+        selected_cards,
+        state.hand_levels,
+        debuffed_suits=debuffed_suits_for_blind(state.blind),
+        blind_name=state.blind,
+        jokers=state.jokers,
+        discards_remaining=max(0, state.discards_remaining - 1),
+        hands_remaining=state.hands_remaining,
+        held_cards=held_cards,
+        deck_size=state.deck_size,
+        money=state.money,
+        played_hand_types_this_round=context.played_hand_types,
+        played_hand_counts=_played_hand_counts(state),
+    )
+    return _boss_adjusted_score(state, evaluation.hand_type, evaluation.score, context)
 
 
 def _best_play_from_hand(*args, **kwargs):

@@ -17,6 +17,7 @@ from balatro_ai.bots.basic_strategy.data import (
 )
 from balatro_ai.bots.basic_strategy.profile import _BuildProfile, _ShopPressure
 from balatro_ai.bots.basic_strategy.rare_hands import _rare_hand_plan
+from balatro_ai.bots.basic_strategy.run_plan import _RunPlan, _run_plan
 from balatro_ai.bots.basic_strategy.shop_forecast import (
     _has_planet_investment,
     _shop_cleared_blind_kind,
@@ -28,25 +29,40 @@ from balatro_ai.bots.basic_strategy.shop_safety import _has_money_scaling_joker
 from balatro_ai.rules.hand_evaluator import HandType
 
 
-def _voucher_value(state: GameState, voucher: object, pressure: _ShopPressure | None = None) -> float:
+def _voucher_value(
+    state: GameState,
+    voucher: object,
+    pressure: _ShopPressure | None = None,
+    plan: _RunPlan | None = None,
+) -> float:
     name = _card_label(voucher)
     if any(existing == name for existing in state.vouchers):
         return 0.0
-    if _voucher_buy_is_blocked(state, name):
-        return 0.0
 
     pressure = pressure or _shop_pressure(state)
+    profile = _build_profile(state)
+    plan = plan or _run_plan(state, profile, pressure)
+
+    if _voucher_buy_is_blocked(state, name, pressure, plan):
+        return 0.0
+
     if _voucher_does_not_solve_current_boss_shop(state, name, pressure):
         return 0.0
-    if _late_pressure_blocks_voucher(state, name, pressure):
+    if _late_pressure_blocks_voucher(state, name, pressure, plan):
         return 0.0
 
     value = float(VOUCHER_VALUES.get(name, 22))
-    value += _voucher_dynamic_adjustment(state, name, pressure)
+    value += _voucher_dynamic_adjustment(state, name, pressure, profile, plan)
     return max(0.0, value)
 
 
-def _voucher_buy_is_blocked(state: GameState, name: str) -> bool:
+def _voucher_buy_is_blocked(
+    state: GameState,
+    name: str,
+    pressure: _ShopPressure | None = None,
+    plan: _RunPlan | None = None,
+) -> bool:
+    _ = pressure, plan
     if name == "Blank" and state.ante >= 8:
         return True
     return _voucher_name_key(name) in VOUCHER_BUY_DENYLIST
@@ -66,13 +82,23 @@ def _voucher_does_not_solve_current_boss_shop(
     return _shop_pressure_uses_exact_needle_hand(state, pressure.boss_name)
 
 
-def _late_pressure_blocks_voucher(state: GameState, name: str, pressure: _ShopPressure) -> bool:
+def _late_pressure_blocks_voucher(
+    state: GameState,
+    name: str,
+    pressure: _ShopPressure,
+    plan: _RunPlan | None = None,
+) -> bool:
     if state.ante < 5 or pressure.ratio < 1.15:
         return False
     if name == "Blank":
         return state.ante >= 8
     if name in VOUCHER_PRESSURE_ALLOWED_NAMES:
         return False
+    if plan is not None and plan.prioritizes_voucher(name):
+        if name == "Retcon":
+            return False
+        if plan.shop_posture in {"build", "spend"} and pressure.ratio < 2.0 and pressure.raw_ratio < 1.35:
+            return False
     if name == "Observatory":
         return not any(planet in PLANET_TO_HAND for planet in state.consumables)
     if name in {"Seed Money", "Money Tree"}:
@@ -80,8 +106,15 @@ def _late_pressure_blocks_voucher(state: GameState, name: str, pressure: _ShopPr
     return True
 
 
-def _voucher_dynamic_adjustment(state: GameState, name: str, pressure: _ShopPressure) -> float:
-    profile = _build_profile(state)
+def _voucher_dynamic_adjustment(
+    state: GameState,
+    name: str,
+    pressure: _ShopPressure,
+    profile: _BuildProfile | None = None,
+    plan: _RunPlan | None = None,
+) -> float:
+    profile = profile or _build_profile(state)
+    plan = plan or _run_plan(state, profile, pressure)
     danger = pressure.danger
     spendable = _spendable_money(state, pressure)
     bonus = 0.0
@@ -120,6 +153,8 @@ def _voucher_dynamic_adjustment(state: GameState, name: str, pressure: _ShopPres
     elif name in {"Tarot Merchant", "Tarot Tycoon", "Planet Tycoon", "Illusion"}:
         bonus += _generator_voucher_adjustment(state, name, pressure, profile)
 
+    if plan.prioritizes_voucher(name):
+        bonus += _run_plan_voucher_bonus(plan, name)
     if state.ante >= 7 and pressure.raw_ratio >= 1.0 and name not in VOUCHER_IMMEDIATE_SCORE_NAMES:
         bonus -= 10.0 + min(14.0, danger * 8.0)
     if state.ante >= 8 and spendable < 15 and name not in VOUCHER_IMMEDIATE_SCORE_NAMES:
@@ -380,11 +415,21 @@ def _generator_voucher_adjustment(
     bonus = 0.0
     if name in {"Tarot Merchant", "Tarot Tycoon", "Illusion"} and _rare_hand_plan(state) is not None:
         bonus += 8.0
-    if name == "Planet Tycoon" and profile.preferred_hand is not None and not _has_planet_investment(state):
-        bonus += 6.0
+    if name == "Planet Tycoon" and profile.preferred_hand is not None:
+        bonus += 10.0 if _has_planet_investment(state) else 6.0
     if state.ante >= 6 and pressure.ratio >= 1.0:
         bonus -= 10.0
     return bonus
+
+
+def _run_plan_voucher_bonus(plan: _RunPlan, name: str) -> float:
+    if plan.shop_posture == "panic" and name == "Retcon":
+        return 18.0
+    if plan.shop_posture == "spend":
+        return 12.0
+    if plan.shop_posture == "build":
+        return 8.0
+    return 4.0
 
 
 def _planet_for_hand(hand_type: HandType) -> str | None:

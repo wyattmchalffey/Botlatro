@@ -31,6 +31,17 @@ def _best_play_action(state: GameState, context: _BlindContext | None = None) ->
     if remaining_score > 0:
         winning_candidates = [candidate for candidate in candidates if candidate.score >= remaining_score]
         if winning_candidates:
+            if all(_ride_the_bus_reset_candidate(state, candidate) for candidate in winning_candidates):
+                ride_safe_candidates = _ride_the_bus_non_reset_plausible_candidates(
+                    state,
+                    [candidate for candidate in candidates if candidate.score > 0],
+                    remaining_score,
+                )
+                if ride_safe_candidates:
+                    return min(
+                        ride_safe_candidates,
+                        key=lambda candidate: _hands_to_clear_key(state, candidate, remaining_score, context),
+                    ).action
             return min(
                 winning_candidates,
                 key=lambda candidate: _minimum_sufficient_play_key(state, candidate, context),
@@ -38,6 +49,11 @@ def _best_play_action(state: GameState, context: _BlindContext | None = None) ->
 
         feasible_candidates = [candidate for candidate in candidates if candidate.score > 0]
         if feasible_candidates:
+            feasible_candidates = _ride_the_bus_survival_play_pool(
+                state,
+                feasible_candidates,
+                remaining_score,
+            )
             if _should_set_up_card_sharp(state, context):
                 return min(
                     feasible_candidates,
@@ -88,9 +104,16 @@ def _minimum_sufficient_play_key(
     state: GameState,
     candidate: _PlayCandidate,
     context: _BlindContext,
-) -> tuple[int, float, float, int, int]:
+) -> tuple[int, int, float, float, int, int]:
     bonus = _playstyle_play_bonus(state, candidate, context)
-    return (candidate.score, -bonus, -candidate.cycle_value, -candidate.cycle_count, _action_index_sum(candidate.action))
+    return (
+        _winning_play_reset_penalty(state, candidate),
+        candidate.score,
+        -bonus,
+        -candidate.cycle_value,
+        -candidate.cycle_count,
+        _action_index_sum(candidate.action),
+    )
 
 
 def _maximum_play_key(
@@ -113,8 +136,7 @@ def _hands_to_clear_key(
     context: _BlindContext,
 ) -> tuple[int, float, int, float, int, int]:
     bonus = _playstyle_play_bonus(state, candidate, context)
-    adjusted_score = max(1.0, candidate.score + bonus)
-    estimated_hands = ceil(remaining_score / adjusted_score)
+    estimated_hands = ceil(remaining_score / max(1.0, candidate.score))
     return (
         estimated_hands,
         -bonus,
@@ -166,8 +188,8 @@ def _playstyle_play_bonus(state: GameState, candidate: _PlayCandidate, context: 
             bonus += 95.0
         if context.played_hand_types and candidate.hand_type == context.played_hand_types[-1]:
             bonus += 35.0
-    if "Ride the Bus" in names and any(_is_face_card_for_state(state, card) for card in scoring_cards):
-        bonus -= 240.0 + (_current_plus_for_joker(state, "Ride the Bus", suffix="mult") * 35.0)
+    if _ride_the_bus_reset_candidate(state, candidate):
+        bonus -= _ride_the_bus_reset_score_penalty(state)
     if "Wee Joker" in names:
         bonus += 70.0 * sum(1 for card in scoring_cards if card.rank == "2")
     if "Hack" in names:
@@ -181,6 +203,58 @@ def _playstyle_play_bonus(state: GameState, candidate: _PlayCandidate, context: 
     if "Hiker" in names:
         bonus += 18.0 * len(scoring_cards)
     return bonus
+
+
+def _winning_play_reset_penalty(state: GameState, candidate: _PlayCandidate) -> int:
+    return int(_ride_the_bus_reset_candidate(state, candidate))
+
+
+def _ride_the_bus_survival_play_pool(
+    state: GameState,
+    candidates: list[_PlayCandidate],
+    remaining_score: int,
+) -> list[_PlayCandidate]:
+    return _ride_the_bus_non_reset_plausible_candidates(state, candidates, remaining_score) or candidates
+
+
+def _ride_the_bus_non_reset_plausible_candidates(
+    state: GameState,
+    candidates: list[_PlayCandidate],
+    remaining_score: int,
+) -> list[_PlayCandidate]:
+    if not _ride_the_bus_policy_active(state):
+        return []
+
+    return [
+        candidate
+        for candidate in candidates
+        if not _ride_the_bus_reset_candidate(state, candidate)
+        and _candidate_estimated_hands_to_clear(candidate, remaining_score) <= state.hands_remaining
+    ]
+
+
+def _candidate_estimated_hands_to_clear(
+    candidate: _PlayCandidate,
+    remaining_score: int,
+) -> int:
+    return ceil(remaining_score / max(1.0, candidate.score))
+
+
+def _ride_the_bus_reset_candidate(state: GameState, candidate: _PlayCandidate) -> bool:
+    if not _ride_the_bus_policy_active(state):
+        return False
+    scoring_cards = _candidate_scoring_cards(state, candidate)
+    return any(_is_face_card_for_state(state, card) for card in scoring_cards)
+
+
+def _ride_the_bus_policy_active(state: GameState) -> bool:
+    names = _joker_names(state)
+    return "Ride the Bus" in names and "Pareidolia" not in names
+
+
+def _ride_the_bus_reset_score_penalty(state: GameState) -> float:
+    current_mult = _current_plus_for_joker(state, "Ride the Bus", suffix="mult")
+    return 220.0 + max(0, current_mult) * 140.0
 
 
 def _candidate_scoring_cards(state: GameState, candidate: _PlayCandidate) -> tuple[Card, ...]:
@@ -281,6 +355,10 @@ def _boss_adjusted_score(
 
 
 def _played_hand_types_this_round(state: GameState) -> tuple[HandType, ...]:
+    ordered = _round_played_hand_type_order(state.modifiers)
+    if ordered:
+        return ordered
+
     hands = state.modifiers.get("hands", state.modifiers.get("hand_stats", {}))
     if not isinstance(hands, dict):
         return ()
@@ -306,6 +384,20 @@ def _played_hand_types_this_round(state: GameState) -> tuple[HandType, ...]:
         played.extend((order, hand_type) for _ in range(played_count))
 
     return tuple(hand_type for _, hand_type in sorted(played, key=lambda item: item[0]))
+
+
+def _round_played_hand_type_order(modifiers: dict[str, object]) -> tuple[HandType, ...]:
+    raw = modifiers.get("round_played_hand_types", ())
+    if not isinstance(raw, list | tuple):
+        return ()
+
+    ordered: list[HandType] = []
+    for item in raw:
+        try:
+            ordered.append(item if isinstance(item, HandType) else HandType(str(item)))
+        except ValueError:
+            continue
+    return tuple(ordered)
 
 
 def _played_hand_counts(state: GameState) -> dict[str, int]:

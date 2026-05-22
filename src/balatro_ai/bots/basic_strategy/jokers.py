@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from balatro_ai.api.state import GameState, Joker
+from balatro_ai.api.state import Card, GameState, Joker
 from balatro_ai.bots.basic_strategy.cards import _edition_chips_value, _edition_mult_value, _edition_xmult_value
 from balatro_ai.bots.basic_strategy.data import (
     CHIP_JOKERS,
@@ -83,10 +83,16 @@ def _joker_with_added_current_xmult(joker: Joker, amount: float, *, minimum: flo
 
 
 def _joker_current_plus_value(joker: Joker, *, suffix: str) -> int:
+    metadata_value = _joker_metadata_current_plus_value(joker, suffix=suffix)
+    if metadata_value is not None:
+        return metadata_value
     return joker.effect.current_plus_value(suffix)
 
 
 def _joker_current_xmult_value(joker: Joker) -> float:
+    metadata_value = _joker_metadata_current_xmult_value(joker)
+    if metadata_value is not None:
+        return metadata_value
     return joker.effect.current_xmult_visible if joker.effect.current_xmult_visible is not None else 1.0
 
 
@@ -186,12 +192,80 @@ def _joker_metadata_numeric_value(joker: Joker, keys: tuple[str, ...]) -> object
     return None
 
 
+def _joker_metadata_current_plus_value(joker: Joker, *, suffix: str) -> int | None:
+    keys = {
+        "chips": ("current_chips", "chips"),
+        "mult": ("current_mult", "mult"),
+    }.get(suffix, (f"current_{suffix}", suffix))
+    value = _joker_metadata_numeric_value(joker, keys)
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _joker_metadata_current_xmult_value(joker: Joker) -> float | None:
+    value = _joker_metadata_numeric_value(joker, ("current_xmult", "xmult", "current_x_mult", "x_mult"))
+    try:
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _joker_metadata_int_value(joker: Joker, keys: tuple[str, ...], *, default: int) -> int:
     value = _joker_metadata_numeric_value(joker, keys)
     try:
         return int(value) if value is not None else default
     except (TypeError, ValueError):
         return default
+
+
+def _driver_license_enhanced_count(state: GameState, joker: Joker | None = None) -> int:
+    if joker is not None and joker.name == "Driver's License":
+        visible_count = _joker_metadata_numeric_value(
+            joker,
+            ("driver_tally", "enhanced_count", "current_enhanced", "enhancement_tally"),
+        )
+        try:
+            if visible_count is not None:
+                return max(0, int(visible_count))
+        except (TypeError, ValueError):
+            pass
+        if joker.effect.current_int is not None:
+            return max(0, joker.effect.current_int)
+    return sum(1 for card in _known_full_deck_cards(state) if _card_has_driver_license_enhancement(card))
+
+
+def _driver_license_readiness_factor(state: GameState, joker: Joker) -> float:
+    if joker.name != "Driver's License":
+        return 1.0
+
+    enhanced_count = _driver_license_enhanced_count(state, joker)
+    if enhanced_count >= 16:
+        return 1.0
+    if enhanced_count <= 0:
+        return 0.0
+    if enhanced_count < 8:
+        return min(0.08, enhanced_count * 0.01)
+    if enhanced_count < 12:
+        return 0.08 + ((enhanced_count - 8) * 0.04)
+    return min(0.85, 0.35 + ((enhanced_count - 12) * 0.15))
+
+
+def _known_full_deck_cards(state: GameState) -> tuple[Card, ...]:
+    return state.hand + state.known_deck + _zone_cards(state, "played_pile") + _zone_cards(state, "discard_pile")
+
+
+def _zone_cards(state: GameState, key: str) -> tuple[Card, ...]:
+    raw = state.modifiers.get(key, ())
+    if not isinstance(raw, list | tuple):
+        return ()
+    return tuple(item if isinstance(item, Card) else Card.from_mapping(item) for item in raw)
+
+
+def _card_has_driver_license_enhancement(card: Card) -> bool:
+    enhancement = str(card.enhancement or "").strip().lower().replace("_", " ").replace("-", " ")
+    return enhancement not in {"", "none", "base", "base card"}
 
 
 def _joker_names(state: GameState) -> set[str]:

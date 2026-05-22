@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import sys
 
 from balatro_ai.api.state import GameState
@@ -17,6 +18,8 @@ from balatro_ai.bots.basic_strategy.shop_forecast import (
     _effective_boss_target_multiplier,
     _estimated_shop_planning_required_score,
     _has_planet_investment,
+    _shop_pressure_boss_discards_remaining,
+    _shop_pressure_boss_hands_remaining,
     _shop_pressure_boss_capacity_factor,
     _shop_pressure_effective_hands,
     _shop_pressure_score_state,
@@ -39,7 +42,7 @@ def _shop_pressure_uncached(state: GameState) -> _ShopPressure:
     safety_multiplier = _shop_target_safety_multiplier(state)
     target = raw_target * safety_multiplier
     score_state = _shop_pressure_score_state(state, boss_name, raw_target=raw_target)
-    current_score = _sample_build_score(score_state, score_state.jokers) * _shop_hand_realism_factor(score_state)
+    current_score = _shop_pressure_build_score(state, score_state, boss_name, raw_target=raw_target)
     effective_hands = _shop_pressure_effective_hands(state, boss_name)
     raw_capacity = _blind_capacity_from_score(current_score, effective_hands)
     capacity_safety_factor = _shop_capacity_safety_factor(state) * boss_capacity_factor
@@ -59,7 +62,47 @@ def _shop_pressure_uncached(state: GameState) -> _ShopPressure:
     )
 
 
-def _shop_hand_realism_factor(state: GameState) -> float:
+def _shop_pressure_build_score(
+    state: GameState,
+    score_state: GameState,
+    boss_name: str | None,
+    *,
+    raw_target: float,
+) -> float:
+    current_score = _repeatable_build_score(score_state, score_state.jokers) * _shop_hand_realism_factor(
+        score_state,
+        boss_name=boss_name if score_state is not state else None,
+    )
+    if score_state is not state or boss_name is None or _upcoming_boss_blind_name(state) != boss_name:
+        return current_score
+    if not _shop_pressure_needs_boss_preview_score_context(state, boss_name):
+        return current_score
+
+    weight = _boss_preview_weight(state)
+    if weight <= 0.0:
+        return current_score
+
+    boss_score_state = replace(
+        state,
+        blind=str(boss_name),
+        required_score=int(raw_target),
+        hands_remaining=_shop_pressure_boss_hands_remaining(state, boss_name),
+        discards_remaining=_shop_pressure_boss_discards_remaining(state, boss_name),
+    )
+    boss_score = _repeatable_build_score(boss_score_state, boss_score_state.jokers) * _shop_hand_realism_factor(
+        boss_score_state,
+        boss_name=boss_name,
+    )
+    return (current_score * (1.0 - weight)) + (boss_score * weight)
+
+
+def _shop_pressure_needs_boss_preview_score_context(state: GameState, boss_name: str | None) -> bool:
+    if boss_name == "The Water" and any(joker.name == "Banner" for joker in state.jokers):
+        return True
+    return False
+
+
+def _shop_hand_realism_factor(state: GameState, *, boss_name: str | None = None) -> float:
     if state.ante < 4 or _has_money_scaling_joker(state):
         return 1.0
 
@@ -89,7 +132,18 @@ def _shop_hand_realism_factor(state: GameState) -> float:
         factor += 0.03
     if preferred in RARE_HAND_TYPES and _rare_hand_deck_manipulation_need(state, preferred) > 0:
         factor -= 0.08
+    factor *= _boss_repeatability_factor(boss_name)
     return max(0.45, min(1.0, factor))
+
+
+def _boss_repeatability_factor(boss_name: str | None) -> float:
+    return {
+        "The Water": 0.86,
+        "The Mouth": 0.82,
+        "The Pillar": 0.88,
+        "The Flint": 0.86,
+        "The Needle": 0.90,
+    }.get(boss_name or "", 1.0)
 
 
 def _shop_target_safety_multiplier(state: GameState) -> float:
@@ -185,4 +239,14 @@ def _sample_build_score(*args, **kwargs) -> float:
     patched = getattr(strategy_module, "_sample_build_score", None) if strategy_module is not None else None
     if patched is None or patched is _sample_build_score:
         raise RuntimeError("basic_strategy_bot._sample_build_score is not available")
+    return patched(*args, **kwargs)
+
+
+def _repeatable_build_score(*args, **kwargs) -> float:
+    """Honor legacy tests/tools that patch ``basic_strategy_bot._repeatable_build_score``."""
+
+    strategy_module = sys.modules.get("balatro_ai.bots.basic_strategy_bot")
+    patched = getattr(strategy_module, "_repeatable_build_score", None) if strategy_module is not None else None
+    if patched is None or patched is _repeatable_build_score:
+        raise RuntimeError("basic_strategy_bot._repeatable_build_score is not available")
     return patched(*args, **kwargs)

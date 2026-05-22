@@ -11,6 +11,7 @@ from balatro_ai.bots.basic_strategy.data import FLUSH_ARCHETYPE_HANDS
 from balatro_ai.bots.basic_strategy.hand_preferences import _dominant_suit, _preferred_hand_type
 from balatro_ai.bots.basic_strategy.jokers import (
     _castle_target_suit,
+    _current_plus_for_joker,
     _joker_names,
     _mail_in_rebate_rank,
 )
@@ -96,7 +97,7 @@ def _joker_card_keep_bonus(state: GameState, card: Card) -> float:
     black = _normalize_suit(card.suit) in {"S", "C"}
 
     if "Ride the Bus" in names and face and "Pareidolia" not in names:
-        bonus -= 95.0
+        bonus -= _ride_the_bus_face_keep_penalty(state)
     if "Wee Joker" in names and card.rank == "2":
         bonus += 130.0
     if "Hack" in names and card.rank in {"2", "3", "4", "5"}:
@@ -128,6 +129,11 @@ def _joker_card_keep_bonus(state: GameState, card: Card) -> float:
     if mail_rank is not None and _rank_matches(card.rank, mail_rank):
         bonus -= 25.0
     return bonus
+
+
+def _ride_the_bus_face_keep_penalty(state: GameState) -> float:
+    current_mult = max(0, _current_plus_for_joker(state, "Ride the Bus", suffix="mult"))
+    return 95.0 + min(260.0, current_mult * 45.0)
 
 
 def _held_effect_multiplier(state: GameState) -> float:

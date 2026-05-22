@@ -363,7 +363,7 @@ class ShopSampler:
         rng = rng or Random()
         value_fn = item_value_fn or basic_strategy_shop_item_value
         cost = self.reroll_cost(state)
-        if cost > state.money:
+        if not _can_afford_cost(state, cost):
             return -float(cost)
 
         from balatro_ai.api.actions import Action, ActionType
@@ -531,7 +531,7 @@ def basic_strategy_shop_item_value(state: GameState, item: Mapping[str, Any]) ->
     from balatro_ai.bots.basic_strategy.shop_pressure import _shop_pressure
     from balatro_ai.bots.basic_strategy.shop_values import _shop_action_value
 
-    if _item_buy_cost(item) > state.money:
+    if not _can_afford_cost(state, _item_buy_cost(item)):
         return 0.0
 
     temp_modifiers = dict(state.modifiers)
@@ -1057,6 +1057,17 @@ def _first_int(mapping: Mapping[str, Any], keys: Iterable[str]) -> int | None:
 def _int_value(raw: object) -> int:
     try:
         return int(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0
+
+
+def _can_afford_cost(state: GameState, cost: int) -> bool:
+    return state.money - max(0, cost) >= _bankrupt_at(state)
+
+
+def _bankrupt_at(state: GameState) -> int:
+    try:
+        return min(0, int(state.modifiers.get("bankrupt_at", 0)))
     except (TypeError, ValueError):
         return 0
 

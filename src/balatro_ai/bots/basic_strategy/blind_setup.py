@@ -13,17 +13,21 @@ from balatro_ai.bots.basic_strategy.blind_reasons import (
     _mystic_summit_setup_discard_reason,
     _play_reason,
 )
-from balatro_ai.bots.basic_strategy.cards import _has_consumable_room
+from balatro_ai.bots.basic_strategy.cards import _has_consumable_room, _is_face_card_for_state
 from balatro_ai.bots.basic_strategy.discard_policy import (
     _best_discard_action as _default_best_discard_action,
     _discard_action_playstyle_bonus,
     _estimated_hands_needed as _default_estimated_hands_needed,
+    _ride_the_bus_face_discard_bonus,
 )
 from balatro_ai.bots.basic_strategy.hand_models import _BlindContext
 from balatro_ai.bots.basic_strategy.hand_preferences import _preferred_hand_type
 from balatro_ai.bots.basic_strategy.hand_value import _card_keep_scores, _card_long_term_value
-from balatro_ai.bots.basic_strategy.jokers import _joker_names
-from balatro_ai.bots.basic_strategy.play_scoring import _score_play_action as _default_score_play_action
+from balatro_ai.bots.basic_strategy.jokers import _active_joker_names, _joker_names
+from balatro_ai.bots.basic_strategy.play_scoring import (
+    _evaluate_play_action as _default_evaluate_play_action,
+    _score_play_action as _default_score_play_action,
+)
 from balatro_ai.bots.basic_strategy.score_projection import (
     _projected_score_after_discard as _default_projected_score_after_discard,
 )
@@ -168,6 +172,13 @@ def _strategic_joker_discard_action(
 
     preferred = _preferred_hand_type(state)
     keep_scores = _card_keep_scores(state.hand, preferred, state=state)
+    ride_cleanup_worth_tempo = _ride_the_bus_cleanup_worth_tempo(
+        state,
+        best_play,
+        best_score,
+        remaining_score,
+        context,
+    )
     ranked: list[tuple[float, int, Action]] = []
     for action in discard_actions:
         discarded_cards = tuple(state.hand[index] for index in action.card_indices)
@@ -178,6 +189,10 @@ def _strategic_joker_discard_action(
             keep_scores=keep_scores,
             context=context,
         )
+        if not ride_cleanup_worth_tempo:
+            bonus -= _ride_the_bus_face_discard_bonus(state) * sum(
+                1 for card in discarded_cards if _is_face_card_for_state(state, card)
+            )
         if bonus < 400.0:
             continue
         projected_score = _projected_score_after_discard(state, action, context)
@@ -189,6 +204,24 @@ def _strategic_joker_discard_action(
         return None
     _, _, action = max(ranked, key=lambda item: (item[0], item[1], len(item[2].card_indices)))
     return _annotated_action(action, reason=_joker_discard_reason(state, best_play, action, context))
+
+
+def _ride_the_bus_cleanup_worth_tempo(
+    state: GameState,
+    best_play: Action,
+    best_score: int,
+    remaining_score: int,
+    context: _BlindContext,
+) -> bool:
+    names = _active_joker_names(state)
+    if "Ride the Bus" not in names or "Pareidolia" in names:
+        return True
+    if best_score < remaining_score:
+        return True
+
+    evaluation = _evaluate_play_action(state, best_play, context)
+    scoring_cards = tuple(state.hand[best_play.card_indices[index]] for index in evaluation.scoring_indices)
+    return any(_is_face_card_for_state(state, card) for card in scoring_cards)
 
 
 def _strategic_discard_is_safe(
@@ -245,3 +278,13 @@ def _score_play_action(*args, **kwargs):
     if patched is not None and patched is not _score_play_action:
         return patched(*args, **kwargs)
     return _default_score_play_action(*args, **kwargs)
+
+
+def _evaluate_play_action(*args, **kwargs):
+    """Honor legacy tests/tools that patch ``basic_strategy_bot._evaluate_play_action``."""
+
+    strategy_module = sys.modules.get("balatro_ai.bots.basic_strategy_bot")
+    patched = getattr(strategy_module, "_evaluate_play_action", None) if strategy_module is not None else None
+    if patched is not None and patched is not _evaluate_play_action:
+        return patched(*args, **kwargs)
+    return _default_evaluate_play_action(*args, **kwargs)

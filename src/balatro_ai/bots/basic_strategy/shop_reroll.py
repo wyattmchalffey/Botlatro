@@ -21,6 +21,7 @@ from balatro_ai.bots.basic_strategy.data import (
 )
 from balatro_ai.bots.basic_strategy.jokers import _joker_roles
 from balatro_ai.bots.basic_strategy.profile import CRITICAL_BUILD_ROLES, _BuildProfile, _ShopContext, _ShopPressure
+from balatro_ai.bots.basic_strategy.run_plan import _RunPlan, _run_plan
 from balatro_ai.bots.basic_strategy.shop_forecast import _shop_has_followup_big_blind_shop
 from balatro_ai.bots.basic_strategy.shop_money import (
     _desired_money_reserve,
@@ -113,19 +114,26 @@ def _late_reroll_is_worth_it(
     pressure: _ShopPressure,
     profile: _BuildProfile,
     context: _ShopContext,
+    plan: _RunPlan | None = None,
 ) -> bool:
-    if state.ante < 5:
+    plan = plan or _run_plan(state, profile, pressure)
+    reroll_limit = _late_reroll_limit(state, pressure, profile, plan)
+    if _panic_reroll_is_worth_it(state, pressure, profile, context, plan, reroll_limit=reroll_limit):
         return True
-    reroll_limit = _late_reroll_limit(state, pressure, profile)
     if context.rerolls_in_shop >= reroll_limit and not _late_extra_pressure_reroll_is_worth_it(
         state,
         pressure,
         profile,
         context,
         reroll_limit,
+        plan,
     ):
         return False
+    if state.ante < 5:
+        return True
     pressure_spendable = _spendable_money(state, pressure)
+    if _late_boss_bank_reroll_limit(state, pressure, profile) is not None:
+        return pressure_spendable >= _shop_reroll_cost(state)
     if pressure.raw_ratio >= 1.05:
         return True
     if pressure.ratio >= 1.05 and pressure_spendable >= 20:
@@ -153,14 +161,81 @@ def _late_reroll_is_worth_it(
     return pressure_spendable >= 20
 
 
+def _panic_reroll_is_worth_it(
+    state: GameState,
+    pressure: _ShopPressure,
+    profile: _BuildProfile,
+    context: _ShopContext,
+    plan: _RunPlan | None = None,
+    *,
+    reroll_limit: int | None = None,
+) -> bool:
+    if state.ante < 3:
+        return False
+    severe_pressure = pressure.ratio >= 3.0 or pressure.raw_ratio >= 1.75
+    high_pressure = severe_pressure or pressure.raw_ratio >= 1.35
+    if not high_pressure:
+        return False
+
+    missing = _missing_critical_roles(profile)
+    if not missing and not severe_pressure:
+        return False
+
+    cost = _shop_reroll_cost(state)
+    if cost > state.money:
+        return False
+    if _has_money_scaling_joker(state):
+        if _spendable_money(state, pressure) < cost:
+            return False
+    else:
+        if _normal_joker_open_slots(state) <= 0:
+            if state.money < 35:
+                return False
+            if missing.isdisjoint({"xmult", "scaling"}):
+                return False
+        reserve_floor = 3 if severe_pressure else 6
+        if state.money < cost + reserve_floor:
+            return False
+
+    plan = plan or _run_plan(state, profile, pressure)
+    base_limit = reroll_limit if reroll_limit is not None else _late_reroll_limit(state, pressure, profile, plan)
+    extra_limit = _panic_reroll_extra_limit(state, pressure, missing, base_limit)
+    if context.rerolls_in_shop >= base_limit + extra_limit:
+        return False
+
+    visible_value = _best_visible_non_reroll_shop_value(state, pressure, context)
+    threshold = _shop_buy_threshold(state, pressure)
+    return visible_value + active_config().shop_value_tolerance < threshold
+
+
+def _panic_reroll_extra_limit(
+    state: GameState,
+    pressure: _ShopPressure,
+    missing: set[str],
+    base_limit: int,
+) -> int:
+    if base_limit >= 6:
+        if state.money >= 95 and (pressure.ratio >= 4.0 or pressure.raw_ratio >= 2.0) and missing & {"xmult", "scaling"}:
+            return 1
+        return 0
+    if pressure.ratio >= 4.0 or pressure.raw_ratio >= 2.0:
+        if state.money >= 60:
+            return 4
+        return 2
+    if pressure.ratio >= 3.0 or pressure.raw_ratio >= 1.75:
+        return 3 if state.money >= 45 and missing & {"xmult", "scaling"} else 2
+    return 2 if missing & {"xmult", "scaling"} else 1
+
+
 def _late_extra_pressure_reroll_is_worth_it(
     state: GameState,
     pressure: _ShopPressure,
     profile: _BuildProfile,
     context: _ShopContext,
     reroll_limit: int,
+    plan: _RunPlan | None = None,
 ) -> bool:
-    allowance = _late_extra_pressure_reroll_allowance(state, pressure, profile, reroll_limit)
+    allowance = _late_extra_pressure_reroll_allowance(state, pressure, profile, reroll_limit, plan)
     if allowance <= 0 or context.rerolls_in_shop >= reroll_limit + allowance:
         return False
     if _spendable_money(state, pressure) < 15:
@@ -176,6 +251,7 @@ def _late_extra_pressure_reroll_allowance(
     pressure: _ShopPressure,
     profile: _BuildProfile,
     reroll_limit: int,
+    plan: _RunPlan | None = None,
 ) -> int:
     if state.ante < 5:
         return 0
@@ -235,28 +311,102 @@ def _best_visible_non_reroll_shop_value(
     return best_value
 
 
-def _late_reroll_limit(state: GameState, pressure: _ShopPressure, profile: _BuildProfile) -> int:
+def _late_reroll_limit(
+    state: GameState,
+    pressure: _ShopPressure,
+    profile: _BuildProfile,
+    plan: _RunPlan | None = None,
+) -> int:
     if state.ante < 5:
-        return 99
+        return max(0, plan.reroll_budget) if plan is not None else 99
     closer_limit = _late_pressure_closer_reroll_limit(state, pressure, profile)
     if closer_limit is not None:
-        return closer_limit
+        return _plan_adjusted_reroll_limit(state, pressure, profile, closer_limit, plan)
     if state.ante >= 7 and pressure.ratio >= 1.2:
         if _urgent_late_role_hunt(state, pressure, profile):
-            return 4 if pressure.ratio >= 1.6 else 3
+            return _plan_adjusted_reroll_limit(state, pressure, profile, 4 if pressure.ratio >= 1.6 else 3, plan)
         if _rich_late_role_hunt(profile) or {"xmult", "scaling"} & set(profile.missing_roles):
-            return 3 if pressure.ratio >= 1.6 else 2
+            return _plan_adjusted_reroll_limit(state, pressure, profile, 3 if pressure.ratio >= 1.6 else 2, plan)
     if state.ante >= 8 and pressure.ratio >= 1.05 and _rich_late_role_hunt(profile):
-        return 2
+        return _plan_adjusted_reroll_limit(state, pressure, profile, 2, plan)
+    boss_bank_limit = _late_boss_bank_reroll_limit(state, pressure, profile)
+    if boss_bank_limit is not None:
+        if plan is not None:
+            return min(boss_bank_limit, max(1, plan.reroll_budget))
+        return boss_bank_limit
     if pressure.raw_ratio >= 1.35:
-        return 3 if _urgent_late_role_hunt(state, pressure, profile) else 2
+        return _plan_adjusted_reroll_limit(
+            state,
+            pressure,
+            profile,
+            3 if _urgent_late_role_hunt(state, pressure, profile) else 2,
+            plan,
+        )
     if pressure.raw_ratio >= 1.15:
-        return 2
+        return _plan_adjusted_reroll_limit(state, pressure, profile, 2, plan)
     if _urgent_late_role_hunt(state, pressure, profile):
-        return 2
+        return _plan_adjusted_reroll_limit(state, pressure, profile, 2, plan)
     if _rich_late_role_hunt(profile):
-        return 1
-    return 0
+        return _plan_adjusted_reroll_limit(state, pressure, profile, 1, plan)
+    return _plan_adjusted_reroll_limit(state, pressure, profile, 0, plan)
+
+
+def _plan_adjusted_reroll_limit(
+    state: GameState,
+    pressure: _ShopPressure,
+    profile: _BuildProfile,
+    base_limit: int,
+    plan: _RunPlan | None,
+) -> int:
+    if plan is None:
+        return base_limit
+    budget = max(0, plan.reroll_budget)
+    if state.ante < 5:
+        return budget
+    if _shop_has_followup_big_blind_shop(state):
+        return base_limit
+    if plan.shop_posture == "conserve":
+        return min(base_limit, budget)
+    if plan.shop_posture == "panic":
+        return max(base_limit, budget)
+    if plan.shop_posture == "spend":
+        return max(base_limit, budget)
+    if _missing_critical_roles(profile):
+        return max(base_limit, min(budget, 2))
+    if pressure.ratio < 0.85 and pressure.raw_ratio < 0.95:
+        return min(base_limit, budget)
+    return max(base_limit, min(budget, 1))
+
+
+def _late_boss_bank_reroll_limit(
+    state: GameState,
+    pressure: _ShopPressure,
+    profile: _BuildProfile,
+) -> int | None:
+    if state.ante < 5 or pressure.boss_name != "The Needle" or _shop_has_followup_big_blind_shop(state):
+        return None
+    if not _missing_critical_roles(profile):
+        return None
+    if pressure.ratio < 1.25 and pressure.raw_ratio < 0.9:
+        return None
+
+    spendable = _spendable_money(state, pressure)
+    reroll_cost = _shop_reroll_cost(state)
+    if spendable < reroll_cost:
+        return None
+
+    if _has_money_scaling_joker(state):
+        if pressure.ratio < 1.35 and pressure.raw_ratio < 0.95:
+            return None
+        if spendable >= 35:
+            return 6
+        if spendable >= 20:
+            return 4
+        return 2 if spendable >= reroll_cost * 2 + 1 else 1
+
+    if spendable >= 25 and (pressure.ratio >= 1.5 or pressure.raw_ratio >= 1.05):
+        return 3
+    return 1
 
 
 def _late_pressure_closer_mode(

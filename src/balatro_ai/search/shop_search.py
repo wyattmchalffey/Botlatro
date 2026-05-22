@@ -503,7 +503,7 @@ def shop_capacity_headroom_value(state: GameState) -> float:
 
         pressure = _shop_pressure(state)
         capacity_ratio = pressure.build_capacity / max(1.0, pressure.target_score)
-        raw_cushion = max(0.0, capacity_ratio - 1.15)
+        raw_cushion = max(0.0, capacity_ratio - 1.0)
         value = min(42.0, raw_cushion * 22.0)
         if state.ante <= 2:
             value *= 0.65
@@ -1179,7 +1179,7 @@ def _discount_voucher_ordering_bonus(state: GameState, action: Action, next_stat
             savings += max(0, _item_cost(state, before_item) - _item_cost(next_state, after_item))
     if savings <= 0:
         return 0.0
-    return min(24.0, savings * 4.0)
+    return min(36.0, savings * 24.0)
 
 
 def _action_potential_shaping(
@@ -1292,7 +1292,7 @@ def _legal_shop_actions(
         if _can_buy_item(state, item):
             actions.append(Action(ActionType.OPEN_PACK, target_id="pack", amount=index, metadata={"kind": "pack", "index": index}))
 
-    if sampler.reroll_cost(state) <= state.money:
+    if _can_afford_cost(state, sampler.reroll_cost(state)):
         actions.append(Action(ActionType.REROLL))
     actions.append(Action(ActionType.END_SHOP))
     return tuple(actions)
@@ -1374,7 +1374,18 @@ def _sell_is_search_candidate(state: GameState, index: int) -> bool:
 
 
 def _can_buy_item(state: GameState, item: object) -> bool:
-    return _item_cost(state, item) <= state.money
+    return _can_afford_cost(state, _item_cost(state, item))
+
+
+def _can_afford_cost(state: GameState, cost: int) -> bool:
+    return state.money - max(0, cost) >= _bankrupt_at(state)
+
+
+def _bankrupt_at(state: GameState) -> int:
+    try:
+        return min(0, int(state.modifiers.get("bankrupt_at", 0)))
+    except (TypeError, ValueError):
+        return 0
 
 
 def _buy_action_item(state: GameState, action: Action) -> object | None:

@@ -84,6 +84,13 @@ def _sample_build_score(state: GameState, jokers: tuple[Joker, ...]) -> float:
     )
 
 
+def _repeatable_build_score(state: GameState, jokers: tuple[Joker, ...]) -> float:
+    return _decision_cached(
+        ("repeatable_build_score", _sample_build_score_cache_key(state, jokers)),
+        lambda: _repeatable_build_score_uncached(state, jokers),
+    )
+
+
 def _sample_build_score_uncached(state: GameState, jokers: tuple[Joker, ...]) -> float:
     scoring_state = replace(state, jokers=jokers)
     joker_context = _prepare_joker_evaluation_context(jokers)
@@ -108,6 +115,49 @@ def _sample_build_score_uncached(state: GameState, jokers: tuple[Joker, ...]) ->
     expected = weighted_total / total_weight
     average_top = sum(sorted(raw_scores, reverse=True)[:3]) / min(3, len(raw_scores))
     return (expected * 0.78) + (average_top * 0.22)
+
+
+def _repeatable_build_score_uncached(state: GameState, jokers: tuple[Joker, ...]) -> float:
+    scoring_state = replace(state, jokers=jokers)
+    joker_context = _prepare_joker_evaluation_context(jokers)
+    weighted_total = 0.0
+    total_weight = 0.0
+    weighted_scores: list[tuple[float, float]] = []
+
+    for sample in _score_samples_for_state(scoring_state):
+        score = _sample_hand_build_score(scoring_state, jokers, sample, joker_context=joker_context)
+        weighted_total += score * sample.weight
+        total_weight += sample.weight
+        weighted_scores.append((score, sample.weight))
+
+    visible_score = _visible_hand_sample_score(scoring_state, jokers, joker_context=joker_context)
+    if visible_score > 0:
+        visible_weight = 0.35
+        weighted_total += visible_score * visible_weight
+        total_weight += visible_weight
+        weighted_scores.append((float(visible_score), visible_weight))
+
+    if total_weight <= 0 or not weighted_scores:
+        return 0.0
+    expected = weighted_total / total_weight
+    lower_mid = _weighted_score_percentile(weighted_scores, 0.35)
+    return (expected * 0.72) + (lower_mid * 0.28)
+
+
+def _weighted_score_percentile(weighted_scores: list[tuple[float, float]], percentile: float) -> float:
+    if not weighted_scores:
+        return 0.0
+    ordered = sorted(weighted_scores, key=lambda item: item[0])
+    total_weight = sum(max(0.0, weight) for _, weight in ordered)
+    if total_weight <= 0:
+        return ordered[0][0]
+    target = total_weight * max(0.0, min(1.0, percentile))
+    cumulative = 0.0
+    for score, weight in ordered:
+        cumulative += max(0.0, weight)
+        if cumulative >= target:
+            return score
+    return ordered[-1][0]
 
 
 def _sample_hand_build_score(

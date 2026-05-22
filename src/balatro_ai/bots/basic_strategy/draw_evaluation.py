@@ -36,9 +36,9 @@ from balatro_ai.bots.basic_strategy.hand_value import _straight_draw_potential
 from balatro_ai.bots.basic_strategy.score_projection import (
     _best_score_from_cards,
     _dominant_suit_from_cards,
-    _fill_with_high_cards,
+    _score_selected_cards,
 )
-from balatro_ai.rules.hand_evaluator import HandType
+from balatro_ai.rules.hand_evaluator import HandType, RANK_VALUES
 
 
 def _straight_draw_evaluation(
@@ -97,6 +97,7 @@ def _straight_draw_evaluation(
             completion_score = _straight_completion_score(
                 projected_state,
                 kept_cards,
+                window_values=window_values,
                 missing_values=missing_values,
                 draw_count=draw_count,
                 context=context,
@@ -243,29 +244,47 @@ def _straight_completion_score(
     state: GameState,
     kept_cards: tuple[Card, ...],
     *,
+    window_values: tuple[int, ...],
     missing_values: tuple[int, ...],
     draw_count: int,
     context: _BlindContext,
 ) -> int:
     if state.known_deck:
         return _best_score_from_cards(state, (*kept_cards, *state.known_deck[:draw_count]), context)
-    completion_cards = _straight_completion_cards_for_values(kept_cards, missing_values, draw_count)
-    if not completion_cards:
+    selected_cards = _straight_completion_cards_for_values(state, kept_cards, window_values, missing_values, draw_count)
+    if not selected_cards:
         return 0
-    return _best_score_from_cards(state, completion_cards, context)
+    return _score_completion_selection(state, selected_cards, kept_cards, context)
 
 
 def _straight_completion_cards_for_values(
+    state: GameState,
     kept_cards: tuple[Card, ...],
+    window_values: tuple[int, ...],
     missing_values: tuple[int, ...],
     draw_count: int,
 ) -> tuple[Card, ...]:
     if len(missing_values) > draw_count:
         return ()
-    suit = _dominant_suit_from_cards(kept_cards) or "S"
-    fill = tuple(Card(_straight_rank_for_value(value), suit) for value in missing_values)
-    remaining_draw = max(0, draw_count - len(fill))
-    return (*kept_cards, *fill, *_fill_with_high_cards((), remaining_draw))[: len(kept_cards) + draw_count]
+    selected: list[Card] = []
+    used_card_ids: set[int] = set()
+    dominant_suit = _dominant_suit_from_cards(kept_cards)
+    for value in window_values:
+        kept = [
+            (index, card)
+            for index, card in enumerate(kept_cards)
+            if id(card) not in used_card_ids and _rank_matches_straight_value(card, value)
+        ]
+        if kept:
+            _, card = max(kept, key=lambda item: _completion_card_sort_key(item[1]))
+            selected.append(card)
+            used_card_ids.add(id(card))
+            continue
+        if value not in missing_values:
+            return ()
+        rank = _straight_rank_for_value(value)
+        selected.append(_neutral_fill_card_for_rank(state, rank, avoid_suit=dominant_suit, selected=tuple(selected)))
+    return tuple(selected[:5])
 
 
 def _straight_draw_reason_detail(evaluation: _StraightDrawEvaluation) -> str:
@@ -344,7 +363,7 @@ def _flush_target_draw_evaluations(
         completion_cards = _flush_completion_cards_for_suit(kept_cards, suit, draw_count)
         if not completion_cards:
             continue
-        completion_score = _best_score_from_cards(state, completion_cards, context)
+        completion_score = _score_completion_selection(state, completion_cards, kept_cards, context)
         quality = _target_draw_quality(
             present_count=present_count,
             missing_count=missing_count,
@@ -396,10 +415,10 @@ def _rank_target_draw_evaluations(
         )
         if missing_count > 0 and completion_probability <= 0.0:
             continue
-        completion_cards = _rank_completion_cards_for_rank(kept_cards, rank, target_count, draw_count)
+        completion_cards = _rank_completion_cards_for_rank(state, kept_cards, rank, target_count, draw_count)
         if not completion_cards:
             continue
-        completion_score = _best_score_from_cards(state, completion_cards, context)
+        completion_score = _score_completion_selection(state, completion_cards, kept_cards, context)
         quality = _target_draw_quality(
             present_count=present_count,
             missing_count=missing_count,
@@ -461,6 +480,7 @@ def _full_house_target_draw_evaluations(
             if missing_count > 0 and completion_probability <= 0.0:
                 continue
             completion_cards = _full_house_completion_cards_for_ranks(
+                state,
                 kept_cards,
                 trip_rank=trip_rank,
                 pair_rank=pair_rank,
@@ -468,7 +488,7 @@ def _full_house_target_draw_evaluations(
             )
             if not completion_cards:
                 continue
-            completion_score = _best_score_from_cards(state, completion_cards, context)
+            completion_score = _score_completion_selection(state, completion_cards, kept_cards, context)
             present_count = min(3, trip_present) + min(2, pair_present)
             quality = _target_draw_quality(
                 present_count=present_count,
@@ -608,10 +628,13 @@ def _flush_completion_cards_for_suit(
         return ()
     existing_ranks = {card.rank for card in kept_cards if _normalize_suit(card.suit) == suit}
     fill = tuple(Card(rank, suit) for rank in _strategy_rank_order() if rank not in existing_ranks)
-    return (*kept_cards, *fill[:missing], *_fill_with_high_cards((), max(0, draw_count - missing)))[: len(kept_cards) + draw_count]
+    suited_cards = tuple(card for card in kept_cards if _normalize_suit(card.suit) == suit)
+    completion = (*suited_cards, *fill[:missing])
+    return tuple(sorted(completion, key=_completion_card_sort_key, reverse=True)[:5])
 
 
 def _rank_completion_cards_for_rank(
+    state: GameState,
     kept_cards: tuple[Card, ...],
     rank: str,
     target_count: int,
@@ -621,13 +644,20 @@ def _rank_completion_cards_for_rank(
     missing = max(0, target_count - present_count)
     if missing > draw_count:
         return ()
-    used_suits = {_normalize_suit(card.suit) for card in kept_cards if _rank_matches(card.rank, rank)}
-    fill_suits = tuple(suit for suit in ("S", "H", "D", "C") if suit not in used_suits)
-    fill = tuple(Card(rank, suit) for suit in fill_suits[:missing])
-    return (*kept_cards, *fill, *_fill_with_high_cards((), max(0, draw_count - len(fill))))[: len(kept_cards) + draw_count]
+    existing = tuple(card for card in kept_cards if _rank_matches(card.rank, rank))
+    fill = _rank_fill_cards(state, kept_cards, rank, missing)
+    kickers = tuple(
+        sorted(
+            (card for card in kept_cards if not _rank_matches(card.rank, rank)),
+            key=_completion_card_sort_key,
+            reverse=True,
+        )[: max(0, 5 - target_count)]
+    )
+    return (*existing[:target_count], *fill, *kickers)[:5]
 
 
 def _full_house_completion_cards_for_ranks(
+    state: GameState,
     kept_cards: tuple[Card, ...],
     *,
     trip_rank: str,
@@ -638,18 +668,62 @@ def _full_house_completion_cards_for_ranks(
     pair_missing = max(0, 2 - sum(1 for card in kept_cards if _rank_matches(card.rank, pair_rank)))
     if trip_missing + pair_missing > draw_count:
         return ()
-    trip_fill = _rank_fill_cards(kept_cards, trip_rank, trip_missing)
-    pair_fill = _rank_fill_cards((*kept_cards, *trip_fill), pair_rank, pair_missing)
-    fill = (*trip_fill, *pair_fill)
-    return (*kept_cards, *fill, *_fill_with_high_cards((), max(0, draw_count - len(fill))))[: len(kept_cards) + draw_count]
+    trip_existing = tuple(card for card in kept_cards if _rank_matches(card.rank, trip_rank))[:3]
+    trip_fill = _rank_fill_cards(state, kept_cards, trip_rank, trip_missing)
+    pair_existing = tuple(card for card in kept_cards if _rank_matches(card.rank, pair_rank))[:2]
+    pair_fill = _rank_fill_cards(state, (*kept_cards, *trip_fill), pair_rank, pair_missing)
+    return (*trip_existing, *trip_fill, *pair_existing, *pair_fill)[:5]
 
 
-def _rank_fill_cards(existing_cards: tuple[Card, ...], rank: str, count: int) -> tuple[Card, ...]:
+def _rank_fill_cards(state: GameState, existing_cards: tuple[Card, ...], rank: str, count: int) -> tuple[Card, ...]:
     if count <= 0:
         return ()
-    used_suits = {_normalize_suit(card.suit) for card in existing_cards if _rank_matches(card.rank, rank)}
+    used_suits = {_normalize_suit(card.suit) for card in (*state.hand, *existing_cards) if _rank_matches(card.rank, rank)}
     fill_suits = tuple(suit for suit in ("S", "H", "D", "C") if suit not in used_suits)
     return tuple(Card(rank, suit) for suit in fill_suits[:count])
+
+
+def _score_completion_selection(
+    state: GameState,
+    selected_cards: tuple[Card, ...],
+    available_cards: tuple[Card, ...],
+    context: _BlindContext,
+) -> int:
+    held_cards = _remaining_cards_after_selection(available_cards, selected_cards)
+    return _score_selected_cards(state, selected_cards, context, held_cards=held_cards)
+
+
+def _remaining_cards_after_selection(cards: tuple[Card, ...], selected_cards: tuple[Card, ...]) -> tuple[Card, ...]:
+    remaining = list(cards)
+    for selected in selected_cards:
+        for index, card in enumerate(remaining):
+            if card == selected:
+                remaining.pop(index)
+                break
+    return tuple(remaining)
+
+
+def _neutral_fill_card_for_rank(
+    state: GameState,
+    rank: str,
+    *,
+    avoid_suit: str | None,
+    selected: tuple[Card, ...],
+) -> Card:
+    used_suits = {_normalize_suit(card.suit) for card in (*state.hand, *selected) if _rank_matches(card.rank, rank)}
+    available_suits = tuple(suit for suit in ("S", "H", "D", "C") if suit not in used_suits)
+    if avoid_suit is not None:
+        for suit in available_suits:
+            if _normalize_suit(suit) != _normalize_suit(avoid_suit):
+                return Card(rank, suit)
+    if available_suits:
+        return Card(rank, available_suits[0])
+    return Card(rank, "S")
+
+
+def _completion_card_sort_key(card: Card) -> tuple[int, int]:
+    suit_order = {"S": 0, "H": 1, "D": 2, "C": 3}
+    return (RANK_VALUES.get(card.rank, 0), -suit_order.get(_normalize_suit(card.suit), 9))
 
 
 def _hand_matches_preferred_family(hand_type: HandType, preferred: HandType) -> bool:

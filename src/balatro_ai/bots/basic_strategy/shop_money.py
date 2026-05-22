@@ -62,12 +62,16 @@ def _economy_joker_interest_penalty_scale(state: GameState, joker: Joker, pressu
 
 def _money_after_spend_penalty(state: GameState, cost: int, pressure: _ShopPressure) -> float:
     after = state.money - cost
-    if after < 0:
+    bankrupt_at = _bankrupt_at(state)
+    if after < bankrupt_at:
         return 1000.0
     penalty = 0.0
+    if after < 0:
+        debt_weight = 2.0 if state.ante <= 2 else 3.5
+        penalty += abs(after) * debt_weight
     interest_cap = _interest_cap_money(state)
-    before_interest = min(state.money, interest_cap) // 5
-    after_interest = min(after, interest_cap) // 5
+    before_interest = max(0, min(state.money, interest_cap)) // 5
+    after_interest = max(0, min(after, interest_cap)) // 5
     interest_weight = max(1.0, (5 if state.ante >= 2 else 3) - pressure.danger * 3 + pressure.safe_margin * 4)
     penalty += max(0, before_interest - after_interest) * interest_weight
     reserve = _desired_money_reserve(state, pressure)
@@ -82,6 +86,13 @@ def _money_after_spend_penalty(state: GameState, cost: int, pressure: _ShopPress
     if after < 4 and state.ante >= 2:
         penalty += max(2.0, 10 - pressure.danger * 6 + pressure.safe_margin * 4)
     return penalty
+
+
+def _bankrupt_at(state: GameState) -> int:
+    try:
+        return min(0, int(state.modifiers.get("bankrupt_at", 0)))
+    except (TypeError, ValueError):
+        return 0
 
 
 def _interest_cap_money(state: GameState) -> int:
@@ -146,9 +157,24 @@ def _late_closing_money_reserve_cap(
     if has_money_scaling:
         missing_roles = set(_build_profile(state).missing_roles)
         if not (missing_roles & {"mult", "xmult", "scaling"}):
-            return None
+            if not (
+                pressure.boss_name == "The Needle"
+                and state.ante >= 5
+                and (pressure.ratio >= 1.25 or pressure.raw_ratio >= 0.9)
+                and state.money >= 65
+            ):
+                return None
+            return 50
         if state.ante < 7 and pressure.ratio < 3.0 and pressure.raw_ratio < 1.75:
-            return None
+            if not (
+                pressure.boss_name == "The Needle"
+                and (pressure.ratio >= 1.25 or pressure.raw_ratio >= 0.9)
+                and state.money >= 65
+            ):
+                return None
+            return 50
+        if pressure.boss_name == "The Needle" and (pressure.ratio >= 1.25 or pressure.raw_ratio >= 0.9):
+            return 50
         if pressure.ratio >= 1.75 or pressure.raw_ratio >= 1.25:
             return 35
         if state.ante >= 8 or pressure.ratio >= 1.25:
