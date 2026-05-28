@@ -654,21 +654,45 @@ class LocalBalatroSimulator:
         scored_triggers = _scored_trigger_cards(selected_cards, evaluation, state.jokers, state.hands_remaining)
         scored_once = tuple(selected_cards[index] for index in evaluation.scoring_indices)
         probability_multiplier = _probability_multiplier(state)
+
+        # Seed-faithful mid-hand probability rolls: when active, each effect
+        # rolls Balatro's own per-key pseudorandom stream
+        # (pseudorandom('lucky_mult') < normal/odds) on the persistent rng,
+        # instead of the generic Random. The keys are independent of the
+        # shop streams, so a wrong count only desyncs that one effect — never
+        # the shop. Crucially we only roll a JOKER's key when that joker is
+        # owned (the game only rolls 'bloodstone' while Bloodstone is in
+        # play); the generic path keeps rolling unconditionally (its result
+        # is just ignored downstream when the joker is absent).
+        sf = self.balatro_seed is not None and self._balatro_rng is not None and not self._rng_diverged
+        bloodstone_owned = _active_joker_count(state, "Bloodstone") > 0
+        business_owned = _active_joker_count(state, "Business Card") > 0
+        parking_owned = _active_joker_count(state, "Reserved Parking") > 0
+        if sf:
+            from balatro_ai.rng.surfaces import pseudorandom_float
+
+        def hit(key: str, odds: int | float, *, owned: bool = True) -> bool:
+            if sf:
+                if not owned:
+                    return False
+                return pseudorandom_float(self._balatro_rng, key) < min(1.0, probability_multiplier / float(odds))
+            return self._roll_odds(odds, probability_multiplier=probability_multiplier)
+
         lucky_mult_triggers = 0
         lucky_money_triggers = 0
         lucky_card_triggers = 0
         for card in scored_triggers:
             if not _is_lucky_card(card):
                 continue
-            mult_hit = self._roll_odds(5, probability_multiplier=probability_multiplier)
-            money_hit = self._roll_odds(15, probability_multiplier=probability_multiplier)
+            mult_hit = hit("lucky_mult", 5)
+            money_hit = hit("lucky_money", 15)
             lucky_mult_triggers += int(mult_hit)
             lucky_money_triggers += int(money_hit)
             lucky_card_triggers += int(mult_hit or money_hit)
         shattered_glass_cards = tuple(
             card
             for card in scored_once
-            if _is_glass_card(card) and self._roll_odds(_glass_shatter_odds(card), probability_multiplier=probability_multiplier)
+            if _is_glass_card(card) and hit("glass", _glass_shatter_odds(card))
         )
         removed_jokers: list[str] = []
         if self._roll_joker_extinction(state, "Gros Michel", odds=6, probability_multiplier=probability_multiplier):
@@ -682,22 +706,22 @@ class LocalBalatroSimulator:
             bloodstone_triggers=sum(
                 1
                 for card in scored_triggers
-                if _card_has_suit(card, "H", state.jokers) and self._roll_odds(2, probability_multiplier=probability_multiplier)
+                if _card_has_suit(card, "H", state.jokers) and hit("bloodstone", 2, owned=bloodstone_owned)
             ),
             business_card_triggers=sum(
                 1
                 for card in scored_triggers
-                if _is_face_card(card, state.jokers) and self._roll_odds(2, probability_multiplier=probability_multiplier)
+                if _is_face_card(card, state.jokers) and hit("business", 2, owned=business_owned)
             ),
             reserved_parking_triggers=sum(
                 1
                 for card in held_cards_after_hook
-                if _is_face_card(card, state.jokers) and self._roll_odds(2, probability_multiplier=probability_multiplier)
+                if _is_face_card(card, state.jokers) and hit("parking", 2, owned=parking_owned)
             ),
             space_joker_triggers=sum(
                 1
                 for _ in range(_active_joker_count(state, "Space Joker"))
-                if self._roll_odds(4, probability_multiplier=probability_multiplier)
+                if hit("space", 4)
             ),
             lucky_card_mult_triggers=lucky_mult_triggers,
             lucky_card_money_triggers=lucky_money_triggers,
@@ -794,6 +818,9 @@ class LocalBalatroSimulator:
     def _misprint_mult_for_play(self, state: GameState) -> int:
         if _active_joker_count(state, "Misprint") <= 0:
             return 0
+        if self.balatro_seed is not None and self._balatro_rng is not None and not self._rng_diverged:
+            from balatro_ai.rng.surfaces import pseudorandom_int
+            return pseudorandom_int(self._balatro_rng, "misprint", 0, 23)
         return self._rng.randint(0, 23)
 
     def _with_crimson_heart_disabled_for_next_hand(self, state: GameState) -> GameState:

@@ -670,6 +670,27 @@ def predict_spectral_created_cards(
     return ()
 
 
+def pseudorandom_float(seed_or_rng: str | BalatroRNG, key: str) -> float:
+    """Balatro's ``pseudorandom(key)`` result in [0, 1).
+
+    Advances ``key``'s independent stream by one and returns the float used
+    for probability checks (e.g. ``pseudorandom('lucky_mult') < normal/5``).
+    Mirrors the validated shop/pack float path (``_pseudorandom_float``)."""
+
+    return _pseudorandom_float(_rng(seed_or_rng), key)
+
+
+def pseudorandom_int(seed_or_rng: str | BalatroRNG, key: str, lo: int, hi: int) -> int:
+    """Balatro's ``pseudorandom(key, lo, hi)`` — an integer in [lo, hi].
+
+    Matches LuaJIT ``math.random(lo, hi)`` seeded by ``pseudoseed(key)``
+    (e.g. Misprint's ``pseudorandom('misprint', 0, 23)``)."""
+
+    rng = _rng(seed_or_rng)
+    span = hi - lo + 1
+    return lo + LuaJITPRNG.seeded(rng.random(key)).random_int_1_to_n(span) - 1
+
+
 def planet_key_for_hand(hand_name: str | None) -> str | None:
     """Map a poker-hand name (e.g. "Full House") to its Planet card key
     (e.g. "c_earth"), or None. Used for the Telescope voucher, which forces
