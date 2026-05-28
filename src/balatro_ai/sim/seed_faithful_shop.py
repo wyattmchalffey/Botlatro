@@ -58,18 +58,20 @@ def seed_faithful_shop(
     rng: Any,
     *,
     first_shop: bool,
-    initial_voucher_key: str | None = None,
+    voucher_key: str | None = None,
 ) -> tuple[tuple[dict[str, Any], ...], dict[str, Any] | None, tuple[dict[str, Any], ...]] | None:
     """Return ``(shop_cards, voucher, boosters)`` for the current shop,
     advancing the persistent per-run ``rng`` exactly as the validated
     shop-sequence walk does (predict_shop_cards + predict_shop_boosters).
     Returns ``None`` to signal fallback to generic sampling.
 
-    Voucher: on the first shop we use the ante-1 voucher already chosen
-    by predict_initial_surface (``initial_voucher_key``). Per-ante
-    voucher *timing* on later shops isn't modeled yet, so later shops
-    carry no voucher (a documented gap; shop CARDS + BOOSTERS — the
-    build-relevant content validated 51/51 — stay seed-faithful)."""
+    Voucher: ``voucher_key`` is the voucher chosen for the CURRENT ante,
+    resolved once per ante by the caller (ante 1 from
+    predict_initial_surface; ante 2+ from predict_voucher) and displayed
+    on every shop of that ante. Validated 24/24 against the no-purchase
+    shop-sequence fixtures (antes 1-3, all canonical seeds). Building the
+    payload does not touch ``rng`` — the voucher roll happens in the
+    caller so it advances exactly once per ante."""
 
     try:
         from balatro_ai.rng.surfaces import predict_shop_cards, predict_shop_boosters
@@ -101,8 +103,8 @@ def seed_faithful_shop(
         shop_cards.append(payload)
 
     voucher: dict[str, Any] | None = None
-    if first_shop and initial_voucher_key:
-        voucher = _payload_for_key(sampler, state, "Voucher", initial_voucher_key)
+    if voucher_key:
+        voucher = _payload_for_key(sampler, state, "Voucher", voucher_key)
         if voucher is None:
             return None
 

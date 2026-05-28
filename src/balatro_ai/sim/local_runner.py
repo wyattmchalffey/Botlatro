@@ -298,6 +298,11 @@ class LocalBalatroSimulator:
     _balatro_rng: object = field(default=None, init=False, repr=False)
     _initial_surface: object = field(default=None, init=False, repr=False)
     _rng_diverged: bool = field(default=False, init=False, repr=False)
+    # Per-ante shop voucher, resolved once per ante on the persistent rng
+    # (ante 1 from the initial surface; ante 2+ from predict_voucher) and
+    # reused for every shop of that ante. Validated 24/24 against the
+    # no-purchase shop-sequence fixtures.
+    _voucher_by_ante: dict[int, str] = field(default_factory=dict, init=False, repr=False)
     _boss_by_ante: dict[int, str] = field(default_factory=dict, init=False, repr=False)
     _boss_use_count: dict[str, int] = field(default_factory=dict, init=False, repr=False)
     _tag_by_blind: dict[tuple[int, str], str] = field(default_factory=dict, init=False, repr=False)
@@ -314,6 +319,7 @@ class LocalBalatroSimulator:
         self._balatro_rng = None
         self._initial_surface = None
         self._rng_diverged = False
+        self._voucher_by_ante = {}
         if not self.balatro_seed:
             return
         try:
@@ -807,14 +813,40 @@ class LocalBalatroSimulator:
             from balatro_ai.sim.seed_faithful_shop import seed_faithful_shop
         except ImportError:
             return None
-        voucher_key = getattr(self._initial_surface, "voucher_key", None)
+        voucher_key = self._voucher_for_ante(state)
         return seed_faithful_shop(
             self.sampler,
             state,
             self._balatro_rng,
             first_shop=self._shop_index == 0,
-            initial_voucher_key=voucher_key,
+            voucher_key=voucher_key,
         )
+
+    def _voucher_for_ante(self, state: GameState) -> str | None:
+        """Resolve the shop voucher for ``state.ante``, rolling it on the
+        persistent rng exactly once per ante and caching the result.
+
+        Ante 1's voucher was already consumed by predict_initial_surface;
+        ante 2+ roll the independent "Voucher"+ante stream lazily the
+        first time a shop for that ante is generated."""
+
+        ante = state.ante
+        cached = self._voucher_by_ante.get(ante)
+        if cached is not None:
+            return cached
+        if ante <= 1:
+            voucher_key = getattr(self._initial_surface, "voucher_key", None)
+        else:
+            try:
+                from balatro_ai.rng.surfaces import predict_voucher
+                voucher_key = predict_voucher(
+                    self._balatro_rng, ante=ante, used_vouchers=tuple(state.vouchers),
+                )
+            except Exception:  # noqa: BLE001 — never crash the sim path
+                voucher_key = None
+        if voucher_key:
+            self._voucher_by_ante[ante] = voucher_key
+        return voucher_key
 
     def _seed_faithful_pack_contents(self, state: GameState, pack):
         """Seed-faithful contents for an opened pack, or None to use

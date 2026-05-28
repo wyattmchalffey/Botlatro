@@ -18,6 +18,7 @@ from balatro_ai.rng.surfaces import (
     predict_initial_surface,
     predict_shop_boosters,
     predict_shop_cards,
+    predict_voucher,
 )
 from balatro_ai.rng.validate_surfaces import extract_area_cards, fixture_edition_rate, fixture_owned_vouchers, normalize_edition
 
@@ -46,10 +47,17 @@ def check_shop_sequence_fixture(fixture: Mapping[str, Any]) -> tuple[ShopSequenc
         return (ShopSequenceCheckResult("shop_sequence", "unsupported", "fixture has no shops"),)
 
     rng = BalatroRNG(str(seed))
-    predict_initial_surface(rng, ante=1)
+    initial_surface = predict_initial_surface(rng, ante=1)
     sticker_options = _shop_sticker_options(fixture.get("stake"))
     vouchers = fixture_owned_vouchers(fixture)
     voucher_effective_shop_index = _voucher_effective_shop_index(fixture)
+    # Per-ante shop voucher: ante 1 from the initial surface; ante 2+ from
+    # predict_voucher rolled once per ante on the persistent rng (the
+    # "Voucher"+ante stream is independent of the shop-card streams). Only
+    # asserted for fixtures with no pre-owned vouchers — the case validated
+    # against the captured no-purchase sequences.
+    check_voucher = not vouchers
+    voucher_by_ante: dict[int, str] = {1: initial_surface.voucher_key}
     results: list[ShopSequenceCheckResult] = []
     for index, entry in enumerate(shops):
         if not isinstance(entry, Mapping):
@@ -91,6 +99,13 @@ def check_shop_sequence_fixture(fixture: Mapping[str, Any]) -> tuple[ShopSequenc
             mismatches.append(f"shop predicted={predicted_shop} actual={actual_shop}")
         if predicted_boosters != actual_boosters:
             mismatches.append(f"boosters predicted={predicted_boosters} actual={actual_boosters}")
+        if check_voucher:
+            if ante not in voucher_by_ante:
+                voucher_by_ante[ante] = predict_voucher(rng, ante=ante)
+            predicted_voucher = voucher_by_ante[ante]
+            actual_voucher = _actual_voucher(state)
+            if actual_voucher is not None and predicted_voucher != actual_voucher:
+                mismatches.append(f"voucher predicted={predicted_voucher} actual={actual_voucher}")
         if mismatches:
             results.append(ShopSequenceCheckResult(f"shop_{index}", "mismatch", "; ".join(mismatches)))
         else:
@@ -218,6 +233,15 @@ def _actual_shop_signature(card: Mapping[str, Any]) -> tuple[str, str | None, bo
         _truthy(card.get("perishable") or modifier.get("perishable") or ability.get("perishable") or state.get("perishable")),
         _truthy(card.get("rental") or modifier.get("rental") or ability.get("rental") or state.get("rental")),
     )
+
+
+def _actual_voucher(state: Mapping[str, Any]) -> str | None:
+    area = state.get("vouchers")
+    cards = area.get("cards") if isinstance(area, Mapping) else None
+    if isinstance(cards, list) and cards and isinstance(cards[0], Mapping):
+        key = str(cards[0].get("key", ""))
+        return key or None
+    return None
 
 
 def _mapping(raw: Any) -> Mapping[str, Any]:
