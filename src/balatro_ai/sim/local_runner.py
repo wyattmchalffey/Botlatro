@@ -277,7 +277,17 @@ class LocalBalatroSimulator:
     initial_deck: tuple[Card, ...] | None = None
     boss_pool: tuple[str, ...] = DETERMINISTIC_BOSS_POOL
     state: GameState | None = None
+    # Original Balatro seed STRING (e.g. "AAAAAAA"). When set, the
+    # simulator can source seed-faithful shop surfaces from the
+    # rng/ predictors instead of generic Random sampling. None keeps
+    # the legacy (deterministic-but-not-seed-faithful) behavior.
+    balatro_seed: str | None = None
     _rng: Random = field(init=False, repr=False)
+    # Counts shops generated this run; the rng/ predictors only
+    # reproduce the FIRST shop from a fresh seed (later shops need
+    # persistent RNG state, not yet wired), so seed-faithful sourcing
+    # currently applies only when _shop_index == 0.
+    _shop_index: int = field(default=0, init=False, repr=False)
     _boss_by_ante: dict[int, str] = field(default_factory=dict, init=False, repr=False)
     _boss_use_count: dict[str, int] = field(default_factory=dict, init=False, repr=False)
     _tag_by_blind: dict[tuple[int, str], str] = field(default_factory=dict, init=False, repr=False)
@@ -295,6 +305,7 @@ class LocalBalatroSimulator:
         self._boss_by_ante = {}
         self._boss_use_count = {}
         self._tag_by_blind = {}
+        self._shop_index = 0
         deck = self.initial_deck if self.initial_deck is not None else _shuffled_standard_deck(self._rng)
         state = GameState(
             phase=GamePhase.BLIND_SELECT,
@@ -744,12 +755,33 @@ class LocalBalatroSimulator:
             candidates = list(range(len(state.jokers)))
         return self._rng.choice(candidates)
 
+    def _seed_faithful_shop(self, state: GameState):
+        """Seed-faithful (cards, voucher, boosters) for the FIRST shop,
+        or None to use generic sampling."""
+
+        if self.balatro_seed is None or self._shop_index != 0:
+            return None
+        try:
+            from balatro_ai.sim.seed_faithful_shop import seed_faithful_first_shop
+        except ImportError:
+            return None
+        return seed_faithful_first_shop(self.sampler, state, self.balatro_seed)
+
     def _cash_out(self, state: GameState) -> GameState:
+        seed_faithful = self._seed_faithful_shop(state)
+        if seed_faithful is not None:
+            shop_cards, voucher_payload, booster_packs = seed_faithful
+            next_voucher_cards = _optional_tuple(voucher_payload)
+        else:
+            shop_cards = self.sampler.sample_shop(state, rng=self._rng)
+            next_voucher_cards = _optional_tuple(self.sampler.sample_voucher(state, self._rng))
+            booster_packs = self.sampler.sample_boosters(state, rng=self._rng)
+        self._shop_index += 1
         next_state = simulate_cash_out(
             state,
-            next_shop_cards=self.sampler.sample_shop(state, rng=self._rng),
-            next_voucher_cards=_optional_tuple(self.sampler.sample_voucher(state, self._rng)),
-            next_booster_packs=self.sampler.sample_boosters(state, rng=self._rng),
+            next_shop_cards=shop_cards,
+            next_voucher_cards=next_voucher_cards,
+            next_booster_packs=booster_packs,
             next_to_do_targets=self._to_do_targets(state),
         )
         if _blind_kind(state) == "BOSS":

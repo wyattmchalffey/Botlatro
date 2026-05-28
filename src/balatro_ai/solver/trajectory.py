@@ -20,6 +20,7 @@ Status: M2 of `SOLVER_PLAN.md`.
 from __future__ import annotations
 
 import hashlib
+import os
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -147,7 +148,12 @@ def generate_trajectory(
     # check after spurious archetype regressions turned out to be
     # cross-process noise from this exact bug.
     int_seed = _stable_seed_int(seed)
-    sim = LocalBalatroSimulator(seed=int_seed, stake=stake)
+    # Opt-in seed-faithful shop sourcing (BALATRO_SEED_FAITHFUL=1):
+    # pass the original seed STRING so the simulator can source the
+    # first shop from the validated rng/ predictors. Default off keeps
+    # the legacy generic-Random shop path.
+    balatro_seed = seed if os.environ.get("BALATRO_SEED_FAITHFUL") == "1" else None
+    sim = LocalBalatroSimulator(seed=int_seed, stake=stake, balatro_seed=balatro_seed)
     sim.state = initial_state
 
     steps: list[StepRecord] = []
