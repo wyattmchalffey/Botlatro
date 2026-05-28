@@ -839,7 +839,10 @@ def _edition_rate(state: GameState) -> float:
 def _effective_cost(state: GameState, base_cost: int, card_set: str, *, edition: str | None = None) -> int:
     extra_cost = _int_value(state.modifiers.get("inflation"))
     if edition:
-        extra_cost += EDITION_EXTRA_COSTS.get(edition, 0)
+        # Editions arrive uppercase from the generic sampler ("HOLOGRAPHIC")
+        # and lowercase from the seed-faithful predictor ("holographic"); the
+        # surcharge table is uppercase, so normalize.
+        extra_cost += EDITION_EXTRA_COSTS.get(str(edition).upper(), 0)
     discount_percent = _discount_percent(state)
     cost = int(((base_cost + extra_cost + 0.5) * (100 - discount_percent)) // 100)
     cost = max(1, cost)
