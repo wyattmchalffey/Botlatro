@@ -305,6 +305,10 @@ class LocalBalatroSimulator:
     _voucher_by_ante: dict[int, str] = field(default_factory=dict, init=False, repr=False)
     _boss_by_ante: dict[int, str] = field(default_factory=dict, init=False, repr=False)
     _boss_use_count: dict[str, int] = field(default_factory=dict, init=False, repr=False)
+    # Seed-faithful boss selection: cumulative get_new_boss use-counts on the
+    # independent "boss" rng stream (ante 1 from the initial surface; ante 2+
+    # from predict_boss). Keyed by boss KEY (e.g. "bl_manacle").
+    _sf_boss_use_counts: dict[str, int] = field(default_factory=dict, init=False, repr=False)
     _tag_by_blind: dict[tuple[int, str], str] = field(default_factory=dict, init=False, repr=False)
     _economy: EconomyLedger = field(default_factory=EconomyLedger, init=False, repr=False)
 
@@ -320,6 +324,7 @@ class LocalBalatroSimulator:
         self._initial_surface = None
         self._rng_diverged = False
         self._voucher_by_ante = {}
+        self._sf_boss_use_counts = {}
         if not self.balatro_seed:
             return
         try:
@@ -330,6 +335,10 @@ class LocalBalatroSimulator:
             # shop's state matches real Balatro.
             self._initial_surface = predict_initial_surface(rng, ante=1)
             self._balatro_rng = rng
+            # Ante 1's boss was drawn by predict_initial_surface; seed the
+            # cumulative get_new_boss use-counts so ante 2+ picks correctly.
+            if self._initial_surface is not None and self._initial_surface.boss_key:
+                self._sf_boss_use_counts[self._initial_surface.boss_key] = 1
         except Exception:  # noqa: BLE001 — fall back to generic on any issue
             self._balatro_rng = None
             self._initial_surface = None
@@ -1506,8 +1515,41 @@ class LocalBalatroSimulator:
 
     def _boss_for_ante(self, ante: int) -> str:
         if ante not in self._boss_by_ante:
-            self._boss_by_ante[ante] = self._choose_boss_for_ante(ante)
+            sf = self._seed_faithful_boss_for_ante(ante)
+            self._boss_by_ante[ante] = sf if sf is not None else self._choose_boss_for_ante(ante)
         return self._boss_by_ante[ante]
+
+    def _seed_faithful_boss_for_ante(self, ante: int) -> str | None:
+        """Seed-faithful boss NAME for ``ante`` via get_new_boss on the
+        independent "boss" rng stream, or None to fall back to generic.
+
+        Ante 1's boss was drawn by predict_initial_surface; ante 2+ draw
+        predict_boss with the cumulative use-counts. The "boss" key is
+        independent of shop/pack/play keys, so drawing here never perturbs
+        those streams. Returns None if the run's rng has diverged."""
+
+        if self._balatro_rng is None or self._rng_diverged:
+            return None
+        try:
+            from balatro_ai.rng.surfaces import predict_boss, BOSS_NAMES
+        except ImportError:
+            return None
+        if ante <= 1:
+            boss_key = getattr(self._initial_surface, "boss_key", None)
+        else:
+            try:
+                boss_key = predict_boss(
+                    self._balatro_rng, ante=ante, boss_use_counts=self._sf_boss_use_counts,
+                )
+            except Exception:  # noqa: BLE001 — never crash the sim path
+                return None
+        if not boss_key:
+            return None
+        name = BOSS_NAMES.get(boss_key)
+        # Only accept names the sim knows how to surface/score.
+        if name is None or name not in BOSS_METADATA_BY_NAME:
+            return None
+        return name
 
     def _choose_boss_for_ante(self, ante: int, *, exclude: tuple[str, ...] = ()) -> str:
         pool = self._eligible_boss_pool(ante)
