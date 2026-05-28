@@ -755,11 +755,11 @@ class LocalBalatroSimulator:
             return ()
         if _sixth_sense_triggers(state, selected_cards):
             count = min(room, _active_joker_count(state, "Sixth Sense"))
-            created.extend(self._sample_created_consumables_of_type(state, "Spectral", count, used_consumables=used_consumables))
+            created.extend(self._sample_created_consumables_of_type(state, "Spectral", count, used_consumables=used_consumables, key_append="sixth"))
             room -= count
         if room > 0 and evaluation.hand_type == HandType.STRAIGHT_FLUSH:
             count = min(room, _active_joker_count(state, "Seance"))
-            created.extend(self._sample_created_consumables_of_type(state, "Spectral", count, used_consumables=used_consumables))
+            created.extend(self._sample_created_consumables_of_type(state, "Spectral", count, used_consumables=used_consumables, key_append="sea"))
             room -= count
         tarot_count = 0
         if room > 0 and evaluation.hand_type in {HandType.STRAIGHT, HandType.STRAIGHT_FLUSH} and any(
@@ -1298,9 +1298,9 @@ class LocalBalatroSimulator:
         elif name == "The Fool":
             injections["created_consumables"] = self._fool_consumables(state, storage_use=storage_use)
         elif name == "The Emperor":
-            injections["created_consumables"] = self._created_consumables_of_type(state, "Tarot", storage_use=storage_use, max_count=2)
+            injections["created_consumables"] = self._created_consumables_of_type(state, "Tarot", storage_use=storage_use, max_count=2, key_append="emp")
         elif name == "The High Priestess":
-            injections["created_consumables"] = self._created_consumables_of_type(state, "Planet", storage_use=storage_use, max_count=2)
+            injections["created_consumables"] = self._created_consumables_of_type(state, "Planet", storage_use=storage_use, max_count=2, key_append="pri")
         elif name in {"Judgement", "The Soul", "Wraith"}:
             if _normal_joker_open_slots(state) > 0:
                 injections["created_jokers"] = (self.sampler.sample_card_of_type(state, "Joker", self._rng),)
@@ -1338,9 +1338,10 @@ class LocalBalatroSimulator:
         *,
         storage_use: bool,
         max_count: int,
+        key_append: str = "",
     ) -> tuple[Mapping[str, Any], ...]:
         count = min(max_count, self._consumable_open_slots_after_use(state, storage_use=storage_use))
-        return self._sample_created_consumables_of_type(state, card_type, count)
+        return self._sample_created_consumables_of_type(state, card_type, count, key_append=key_append)
 
     def _sample_created_consumables_of_type(
         self,
@@ -1349,14 +1350,55 @@ class LocalBalatroSimulator:
         count: int,
         *,
         used_consumables: set[str] | None = None,
+        key_append: str = "",
     ) -> tuple[Mapping[str, Any], ...]:
         used = set(state.consumables) if used_consumables is None else used_consumables
         created: list[Mapping[str, Any]] = []
         for _ in range(max(0, count)):
-            card = self.sampler.sample_card_of_type(state, card_type, self._rng, used_consumables=used)
+            card = None
+            if key_append:
+                card = self._seed_faithful_created_card(state, card_type, key_append, used_consumables=used)
+            if card is None:
+                card = self.sampler.sample_card_of_type(state, card_type, self._rng, used_consumables=used)
             created.append(card)
             used.update(_sampled_item_identifiers(card))
         return tuple(created)
+
+    def _seed_faithful_created_card(
+        self,
+        state: GameState,
+        card_type: str,
+        key_append: str,
+        *,
+        used_consumables: set[str],
+    ) -> dict[str, Any] | None:
+        """Seed-faithful identity for a created Tarot/Planet/Spectral consumable
+        via predict_card with the effect's create_card key_append (e.g. 'emp'
+        for The Emperor, '8ba' for 8-Ball) on the persistent rng. These creators
+        pass soulable=false, so there's no Soul/Black-Hole roll. Returns None to
+        fall back to generic sampling (incl. joker creators, handled elsewhere)."""
+
+        if self.balatro_seed is None or self._balatro_rng is None or self._rng_diverged:
+            return None
+        try:
+            from balatro_ai.rng.surfaces import predict_card
+            from balatro_ai.sim.seed_faithful_shop import _SET_TO_POOL, _payload_for_key
+        except ImportError:
+            return None
+        try:
+            predicted = predict_card(
+                self._balatro_rng,
+                card_type,
+                ante=state.ante,
+                key_append=key_append,
+                used_consumables=set(used_consumables),
+            )
+        except Exception:  # noqa: BLE001 — never crash the sim path
+            return None
+        pool = _SET_TO_POOL.get(predicted.set)
+        if pool is None:
+            return None
+        return _payload_for_key(self.sampler, state, pool, predicted.key, edition=predicted.edition)
 
     def _consumable_open_slots_after_use(self, state: GameState, *, storage_use: bool) -> int:
         return max(0, _consumable_open_slots(state) + (1 if storage_use else 0))
