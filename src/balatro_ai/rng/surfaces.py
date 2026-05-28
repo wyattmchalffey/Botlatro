@@ -670,6 +670,29 @@ def predict_spectral_created_cards(
     return ()
 
 
+def planet_key_for_hand(hand_name: str | None) -> str | None:
+    """Map a poker-hand name (e.g. "Full House") to its Planet card key
+    (e.g. "c_earth"), or None. Used for the Telescope voucher, which forces
+    the first Celestial-pack card to the most-played hand's planet."""
+
+    if not hand_name:
+        return None
+    return _planet_key_by_hand().get(str(hand_name))
+
+
+@lru_cache(maxsize=1)
+def _planet_key_by_hand() -> Mapping[str, str]:
+    planets: dict[str, str] = {}
+    for record in _shop_pool_data().get("planets", ()):
+        config = record.get("config")
+        if isinstance(config, Mapping):
+            hand_type = config.get("hand_type")
+            key = record.get("key")
+            if hand_type is not None and key is not None:
+                planets[str(hand_type)] = str(key)
+    return planets
+
+
 def predict_sigil_suit(seed_or_rng: str | BalatroRNG) -> str:
     return _pick_from_pool(_rng(seed_or_rng), ("S", "H", "D", "C"), "sigil")
 

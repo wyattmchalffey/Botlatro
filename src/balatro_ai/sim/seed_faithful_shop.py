@@ -173,34 +173,146 @@ def seed_faithful_pack_contents(
     the shop-card RNG stream (validated 24/24 against pack fixtures), so
     this uses a fresh BalatroRNG and does NOT advance the persistent
     shop rng. Consumable/joker contents reuse the shop record->payload
-    builder; playing-card (Standard pack) contents aren't sourced yet
-    and bail. Telescope/Omen-Globe need played-hand context we don't
-    thread, so bail when those vouchers are owned."""
+    builder; Standard-pack playing cards build a payload from the
+    predicted rank/suit/enhancement/edition/seal. Telescope (forces the
+    first Celestial card to the most-played hand's planet) and Omen Globe
+    (Arcana->Spectral) are now threaded via played-hand context."""
 
     if not isinstance(pack, dict):
         return None
     pack_key = pack.get("key")
     if not pack_key:
         return None
-    vouchers = tuple(state.vouchers)
-    if any(v in vouchers for v in ("Telescope", "v_telescope", "Omen Globe", "v_omen_globe")):
-        return None
     try:
         from balatro_ai.rng.surfaces import predict_pack_contents
+    except ImportError:
+        return None
+
+    ctx = _pack_prediction_context(state)
+    try:
         predicted = predict_pack_contents(
-            seed, ante=state.ante, pack_key=str(pack_key), vouchers=vouchers,
+            seed,
+            ante=state.ante,
+            pack_key=str(pack_key),
+            vouchers=ctx["vouchers"],
+            played_hand_types=ctx["played_hand_types"],
+            telescope_planet_key=ctx["telescope_planet_key"],
+            edition_rate=ctx["edition_rate"],
         )
     except Exception:  # noqa: BLE001 — never crash the sim path
         return None
 
     contents: list[dict[str, Any]] = []
     for card in predicted:
-        pool_type = _SET_TO_POOL.get(card.set)
-        if pool_type is None:
-            # Standard-pack playing cards aren't sourced yet.
-            return None
-        payload = _payload_for_key(sampler, state, pool_type, card.key, edition=card.edition)
+        payload = _pack_card_payload(sampler, state, card)
         if payload is None:
             return None
         contents.append(payload)
     return tuple(contents)
+
+
+# Poker-hand display order (best-first), used to break ties when picking
+# the most-played hand for the Telescope voucher — mirrors the validator.
+_HAND_ORDER = (
+    "Flush Five", "Flush House", "Five of a Kind", "Straight Flush",
+    "Four of a Kind", "Full House", "Flush", "Straight",
+    "Three of a Kind", "Two Pair", "Pair", "High Card",
+)
+
+
+def _pack_prediction_context(state: "GameState") -> dict[str, Any]:
+    """Played-hand / voucher context for pack-content prediction, read from
+    the same GameState fields the validator reads from bridge fixtures."""
+
+    vouchers = tuple(state.vouchers)
+    counts = _run_played_hand_counts(state)
+    played_hand_types = frozenset(name for name, count in counts.items() if count > 0)
+
+    telescope_planet_key: str | None = None
+    if any(_has(vouchers, v) for v in ("v_telescope", "Telescope")):
+        try:
+            from balatro_ai.rng.surfaces import planet_key_for_hand
+            telescope_planet_key = planet_key_for_hand(_most_played_hand(counts))
+        except Exception:  # noqa: BLE001
+            telescope_planet_key = None
+
+    edition_rate = 1.0
+    if any(_has(vouchers, v) for v in ("v_glow_up", "Glow Up")):
+        edition_rate = 4.0
+    elif any(_has(vouchers, v) for v in ("v_hone", "Hone")):
+        edition_rate = 2.0
+
+    return {
+        "vouchers": vouchers,
+        "played_hand_types": played_hand_types,
+        "telescope_planet_key": telescope_planet_key,
+        "edition_rate": edition_rate,
+    }
+
+
+def _has(vouchers: tuple[Any, ...], value: str) -> bool:
+    return value in vouchers
+
+
+def _run_played_hand_counts(state: "GameState") -> dict[str, int]:
+    modifiers = getattr(state, "modifiers", None)
+    hands = modifiers.get("hands") if isinstance(modifiers, dict) else None
+    counts: dict[str, int] = {}
+    if isinstance(hands, dict):
+        for name, raw in hands.items():
+            if isinstance(raw, dict):
+                try:
+                    counts[str(name)] = int(raw.get("played", 0) or 0)
+                except (TypeError, ValueError):
+                    pass
+    return counts
+
+
+def _most_played_hand(counts: dict[str, int]) -> str | None:
+    best: str | None = None
+    tally = 0
+    for hand_name in _HAND_ORDER:
+        count = counts.get(hand_name, 0)
+        if count > tally:
+            best = hand_name
+            tally = count
+    return best
+
+
+def _pack_card_payload(
+    sampler: "ShopSampler",
+    state: "GameState",
+    card: Any,
+) -> dict[str, Any] | None:
+    """Map a PredictedCard to a ShopSampler-style payload, or None if the
+    card's set isn't sourceable yet."""
+
+    pool_type = _SET_TO_POOL.get(card.set)
+    if pool_type is not None:
+        return _payload_for_key(sampler, state, pool_type, card.key, edition=card.edition)
+    if card.set in ("Default", "Enhanced") and card.front_key and "_" in card.front_key:
+        return _playing_card_payload(sampler, state, card)
+    return None
+
+
+def _playing_card_payload(
+    sampler: "ShopSampler",
+    state: "GameState",
+    card: Any,
+) -> dict[str, Any] | None:
+    try:
+        from balatro_ai.search.shop_sampler import ENHANCEMENT_BY_CENTER_KEY, build_playing_card_payload
+    except ImportError:
+        return None
+    suit, rank_token = card.front_key.split("_", 1)
+    rank = "10" if rank_token == "T" else rank_token
+    enhancement = ENHANCEMENT_BY_CENTER_KEY.get(card.key) if card.set == "Enhanced" else None
+    return build_playing_card_payload(
+        sampler.data,
+        state,
+        rank=rank,
+        suit=suit,
+        enhancement=enhancement,
+        edition=card.edition,
+        seal=card.seal,
+    )

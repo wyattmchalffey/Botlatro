@@ -749,6 +749,29 @@ def _sample_playing_card_payload(
     if card_type == "Enhanced":
         enhancement = rng.choice(tuple(ENHANCEMENT_BY_CENTER_KEY.values()))
     edition = _poll_illusion_playing_card_edition(state, rng) if _has_voucher(state, "Illusion") else None
+    return build_playing_card_payload(
+        data, state, rank=rank, suit=suit, enhancement=enhancement, edition=edition,
+    )
+
+
+def build_playing_card_payload(
+    data: Mapping[str, Any],
+    state: GameState,
+    *,
+    rank: str,
+    suit: str,
+    enhancement: str | None = None,
+    edition: str | None = None,
+    seal: str | None = None,
+) -> dict[str, Any]:
+    """Build a shop/pack playing-card payload from explicit attributes.
+
+    Shared by generic sampling (random rank/suit) and seed-faithful pack
+    sourcing (predicted rank/suit/enhancement/edition/seal). The hand
+    evaluator normalizes effect names tolerantly, so the predictor's
+    "foil"/"Red"/"m_steel"-style values are accepted as-is."""
+
+    card_type = "Enhanced" if enhancement else "Base"
     base_cost = int(_mapping(data.get("playing_cards")).get("base_cost", 1))
     cost = _effective_cost(state, base_cost, card_type, edition=edition)
     payload: dict[str, Any] = {
@@ -762,13 +785,17 @@ def _sample_playing_card_payload(
         "cost": {"buy": cost, "base": base_cost},
         "metadata": {"shop_sampler": True, "base_cost": base_cost},
     }
+    modifier: dict[str, Any] = {}
     if enhancement:
         payload["enhancement"] = enhancement
-        payload["modifier"] = {"enhancement": enhancement}
+        modifier["enhancement"] = enhancement
     if edition:
         payload["edition"] = edition
-        modifier = dict(payload.get("modifier", {}))
         modifier["edition"] = edition
+    if seal:
+        payload["seal"] = seal
+        modifier["seal"] = seal
+    if modifier:
         payload["modifier"] = modifier
     return payload
 
