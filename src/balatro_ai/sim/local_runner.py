@@ -1013,7 +1013,10 @@ class LocalBalatroSimulator:
             from balatro_ai.sim.seed_faithful_shop import seed_faithful_pack_contents
         except ImportError:
             return None
-        return seed_faithful_pack_contents(self.sampler, state, pack, self.balatro_seed)
+        # Use the PERSISTENT rng so pack-content streams continue across packs
+        # within the run (a 2nd Celestial pack of the same ante must continue
+        # the planet stream, not restart it from the seed).
+        return seed_faithful_pack_contents(self.sampler, state, pack, self._balatro_rng)
 
     def _cash_out(self, state: GameState) -> GameState:
         # Defeating a boss increments the ante, and the post-boss shop is the

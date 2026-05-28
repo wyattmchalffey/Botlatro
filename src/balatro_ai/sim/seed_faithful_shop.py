@@ -184,19 +184,22 @@ def seed_faithful_pack_contents(
     sampler: "ShopSampler",
     state: "GameState",
     pack: Any,
-    seed: str,
+    seed_or_rng: Any,
 ) -> tuple[dict[str, Any], ...] | None:
     """Return seed-faithful contents for an opened booster pack, or None
     to fall back to generic sampling.
 
-    Pack contents are keyed by (seed, ante, pack_key) independently of
-    the shop-card RNG stream (validated 24/24 against pack fixtures), so
-    this uses a fresh BalatroRNG and does NOT advance the persistent
-    shop rng. Consumable/joker contents reuse the shop record->payload
-    builder; Standard-pack playing cards build a payload from the
-    predicted rank/suit/enhancement/edition/seal. Telescope (forces the
-    first Celestial card to the most-played hand's planet) and Omen Globe
-    (Arcana->Spectral) are now threaded via played-hand context."""
+    Pack-content streams (e.g. 'Planetpl1'+ante, 'Tarotar1'+ante) are
+    independent of the shop-card streams but PERSIST across packs within a
+    run — a second Celestial pack of the same ante continues the planet
+    stream rather than restarting it. So the caller passes the persistent
+    per-run rng (``self._balatro_rng``); a fresh seed string also works for
+    a single first pack (the validated fixture case). Consumable/joker
+    contents reuse the shop record->payload builder; Standard-pack playing
+    cards build a payload from the predicted rank/suit/enhancement/edition/
+    seal. Telescope (forces the first Celestial card to the most-played
+    hand's planet) and Omen Globe (Arcana->Spectral) are threaded via
+    played-hand context."""
 
     if not isinstance(pack, dict):
         return None
@@ -211,7 +214,7 @@ def seed_faithful_pack_contents(
     ctx = _pack_prediction_context(state)
     try:
         predicted = predict_pack_contents(
-            seed,
+            seed_or_rng,
             ante=state.ante,
             pack_key=str(pack_key),
             vouchers=ctx["vouchers"],
