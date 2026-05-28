@@ -1362,6 +1362,9 @@ class LocalBalatroSimulator:
         return max(0, _consumable_open_slots(state) + (1 if storage_use else 0))
 
     def _spectral_created_hand_cards(self, name: str) -> tuple[Card, ...]:
+        seed_faithful = self._seed_faithful_spectral_cards(name)
+        if seed_faithful is not None:
+            return seed_faithful
         if name == "Familiar":
             return tuple(_random_playing_card(self._rng, rank=self._rng.choice(("J", "Q", "K")), enhancement=_random_enhancement(self._rng)) for _ in range(3))
         if name == "Grim":
@@ -1369,6 +1372,31 @@ class LocalBalatroSimulator:
         if name == "Incantation":
             return tuple(_random_playing_card(self._rng, rank=self._rng.choice(("2", "3", "4", "5", "6", "7", "8", "9", "10")), enhancement=_random_enhancement(self._rng)) for _ in range(4))
         return ()
+
+    def _seed_faithful_spectral_cards(self, name: str) -> tuple[Card, ...] | None:
+        """Seed-faithful Familiar/Grim/Incantation created playing cards via
+        predict_spectral_created_cards (keys familiar_create/grim_create/
+        incantation_create + spe_card on the persistent rng), or None to fall
+        back to generic. The destroyed hand card stays generic (independent
+        stream). Validated by validate_spectral_helpers fixtures."""
+
+        spectral_key = {"Familiar": "c_familiar", "Grim": "c_grim", "Incantation": "c_incantation"}.get(name)
+        if spectral_key is None or self.balatro_seed is None or self._balatro_rng is None or self._rng_diverged:
+            return None
+        try:
+            from balatro_ai.rng.surfaces import predict_spectral_created_cards
+            from balatro_ai.search.shop_sampler import ENHANCEMENT_BY_CENTER_KEY
+        except ImportError:
+            return None
+        triples = predict_spectral_created_cards(self._balatro_rng, spectral_key)
+        return tuple(
+            Card(
+                "10" if rank == "T" else rank,
+                suit,
+                enhancement=ENHANCEMENT_BY_CENTER_KEY.get(enhancement, enhancement),
+            )
+            for rank, suit, enhancement in triples
+        )
 
     def _rearrange(self, state: GameState, action: Action) -> GameState:
         order = action.card_indices
