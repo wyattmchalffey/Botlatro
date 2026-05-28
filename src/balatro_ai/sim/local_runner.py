@@ -313,6 +313,12 @@ class LocalBalatroSimulator:
     # round (at blind select in this model), excluding the previous suit. The
     # chain advances every round regardless of ownership; None = run start.
     _ancient_suit_chain: str | None = field(default=None, init=False, repr=False)
+    # Run-long set of joker/consumable KEYS already shown in shops (Balatro's
+    # G.GAME.used_jokers/used_consumeables), which are excluded from future shop
+    # pools (unless Showman is owned). Accumulated as seed-faithful shops/rerolls
+    # are generated; combined with owned keys when generating the next shop.
+    _used_jokers_seen: set[str] = field(default_factory=set, init=False, repr=False)
+    _used_consumables_seen: set[str] = field(default_factory=set, init=False, repr=False)
     _tag_by_blind: dict[tuple[int, str], str] = field(default_factory=dict, init=False, repr=False)
     _economy: EconomyLedger = field(default_factory=EconomyLedger, init=False, repr=False)
 
@@ -330,6 +336,8 @@ class LocalBalatroSimulator:
         self._voucher_by_ante = {}
         self._sf_boss_use_counts = {}
         self._ancient_suit_chain = None
+        self._used_jokers_seen = set()
+        self._used_consumables_seen = set()
         if not self.balatro_seed:
             return
         try:
@@ -887,13 +895,43 @@ class LocalBalatroSimulator:
         except ImportError:
             return None
         voucher_key = self._voucher_for_ante(state)
-        return seed_faithful_shop(
+        used_jokers, used_consumables = self._shop_pool_used_keys(state)
+        result = seed_faithful_shop(
             self.sampler,
             state,
             self._balatro_rng,
             first_shop=self._shop_index == 0,
             voucher_key=voucher_key,
+            used_jokers=used_jokers,
+            used_consumables=used_consumables,
         )
+        if result is not None:
+            self._record_shop_pool_keys(result[0])
+        return result
+
+    def _shop_pool_used_keys(self, state: GameState) -> tuple[frozenset[str], frozenset[str]]:
+        """(used_jokers, used_consumables) excluded from the shop pool: keys
+        already shown in shops this run plus currently-owned keys. Jokers are
+        not excluded when Showman is owned (duplicates allowed)."""
+
+        consumables = frozenset(self._used_consumables_seen | _owned_consumable_keys(state))
+        if _active_joker_count(state, "Showman") > 0:
+            return frozenset(), consumables
+        jokers = frozenset(self._used_jokers_seen | _owned_joker_keys(state))
+        return jokers, consumables
+
+    def _record_shop_pool_keys(self, shop_cards) -> None:
+        """Accumulate joker/consumable keys shown in a generated shop (Balatro
+        adds shop-displayed jokers to G.GAME.used_jokers)."""
+
+        for card in shop_cards or ():
+            key = card.get("key") if isinstance(card, dict) else None
+            if not isinstance(key, str):
+                continue
+            if key.startswith("j_"):
+                self._used_jokers_seen.add(key)
+            elif key.startswith("c_"):
+                self._used_consumables_seen.add(key)
 
     def _voucher_for_ante(self, state: GameState) -> str | None:
         """Resolve the shop voucher for ``state.ante``, rolling it on the
@@ -955,7 +993,14 @@ class LocalBalatroSimulator:
             from balatro_ai.sim.seed_faithful_shop import seed_faithful_reroll
         except ImportError:
             return None
-        return seed_faithful_reroll(self.sampler, state, self._balatro_rng)
+        used_jokers, used_consumables = self._shop_pool_used_keys(state)
+        result = seed_faithful_reroll(
+            self.sampler, state, self._balatro_rng,
+            used_jokers=used_jokers, used_consumables=used_consumables,
+        )
+        if result is not None:
+            self._record_shop_pool_keys(result)
+        return result
 
     def _seed_faithful_pack_contents(self, state: GameState, pack):
         """Seed-faithful contents for an opened pack, or None to use
@@ -2226,6 +2271,29 @@ def _with_shuffled_known_deck(state: GameState, rng: Random) -> GameState:
     deck = list(state.known_deck)
     rng.shuffle(deck)
     return replace(state, known_deck=tuple(deck))
+
+
+def _owned_joker_keys(state: GameState) -> set[str]:
+    keys: set[str] = set()
+    for joker in state.jokers:
+        key = joker.metadata.get("key") if isinstance(joker.metadata, dict) else None
+        if isinstance(key, str) and key.startswith("j_"):
+            keys.add(key)
+    return keys
+
+
+def _owned_consumable_keys(state: GameState) -> set[str]:
+    keys: set[str] = set()
+    for item in state.consumables:
+        key = None
+        if isinstance(item, str):
+            key = item if item.startswith("c_") else None
+        elif isinstance(item, dict):
+            raw = item.get("key")
+            key = raw if isinstance(raw, str) and raw.startswith("c_") else None
+        if key:
+            keys.add(key)
+    return keys
 
 
 def _canonical_rank(rank: str) -> str:

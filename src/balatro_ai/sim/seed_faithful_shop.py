@@ -59,6 +59,8 @@ def seed_faithful_shop(
     *,
     first_shop: bool,
     voucher_key: str | None = None,
+    used_jokers: frozenset[str] = frozenset(),
+    used_consumables: frozenset[str] = frozenset(),
 ) -> tuple[tuple[dict[str, Any], ...], dict[str, Any] | None, tuple[dict[str, Any], ...]] | None:
     """Return ``(shop_cards, voucher, boosters)`` for the current shop,
     advancing the persistent per-run ``rng`` exactly as the validated
@@ -81,7 +83,9 @@ def seed_faithful_shop(
 
     # Shop cards first (advances the cdt/sho streams), then boosters —
     # matching the validated shop-sequence walk order.
-    shop_cards = _shop_card_payloads(sampler, state, rng)
+    shop_cards = _shop_card_payloads(
+        sampler, state, rng, used_jokers=used_jokers, used_consumables=used_consumables,
+    )
     if shop_cards is None:
         return None
 
@@ -113,11 +117,19 @@ def _shop_card_payloads(
     sampler: "ShopSampler",
     state: "GameState",
     rng: Any,
+    *,
+    used_jokers: frozenset[str] = frozenset(),
+    used_consumables: frozenset[str] = frozenset(),
 ) -> tuple[dict[str, Any], ...] | None:
     """Predict the rerollable shop-card slots and map them to ShopSampler
     payloads, advancing ``rng`` by exactly one shop-card roll. Returns None
     (after advancing the rng) on any unsourced slot — playing-card / unknown
-    key — so the caller can fall back to generic sampling."""
+    key — so the caller can fall back to generic sampling.
+
+    ``used_jokers``/``used_consumables`` are the run's already-seen keys that
+    Balatro excludes from the shop pool (G.GAME.used_jokers; skipped when
+    Showman is owned). Passing them keeps the pool — and thus the pick at a
+    given rng value — aligned with the live game."""
 
     try:
         from balatro_ai.rng.surfaces import predict_shop_cards
@@ -125,7 +137,10 @@ def _shop_card_payloads(
         return None
     try:
         n_slots = sampler.shop_slot_count(state)
-        predicted_cards = predict_shop_cards(rng, ante=state.ante, n_slots=n_slots)
+        predicted_cards = predict_shop_cards(
+            rng, ante=state.ante, n_slots=n_slots,
+            used_jokers=used_jokers, used_consumables=used_consumables,
+        )
     except Exception:  # noqa: BLE001 — never crash the sim path
         return None
 
@@ -148,6 +163,9 @@ def seed_faithful_reroll(
     sampler: "ShopSampler",
     state: "GameState",
     rng: Any,
+    *,
+    used_jokers: frozenset[str] = frozenset(),
+    used_consumables: frozenset[str] = frozenset(),
 ) -> tuple[dict[str, Any], ...] | None:
     """Return the new rerollable shop-card slots after a shop reroll, or
     None to fall back to generic sampling.
@@ -157,7 +175,9 @@ def seed_faithful_reroll(
     persistent rng — the same advance as opening the next shop. Validated
     20/20 against captured reroll fixtures (4 seeds x initial + 4 rerolls)."""
 
-    return _shop_card_payloads(sampler, state, rng)
+    return _shop_card_payloads(
+        sampler, state, rng, used_jokers=used_jokers, used_consumables=used_consumables,
+    )
 
 
 def seed_faithful_pack_contents(
