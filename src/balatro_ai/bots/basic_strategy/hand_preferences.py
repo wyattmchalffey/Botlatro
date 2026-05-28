@@ -125,21 +125,28 @@ def _has_dedicated_two_pair_plan(state: GameState) -> bool:
     return state.hand_levels.get(HandType.TWO_PAIR.value, 1) >= 3
 
 
-def _flexible_hand_types(state: GameState) -> set[HandType]:
+def _flexible_hand_types(state: GameState) -> tuple[HandType, ...]:
     preferred = _preferred_hand_type(state)
     if preferred in RANK_ARCHETYPE_HANDS:
         hands = set(RANK_ARCHETYPE_HANDS)
         if not _has_dedicated_two_pair_plan(state):
             hands.discard(HandType.TWO_PAIR)
-        return hands
-    if preferred in {HandType.STRAIGHT, HandType.STRAIGHT_FLUSH}:
-        return {HandType.STRAIGHT, HandType.STRAIGHT_FLUSH}
-    if preferred in FLUSH_ARCHETYPE_HANDS:
-        return set(FLUSH_ARCHETYPE_HANDS)
-    hands = {HandType.PAIR, HandType.THREE_OF_A_KIND, HandType.FULL_HOUSE, HandType.FLUSH, HandType.STRAIGHT}
-    if _has_dedicated_two_pair_plan(state):
-        hands.add(HandType.TWO_PAIR)
-    return hands
+    elif preferred in {HandType.STRAIGHT, HandType.STRAIGHT_FLUSH}:
+        hands = {HandType.STRAIGHT, HandType.STRAIGHT_FLUSH}
+    elif preferred in FLUSH_ARCHETYPE_HANDS:
+        hands = set(FLUSH_ARCHETYPE_HANDS)
+    else:
+        hands = {HandType.PAIR, HandType.THREE_OF_A_KIND, HandType.FULL_HOUSE, HandType.FLUSH, HandType.STRAIGHT}
+        if _has_dedicated_two_pair_plan(state):
+            hands.add(HandType.TWO_PAIR)
+    # Return in canonical (enum-definition) order, NOT set-iteration
+    # order. HandType is a StrEnum, so `set` iteration order is
+    # PYTHONHASHSEED-dependent — and downstream consumers slice the
+    # result (e.g. _celestial_candidate_hand_types keeps the first 4),
+    # which made shop decisions and whole trajectories vary with the
+    # hash seed. Membership (`in`) — the only thing callers do with
+    # this — works identically on a tuple.
+    return tuple(h for h in HandType if h in hands)
 
 
 def _dominant_suit(state: GameState) -> str | None:

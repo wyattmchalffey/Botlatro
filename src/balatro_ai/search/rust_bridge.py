@@ -61,6 +61,14 @@ RUST_BLIND_SAFE: frozenset[str] = frozenset({
     # `rust_evaluate_score_and_hand_type` BEFORE calling Rust, so
     # Psychic is safe in the blind set.
     "The Psychic",
+    # Score-neutral bosses (audited 2026-05-28): effects are
+    # money / hands / forward-sim / card-debuff, none touch
+    # chips/mult/score. Parity verified Rust==Python on 495 samples
+    # including Bull/Bootstraps money jokers + debuffed cards (Pillar).
+    # NOT The Tooth — its $1/card deduction feeds money-scaling jokers
+    # within the same evaluation, so Rust (pre-deduction money)
+    # diverges from Python (post-deduction).
+    "The Ox", "The Needle", "The Mark", "The Pillar",
 })
 
 # Identity-keyed cache for the Rust-format joker data. The jokers

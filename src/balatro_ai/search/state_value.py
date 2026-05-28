@@ -773,6 +773,16 @@ def _score_action_uncached(
 _RUST_BLIND_SAFE = frozenset({
     "", "Small Blind", "Big Blind",
     "The Club", "The Goad", "The Head", "The Window",
+    # Score-neutral bosses (audited 2026-05-28 against
+    # evaluate_played_cards: none touch chips/mult/score — their
+    # effects are money / hands / forward-sim / card-debuff). Parity
+    # verified Rust==Python on 495 samples incl. Bull/Bootstraps
+    # money jokers + debuffed cards. The Ox alone was ~84% of this
+    # path's Python fallbacks. NOT The Tooth (its $/card deduction
+    # feeds money-scaling jokers within the same eval) and NOT
+    # Flint/Psychic/Eye/Mouth (real score effects).
+    "The Ox", "The Needle", "The Wheel", "The Manacle",
+    "The Hook", "The Mark", "The Pillar",
 })
 
 # Jokers whose effect needs run-state Rust can't currently compute.

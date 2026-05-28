@@ -168,30 +168,36 @@ def _sample_hand_build_score(
     joker_context,
 ) -> float:
     played_types = _played_hand_types_this_round(state)
+    # When the Card Sharp repeat projection is active we need the
+    # played hand's HandType (for the repeated evaluation below), which
+    # only the Python `evaluate_played_cards` path produces. The Rust
+    # fast path returns a bare score, so skip it in that (rare) case to
+    # avoid referencing an unbound `evaluation`. The common no-Card-Sharp
+    # case still takes the Rust fast path.
+    project_repeat = _should_project_card_sharp_repeat_value(state, joker_context, played_types)
     # Rust fast path: when the blind is safe + all jokers are supported,
     # call evaluate_simple_with_levels directly. This is the hottest
     # shop-search evaluation (~500K calls per trajectory).
-    rust_score = _try_rust_sample_score(state, jokers, sample, played_types)
+    rust_score = None if project_repeat else _try_rust_sample_score(state, jokers, sample, played_types)
     if rust_score is not None:
-        score = float(rust_score)
-    else:
-        evaluation = evaluate_played_cards(
-            sample.cards,
-            state.hand_levels,
-            debuffed_suits=debuffed_suits_for_blind(state.blind),
-            blind_name=state.blind,
-            jokers=jokers,
-            discards_remaining=state.discards_remaining,
-            hands_remaining=max(1, state.hands_remaining),
-            held_cards=sample.held_cards,
-            deck_size=max(30, state.deck_size),
-            money=state.money,
-            played_hand_types_this_round=played_types,
-            played_hand_counts=_played_hand_counts(state),
-            _joker_context=joker_context,
-        )
-        score = float(evaluation.score)
-    if not _should_project_card_sharp_repeat_value(state, joker_context, played_types):
+        return float(rust_score)
+    evaluation = evaluate_played_cards(
+        sample.cards,
+        state.hand_levels,
+        debuffed_suits=debuffed_suits_for_blind(state.blind),
+        blind_name=state.blind,
+        jokers=jokers,
+        discards_remaining=state.discards_remaining,
+        hands_remaining=max(1, state.hands_remaining),
+        held_cards=sample.held_cards,
+        deck_size=max(30, state.deck_size),
+        money=state.money,
+        played_hand_types_this_round=played_types,
+        played_hand_counts=_played_hand_counts(state),
+        _joker_context=joker_context,
+    )
+    score = float(evaluation.score)
+    if not project_repeat:
         return score
 
     repeated_evaluation = evaluate_played_cards(
