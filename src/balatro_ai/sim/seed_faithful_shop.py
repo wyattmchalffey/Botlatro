@@ -114,3 +114,49 @@ def seed_faithful_shop(
         boosters.append(payload)
 
     return tuple(shop_cards), voucher, tuple(boosters)
+
+
+def seed_faithful_pack_contents(
+    sampler: "ShopSampler",
+    state: "GameState",
+    pack: Any,
+    seed: str,
+) -> tuple[dict[str, Any], ...] | None:
+    """Return seed-faithful contents for an opened booster pack, or None
+    to fall back to generic sampling.
+
+    Pack contents are keyed by (seed, ante, pack_key) independently of
+    the shop-card RNG stream (validated 24/24 against pack fixtures), so
+    this uses a fresh BalatroRNG and does NOT advance the persistent
+    shop rng. Consumable/joker contents reuse the shop record->payload
+    builder; playing-card (Standard pack) contents aren't sourced yet
+    and bail. Telescope/Omen-Globe need played-hand context we don't
+    thread, so bail when those vouchers are owned."""
+
+    if not isinstance(pack, dict):
+        return None
+    pack_key = pack.get("key")
+    if not pack_key:
+        return None
+    vouchers = tuple(state.vouchers)
+    if any(v in vouchers for v in ("Telescope", "v_telescope", "Omen Globe", "v_omen_globe")):
+        return None
+    try:
+        from balatro_ai.rng.surfaces import predict_pack_contents
+        predicted = predict_pack_contents(
+            seed, ante=state.ante, pack_key=str(pack_key), vouchers=vouchers,
+        )
+    except Exception:  # noqa: BLE001 — never crash the sim path
+        return None
+
+    contents: list[dict[str, Any]] = []
+    for card in predicted:
+        pool_type = _SET_TO_POOL.get(card.set)
+        if pool_type is None:
+            # Standard-pack playing cards aren't sourced yet.
+            return None
+        payload = _payload_for_key(sampler, state, pool_type, card.key, edition=card.edition)
+        if payload is None:
+            return None
+        contents.append(payload)
+    return tuple(contents)

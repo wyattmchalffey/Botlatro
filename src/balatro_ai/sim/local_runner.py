@@ -441,11 +441,13 @@ class LocalBalatroSimulator:
         if self.state is None:
             raise RuntimeError("Call reset() before step().")
         state = self.state
-        # Once the run consumes RNG we don't yet model (reroll, pack
-        # open, consumable use), the persistent BalatroRNG state no
-        # longer matches the real game — stop emitting seed-faithful
-        # shops and fall back to generic sampling for the rest of the run.
-        if action.action_type in (ActionType.REROLL, ActionType.OPEN_PACK, ActionType.USE_CONSUMABLE):
+        # Reroll and consumable-use consume the shop-card RNG stream in
+        # ways we don't model yet, so they desync the persistent rng:
+        # stop emitting seed-faithful shops afterward. Pack-opens use
+        # independent (seed, ante, pack_key) keys (validated 24/24) and
+        # do NOT touch the shop stream, so they are NOT a divergence
+        # event — shops stay seed-faithful through pack opens.
+        if action.action_type in (ActionType.REROLL, ActionType.USE_CONSUMABLE):
             self._rng_diverged = True
         next_state = self._apply_action(state, action)
         self._economy.record(state, action, next_state)
@@ -814,6 +816,19 @@ class LocalBalatroSimulator:
             initial_voucher_key=voucher_key,
         )
 
+    def _seed_faithful_pack_contents(self, state: GameState, pack):
+        """Seed-faithful contents for an opened pack, or None to use
+        generic sampling. Gated on a non-diverged run so the pack being
+        opened is itself the real (seed-faithful) one."""
+
+        if self.balatro_seed is None or self._balatro_rng is None or self._rng_diverged:
+            return None
+        try:
+            from balatro_ai.sim.seed_faithful_shop import seed_faithful_pack_contents
+        except ImportError:
+            return None
+        return seed_faithful_pack_contents(self.sampler, state, pack, self.balatro_seed)
+
     def _cash_out(self, state: GameState) -> GameState:
         seed_faithful = self._seed_faithful_shop(state)
         if seed_faithful is not None:
@@ -1070,7 +1085,9 @@ class LocalBalatroSimulator:
 
     def _open_pack(self, state: GameState, action: Action) -> GameState:
         pack = _indexed_item(_modifier_items(state.modifiers, "booster_packs"), action)
-        contents = self.sampler.sample_pack_contents(state, pack, self._rng)
+        contents = self._seed_faithful_pack_contents(state, pack)
+        if contents is None:
+            contents = self.sampler.sample_pack_contents(state, pack, self._rng)
         state, drawn_cards = _target_hand_draw_for_pack(state, pack, self._rng)
         opened = simulate_open_pack(
             state,
