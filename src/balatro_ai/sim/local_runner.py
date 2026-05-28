@@ -558,7 +558,8 @@ class LocalBalatroSimulator:
     def _select_blind(self, state: GameState) -> GameState:
         state = self._apply_round_start_tags(state)
         state = self._apply_boss_start_effects_before_draw(state)
-        state = _with_shuffled_known_deck(state, self._rng)
+        sf_deck = self._seed_faithful_round_deck(state)
+        state = sf_deck if sf_deck is not None else _with_shuffled_known_deck(state, self._rng)
         draw_count = min(_hand_size(state), state.deck_size)
         drawn_cards = _draw_from_known_deck(state, draw_count)
         drawn_cards = self._drawn_cards_after_blind_flips(state, drawn_cards)
@@ -905,6 +906,29 @@ class LocalBalatroSimulator:
         if voucher_key:
             self._voucher_by_ante[ante] = voucher_key
         return voucher_key
+
+    def _seed_faithful_round_deck(self, state: GameState):
+        """Reorder known_deck into the seed-faithful DRAW order for this round,
+        or None to fall back to generic shuffling.
+
+        Balatro shuffles at blind select via pseudoshuffle('nr'+ante), which
+        sorts the deck by sort_id (canonical order) then Fisher-Yates, and then
+        draws cards from the END of the deck. We sort canonically, run the same
+        luajit shuffle on the persistent rng, then REVERSE so the sim's
+        draw-from-front matches the bridge's draw-from-end. Validated 4/4 seeds
+        against bridge first hands."""
+
+        if self._balatro_rng is None or self._rng_diverged or not state.known_deck:
+            return None
+        try:
+            from balatro_ai.rng.luajit_prng import luajit_pseudoshuffle
+        except ImportError:
+            return None
+        deck = sorted(state.known_deck, key=_canonical_card_key)
+        seed_float = self._balatro_rng.random("nr" + str(state.ante))
+        luajit_pseudoshuffle(deck, seed_float)
+        deck.reverse()
+        return replace(state, known_deck=tuple(deck))
 
     def _seed_faithful_reroll_cards(self, state: GameState):
         """Seed-faithful shop cards for a reroll (one extra
@@ -2135,6 +2159,37 @@ def _with_shuffled_known_deck(state: GameState, rng: Random) -> GameState:
     deck = list(state.known_deck)
     rng.shuffle(deck)
     return replace(state, known_deck=tuple(deck))
+
+
+def _canonical_rank(rank: str) -> str:
+    return "T" if rank in ("10", "T") else rank
+
+
+def _build_canonical_deck_index() -> dict[tuple[str, str], int]:
+    from balatro_ai.rng.deck import build_standard_red_deck
+    return {
+        (card.suit, _canonical_rank(card.rank)): index
+        for index, card in enumerate(build_standard_red_deck())
+    }
+
+
+_CANONICAL_DECK_INDEX = _build_canonical_deck_index()
+
+
+def _canonical_card_key(card: Card) -> tuple[int, str, str, str, str]:
+    """Sort key matching Balatro's deck ``sort_id`` order for the base deck;
+    cards not in the standard deck (created/added) sort after, stably."""
+
+    base = _CANONICAL_DECK_INDEX.get((card.suit, _canonical_rank(card.rank)))
+    if base is not None:
+        return (base, "", "", "", "")
+    return (
+        len(_CANONICAL_DECK_INDEX),
+        card.suit,
+        _canonical_rank(card.rank),
+        card.enhancement or "",
+        card.seal or "",
+    )
 
 
 def _draw_from_known_deck(state: GameState, count: int) -> tuple[Card, ...]:
