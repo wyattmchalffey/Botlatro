@@ -52,17 +52,27 @@ def _payload_for_key(
     return _payload_from_record(record, state, edition=edition)
 
 
-def seed_faithful_first_shop(
+def seed_faithful_shop(
     sampler: "ShopSampler",
     state: "GameState",
-    seed: str,
+    rng: Any,
+    *,
+    first_shop: bool,
+    initial_voucher_key: str | None = None,
 ) -> tuple[tuple[dict[str, Any], ...], dict[str, Any] | None, tuple[dict[str, Any], ...]] | None:
-    """Return ``(shop_cards, voucher, boosters)`` payload tuples for the
-    ante-1 first shop sourced from the seed-faithful predictors, or
-    ``None`` to signal the caller to fall back to generic sampling."""
+    """Return ``(shop_cards, voucher, boosters)`` for the current shop,
+    advancing the persistent per-run ``rng`` exactly as the validated
+    shop-sequence walk does (predict_shop_cards + predict_shop_boosters).
+    Returns ``None`` to signal fallback to generic sampling.
+
+    Voucher: on the first shop we use the ante-1 voucher already chosen
+    by predict_initial_surface (``initial_voucher_key``). Per-ante
+    voucher *timing* on later shops isn't modeled yet, so later shops
+    carry no voucher (a documented gap; shop CARDS + BOOSTERS — the
+    build-relevant content validated 51/51 — stay seed-faithful)."""
 
     try:
-        from balatro_ai.rng.surfaces import predict_shop_surface
+        from balatro_ai.rng.surfaces import predict_shop_cards, predict_shop_boosters
         from balatro_ai.search.shop_sampler import _booster_slot_count
     except ImportError:
         return None
@@ -70,14 +80,15 @@ def seed_faithful_first_shop(
     try:
         n_slots = sampler.shop_slot_count(state)
         n_boosters = _booster_slot_count(sampler.data)
-        surface = predict_shop_surface(
-            seed, ante=state.ante, n_shop_slots=n_slots, n_boosters=n_boosters,
+        predicted_cards = predict_shop_cards(rng, ante=state.ante, n_slots=n_slots)
+        predicted_boosters = predict_shop_boosters(
+            rng, ante=state.ante, n_slots=n_boosters, first_shop_buffoon=first_shop,
         )
     except Exception:  # noqa: BLE001 — never crash the sim path
         return None
 
     shop_cards: list[dict[str, Any]] = []
-    for predicted in surface.shop_cards:
+    for predicted in predicted_cards:
         pool_type = _SET_TO_POOL.get(predicted.set)
         if pool_type is None:
             # Playing-card / enhanced shop slots aren't sourced yet.
@@ -90,13 +101,13 @@ def seed_faithful_first_shop(
         shop_cards.append(payload)
 
     voucher: dict[str, Any] | None = None
-    if surface.voucher_key:
-        voucher = _payload_for_key(sampler, state, "Voucher", surface.voucher_key)
+    if first_shop and initial_voucher_key:
+        voucher = _payload_for_key(sampler, state, "Voucher", initial_voucher_key)
         if voucher is None:
             return None
 
     boosters: list[dict[str, Any]] = []
-    for booster_key in surface.booster_keys:
+    for booster_key in predicted_boosters:
         payload = _payload_for_key(sampler, state, "Booster", booster_key)
         if payload is None:
             return None

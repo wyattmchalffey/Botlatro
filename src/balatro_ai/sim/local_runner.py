@@ -288,6 +288,16 @@ class LocalBalatroSimulator:
     # persistent RNG state, not yet wired), so seed-faithful sourcing
     # currently applies only when _shop_index == 0.
     _shop_index: int = field(default=0, init=False, repr=False)
+    # Persistent per-run BalatroRNG for seed-faithful shop sequences
+    # (advances per shop, mirroring real Balatro). Set when balatro_seed
+    # is provided. _initial_surface caches the ante-1 boss/voucher/tags
+    # (consuming the startup RNG so the first shop's state is correct).
+    # _rng_diverged flips once the run does something that consumes RNG
+    # we don't yet model (reroll / pack-open / consumable use); after
+    # that we fall back to generic sampling rather than emit a wrong shop.
+    _balatro_rng: object = field(default=None, init=False, repr=False)
+    _initial_surface: object = field(default=None, init=False, repr=False)
+    _rng_diverged: bool = field(default=False, init=False, repr=False)
     _boss_by_ante: dict[int, str] = field(default_factory=dict, init=False, repr=False)
     _boss_use_count: dict[str, int] = field(default_factory=dict, init=False, repr=False)
     _tag_by_blind: dict[tuple[int, str], str] = field(default_factory=dict, init=False, repr=False)
@@ -295,6 +305,28 @@ class LocalBalatroSimulator:
 
     def __post_init__(self) -> None:
         self._rng = Random(self.seed)
+        self._init_balatro_rng()
+
+    def _init_balatro_rng(self) -> None:
+        """Initialize the persistent seed-faithful RNG + initial surface
+        (no-op unless a balatro_seed string was provided)."""
+
+        self._balatro_rng = None
+        self._initial_surface = None
+        self._rng_diverged = False
+        if not self.balatro_seed:
+            return
+        try:
+            from balatro_ai.rng.balatro_rng import BalatroRNG
+            from balatro_ai.rng.surfaces import predict_initial_surface
+            rng = BalatroRNG(str(self.balatro_seed))
+            # Consume the startup RNG (boss/voucher/tags) so the first
+            # shop's state matches real Balatro.
+            self._initial_surface = predict_initial_surface(rng, ante=1)
+            self._balatro_rng = rng
+        except Exception:  # noqa: BLE001 — fall back to generic on any issue
+            self._balatro_rng = None
+            self._initial_surface = None
 
     def reset(self, seed: int | None = None) -> GameState:
         """Start a fresh local White Stake-style run."""
@@ -306,6 +338,7 @@ class LocalBalatroSimulator:
         self._boss_use_count = {}
         self._tag_by_blind = {}
         self._shop_index = 0
+        self._init_balatro_rng()
         deck = self.initial_deck if self.initial_deck is not None else _shuffled_standard_deck(self._rng)
         state = GameState(
             phase=GamePhase.BLIND_SELECT,
@@ -408,6 +441,12 @@ class LocalBalatroSimulator:
         if self.state is None:
             raise RuntimeError("Call reset() before step().")
         state = self.state
+        # Once the run consumes RNG we don't yet model (reroll, pack
+        # open, consumable use), the persistent BalatroRNG state no
+        # longer matches the real game — stop emitting seed-faithful
+        # shops and fall back to generic sampling for the rest of the run.
+        if action.action_type in (ActionType.REROLL, ActionType.OPEN_PACK, ActionType.USE_CONSUMABLE):
+            self._rng_diverged = True
         next_state = self._apply_action(state, action)
         self._economy.record(state, action, next_state)
         self.state = _with_local_legal_actions(next_state)
@@ -756,16 +795,24 @@ class LocalBalatroSimulator:
         return self._rng.choice(candidates)
 
     def _seed_faithful_shop(self, state: GameState):
-        """Seed-faithful (cards, voucher, boosters) for the FIRST shop,
-        or None to use generic sampling."""
+        """Seed-faithful (cards, voucher, boosters) for the current shop
+        via the persistent per-run RNG, or None to use generic sampling.
+        Falls back permanently once the run's RNG has diverged."""
 
-        if self.balatro_seed is None or self._shop_index != 0:
+        if self._balatro_rng is None or self._rng_diverged:
             return None
         try:
-            from balatro_ai.sim.seed_faithful_shop import seed_faithful_first_shop
+            from balatro_ai.sim.seed_faithful_shop import seed_faithful_shop
         except ImportError:
             return None
-        return seed_faithful_first_shop(self.sampler, state, self.balatro_seed)
+        voucher_key = getattr(self._initial_surface, "voucher_key", None)
+        return seed_faithful_shop(
+            self.sampler,
+            state,
+            self._balatro_rng,
+            first_shop=self._shop_index == 0,
+            initial_voucher_key=voucher_key,
+        )
 
     def _cash_out(self, state: GameState) -> GameState:
         seed_faithful = self._seed_faithful_shop(state)
