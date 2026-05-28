@@ -761,26 +761,38 @@ class LocalBalatroSimulator:
             count = min(room, _active_joker_count(state, "Seance"))
             created.extend(self._sample_created_consumables_of_type(state, "Spectral", count, used_consumables=used_consumables, key_append="sea"))
             room -= count
-        tarot_count = 0
-        if room > 0 and evaluation.hand_type in {HandType.STRAIGHT, HandType.STRAIGHT_FLUSH} and any(
-            _normalize_rank(card.rank) == "A" for card in selected_cards
-        ):
-            tarot_count += _active_joker_count(state, "Superposition")
-        if room > 0 and state.money <= 4:
-            tarot_count += _active_joker_count(state, "Vagabond")
+        # Superposition / Vagabond / 8-Ball each create Tarots with their own
+        # create_card key, so source them separately for seed-faithful
+        # identities (each key is an independent stream). Order between them
+        # only matters when room runs out — a rare multi-creator + full-slots
+        # edge. Generic path is unchanged: same total count, shared used set.
+        superposition_count = (
+            _active_joker_count(state, "Superposition")
+            if evaluation.hand_type in {HandType.STRAIGHT, HandType.STRAIGHT_FLUSH}
+            and any(_normalize_rank(card.rank) == "A" for card in selected_cards)
+            else 0
+        )
+        vagabond_count = _active_joker_count(state, "Vagabond") if state.money <= 4 else 0
         eight_ball_candidates = _active_joker_count(state, "8 Ball") * sum(
             1
             for card in _scored_trigger_cards(selected_cards, evaluation, state.jokers, state.hands_remaining)
             if _normalize_rank(card.rank) == "8"
         )
-        tarot_count += sum(
+        eight_ball_hits = sum(
             1
             for _ in range(eight_ball_candidates)
             if self._prob_hit("8ball", 4, _probability_multiplier(state))
         )
-        tarot_count = min(room, tarot_count)
-        created.extend(self._sample_created_consumables_of_type(state, "Tarot", tarot_count, used_consumables=used_consumables))
-        room -= tarot_count
+        for tarot_n, tarot_key in ((superposition_count, "sup"), (vagabond_count, "vag"), (eight_ball_hits, "8ba")):
+            created_n = min(room, tarot_n)
+            if created_n <= 0:
+                continue
+            created.extend(
+                self._sample_created_consumables_of_type(
+                    state, "Tarot", created_n, used_consumables=used_consumables, key_append=tarot_key
+                )
+            )
+            room -= created_n
         if (
             room > 0
             and state.required_score > 0
