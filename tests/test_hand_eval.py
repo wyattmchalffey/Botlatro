@@ -526,6 +526,46 @@ class HandEvaluatorTests(unittest.TestCase):
         self.assertEqual(evaluation.hand_type, HandType.STRAIGHT_FLUSH)
         self.assertEqual(evaluation.score, 0)
 
+    def test_to_do_list_pays_four_dollars_when_played_hand_matches_target(self) -> None:
+        joker = joker_with_effect(
+            "To Do List",
+            "Earn $4 if poker hand is a Full House, poker hand changes at end of round",
+        )
+        evaluation = evaluate_played_cards(
+            cards(["AS", "AH", "AC", "JS", "JH"]),
+            jokers=(joker,),
+        )
+
+        self.assertEqual(evaluation.hand_type, HandType.FULL_HOUSE)
+        self.assertEqual(evaluation.money_delta, 4)
+
+    def test_to_do_list_pays_each_time_hand_type_matches_in_round(self) -> None:
+        joker = joker_with_effect(
+            "To Do List",
+            "Earn $4 if poker hand is a Pair, poker hand changes at end of round",
+        )
+        evaluation = evaluate_played_cards(
+            cards(["AS", "AH", "5C"]),
+            jokers=(joker,),
+            played_hand_types_this_round=(HandType.PAIR, HandType.PAIR),
+        )
+
+        self.assertEqual(evaluation.hand_type, HandType.PAIR)
+        self.assertEqual(evaluation.money_delta, 4)
+
+    def test_to_do_list_does_not_pay_when_hand_type_differs(self) -> None:
+        joker = joker_with_effect(
+            "To Do List",
+            "Earn $4 if poker hand is a Flush, poker hand changes at end of round",
+        )
+        evaluation = evaluate_played_cards(
+            cards(["AS", "AH", "5C"]),
+            jokers=(joker,),
+        )
+
+        self.assertEqual(evaluation.hand_type, HandType.PAIR)
+        self.assertEqual(evaluation.money_delta, 0)
+
     def test_card_sharp_applies_xmult_to_repeated_hand_type(self) -> None:
         evaluation = evaluate_played_cards(
             cards(["KS", "KC"]),

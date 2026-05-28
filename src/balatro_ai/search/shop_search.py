@@ -1281,8 +1281,19 @@ def _legal_shop_actions(
             actions.append(action)
 
     for index, item in enumerate(_modifier_items(state.modifiers, "shop_cards")):
-        if _can_buy_item(state, item) and _shop_card_can_be_bought(state, item):
+        if not _can_buy_item(state, item):
+            continue
+        if _shop_card_can_be_bought(state, item):
             actions.append(Action(ActionType.BUY, target_id="card", amount=index, metadata={"kind": "card", "index": index}))
+        elif _shop_card_can_be_bought_and_used(state, item):
+            actions.append(
+                Action(
+                    ActionType.BUY,
+                    target_id="card",
+                    amount=index,
+                    metadata={"kind": "card", "index": index, "buy_and_use": True},
+                )
+            )
 
     for index, item in enumerate(_modifier_items(state.modifiers, "voucher_cards")):
         if _can_buy_item(state, item):
@@ -1410,6 +1421,23 @@ def _shop_card_can_be_bought(state: GameState, item: object) -> bool:
     if not _joker_item_uses_normal_slot(item):
         return True
     return _normal_joker_open_slots(state) > 0
+
+
+def _shop_card_can_be_bought_and_used(state: GameState, item: object) -> bool:
+    if not _is_consumable_item(item):
+        return False
+    name = _item_label(item)
+    if name in PLANET_TO_HAND or name in {"The Hermit", "Temperance", "Black Hole"}:
+        return True
+    if name == "The Wheel of Fortune":
+        return bool(state.jokers)
+    if name in {"Judgement", "The Soul", "Wraith"}:
+        return _normal_joker_open_slots(state) > 0
+    if name == "Ankh":
+        return bool(state.jokers) and _normal_joker_slot_limit(state) > 1
+    if name in {"Hex", "Ectoplasm"}:
+        return any(joker.edition is None for joker in state.jokers)
+    return False
 
 
 def _normal_joker_open_slots(state: GameState) -> int:

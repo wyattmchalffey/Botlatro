@@ -9,30 +9,76 @@ not use it to cheat leaderboards, competitions, or online/shared systems.
 
 ## Current Status
 
-The repository is currently in Phase 7: local-simulator/search-bot iteration.
-The project has moved beyond the initial scaffold and now has a source-aligned
-pure-Python simulator, bridge replay validation, rule bots, and experimental
-search bots.
+The repository is in Phase 7, but the framing pivoted on 2026-05-24 from
+"make the live bot stronger" to **"build an offline expert solver to
+generate Phase 8 training data."** Full plan and rationale in
+[`PHASE7_OFFLINE_SOLVER_PLAN.md`](PHASE7_OFFLINE_SOLVER_PLAN.md).
 
-Current behavior to keep in mind:
+Verified building blocks for the new path:
 
-- `basic_strategy_bot` is the confirmed rule-bot baseline. On the current
-  strict 200-seed local-sim set it is confirmed at `23/200` White Stake wins
-  (`11.5%`), with average ante about `5.68`.
-- `search_bot_v2` is an experimental wrapper around Basic Strategy plus
-  shop/pack/consumable/hand search. It is not currently confirmed stronger than
-  `basic_strategy_bot`.
-- Phase 8 neural training should wait until a rule/search bot is much stronger
-  on same-seed comparisons. Treat `40%` White Stake as a serious data-collection
-  threshold and `50%+` as the practical Phase 8 gate.
-- The broad all-hand discard evaluator experiment was reverted after a
-  regression. The current retained blind-play improvement is the narrower
-  straight-draw preferred-hand hunt.
+- **`forward_sim` is 99.9% exact** across play/discard/sell/reroll/end_shop
+  on 5,074 audited transitions from 241 BalatroBench runs. Diagnostic at
+  `src/balatro_ai/eval/sim_divergence_audit.py`.
+- **Per-hand scoring is essentially perfect** — 14 misses across 2,148
+  records, all labeled-known-uncertainties (Space Joker, Ramen, The Mouth
+  round-history).
+- **Seed-faithful RNG coverage now spans the major solver surfaces**:
+  initial deck shuffle, boss blind, current voucher, Small/Big skip tags,
+  shop cards, booster slots, pack contents, edition/sticker polls, and
+  per-card spectral helpers. The canonical first-shop fixtures match on
+  boss/tags/voucher/shop cards/boosters; deck fixtures still match 4/4.
+  Opened-pack fixtures match 24/24, including Omen Globe, Telescope, and
+  Glow Up voucher paths. No-purchase shop-sequence fixtures match 51/51
+  through the first ante-3 shop across White and Gold Stakes plus
+  Magic Trick/Illusion voucher-rate paths, including eternal/perishable/rental
+  sticker polls.
+- **Rust core (`botlatro-core/`)** ports the hottest paths to a native
+  PyO3 extension. Phase 1 (state types), Phase 2 (hand evaluation: 75×
+  per-call speedup, ~80 jokers covered), Phase 3 (forward-sim helpers +
+  `simulate_play_simple` orchestration), and Phase 4a-g (batched action
+  scorer wire-ins across beam-rollout, shop build, scoring helpers) +
+  **Phase 4d.1 (native rollout loop in `clear_probability_native` —
+  the first architectural Phase-4d piece)** all landed. **Solver
+  trajectory on AAAAAAA: 49.4s vs 236s baseline → 79% speedup
+  (4.78×)**. Full roadmap and status in
+  [`RUST_PORT_PLAN.md`](RUST_PORT_PLAN.md); 226 Python-side tests +
+  97 cargo tests green.
+
+  **Correction (2026-05-28):** the earlier "parity preserved (130
+  steps on AAAAAAA)" claims were measured under a since-fixed
+  nondeterminism bug — an `id()`-keyed leaf-value memo in
+  `solver/search_v2/play.py` collided after GC, so trajectories
+  varied run-to-run (and dataset generation was silently corrupted
+  whenever a worker handled >1 seed). Fixed with a tuple-ref guard;
+  the solver is now deterministic and Rust-on vs Rust-off match
+  step-for-step (40/40 steps, 0 score mismatches on AAAAAAA). With
+  the fix, AAAAAAA is a 70-step run to ante 3. **Validation finding:**
+  search depth (d3→d5) and leaf reweighting do NOT move winrate
+  (flat at ante ~3.1) — the value function (clear-probability
+  dominated, economy/build-blind, one-blind horizon) is the ceiling,
+  not search depth. Profiling shows shop search is still ~50% of
+  trajectory time and ~46% of hand evaluations still fall back to
+  Python — the largest remaining Rust-port opportunities.
+
+Live-bot historical context (no longer the target metric — the offline
+solver is the data generator now):
+
+- `basic_strategy_bot` is the confirmed rule-bot baseline. Most recent
+  1000-seed white-stake benchmark: **74/1000 wins (7.4%)**, avg ante 4.86.
+- `search_bot_v2` and earlier search variants tie `basic_strategy_bot` at
+  ~5–7% across same-seed comparisons; leaf-tuning has stopped moving the
+  number, which is what motivated the pivot.
+- Phase 8 neural training still gates on a stronger teacher (~40–50%
+  white-stake winrate equivalent on trajectory quality), but the teacher
+  is now the offline solver, not the live bot.
 
 The repository contains:
 
-- Project plan in `PLAN.md`.
+- Long-term project plan in `PLAN.md` (phases 0–15).
+- **Active Phase 7 → Phase 8 plan in `PHASE7_OFFLINE_SOLVER_PLAN.md`.**
+- **Rust port plan and status in `RUST_PORT_PLAN.md` (Phases 1-4a complete).**
 - Python package scaffold in `src/balatro_ai`.
+- **Native Rust extension in `botlatro-core/` (PyO3 + maturin).**
 - Core state and action models.
 - A JSON-RPC client for a local Balatro bridge.
 - BalatroBot API notes in `docs/BALATROBOT_API_NOTES.md`.
@@ -43,6 +89,9 @@ The repository contains:
 - Deterministic benchmark seed generation.
 - Replay logging helpers.
 - Pure-Python local simulator and replay validator.
+- **Seed-faithful RNG predictors in `src/balatro_ai/rng/` (pseudohash,
+  pseudoseed, LuaJIT TW223, deck/shop/setup/pack/spectral prediction).**
+- **Sim-vs-game divergence audit in `src/balatro_ai/eval/sim_divergence_audit.py`.**
 - Standard-library tests.
 
 ## Run Tests
@@ -87,7 +136,44 @@ python -m balatro_ai.eval.local_benchmark --bot basic_strategy_bot --seeds 200 -
 ```
 
 Use `search_bot_v2` only as an experiment lane until a same-seed comparison
-shows it beating `basic_strategy_bot`.
+shows it beating `basic_strategy_bot`. The live search-bot iteration loop is
+no longer the primary winrate path — see
+[`PHASE7_OFFLINE_SOLVER_PLAN.md`](PHASE7_OFFLINE_SOLVER_PLAN.md) for why.
+
+## RNG matching commands
+
+With the bridge running, capture seed-faithful ground truth:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m balatro_ai.rng.capture --all         # initial deck order per seed
+python -m balatro_ai.rng.capture_shop --all    # first-shop contents per seed
+python -m balatro_ai.rng.capture_shop_sequence --all --shops 6
+python -m balatro_ai.rng.capture_shop_sequence --all --shops 6 --stake gold
+python -m balatro_ai.rng.capture_shop_sequence --seed 0000003 --shops 1 --used-voucher v_magic_trick
+python -m balatro_ai.rng.capture_surfaces --all --all-pack-kinds
+python -m balatro_ai.rng.capture_surfaces --seed BBBBBBB --pack-key p_arcana_normal_1 --used-voucher v_omen_globe
+python -m balatro_ai.rng.capture_surfaces --seed AAAAAAA --pack-key p_celestial_normal_1 --used-voucher v_telescope --played-hand "High Card=3"
+python -m balatro_ai.rng.capture_spectral_helpers --all-helpers
+```
+
+Then validate predictions offline:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m balatro_ai.rng.validate --all
+python -m balatro_ai.rng.validate_shop_sequence --all
+python -m balatro_ai.rng.validate_surfaces --all
+python -m balatro_ai.rng.validate_spectral_helpers --all
+python -m unittest discover -s tests -p "test_rng*.py"
+```
+
+Audit `forward_sim` correctness against captured game transitions:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m balatro_ai.eval.sim_divergence_audit .data\balatrobench_raw_subset
+```
 
 ## Benchmark Assumptions
 
@@ -194,6 +280,10 @@ python -m balatro_ai.eval.scenario_score --cards "AS" --jokers "Bull,Bootstraps"
 
 ## Next Target
 
-Improve the confirmed rule/search win rate on fixed local-sim White Stake seed
-sets. The near-term target is to beat the current `basic_strategy_bot`
-`23/200` strict-set baseline without regressing runtime or early-ante survival.
+Per [`PHASE7_OFFLINE_SOLVER_PLAN.md`](PHASE7_OFFLINE_SOLVER_PLAN.md), the
+near-term track is **turning the validated RNG layer into the offline solver**.
+The remaining RNG edge is narrow: Illusion shop playing-card generation also
+perturbs the global `math.random` state used by the first Buffoon pack. The
+offline solver itself (archetype-branching whole-blind beam search) is the
+next build, with a target dataset of 10k-50k trajectories for Phase 8
+imitation training.

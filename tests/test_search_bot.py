@@ -6,6 +6,7 @@ from unittest.mock import patch
 import context  # noqa: F401
 from balatro_ai.api.actions import Action, ActionType
 from balatro_ai.api.state import Card, GamePhase, GameState, Joker, with_derived_legal_actions
+from balatro_ai.bots.basic_strategy_bot import BasicStrategyBot
 from balatro_ai.bots.registry import create_bot
 from balatro_ai.bots.search_bot import SearchBot
 from balatro_ai.bots.search_bot_v2 import SearchBotV2
@@ -39,6 +40,15 @@ class SearchBotTests(unittest.TestCase):
         self.assertEqual(bot.hand_config.beam_depth, 3)
         self.assertEqual(bot.hand_config.beam_width, 2)
         self.assertEqual(bot.hand_config.draw_samples, 2)
+
+    def test_registry_creates_basic_strategy_legacy_without_calibrated_planner(self) -> None:
+        bot = create_bot("basic_strategy_legacy", seed=3)
+
+        self.assertIsInstance(bot, BasicStrategyBot)
+        self.assertEqual(bot.name, "basic_strategy_legacy")
+        self.assertIsNotNone(bot.config)
+        assert bot.config is not None
+        self.assertFalse(bot.config.calibrated_shop_planner_enabled)
 
     def test_registry_does_not_create_trace_variant_for_search_bot_v1(self) -> None:
         with self.assertRaises(ValueError):

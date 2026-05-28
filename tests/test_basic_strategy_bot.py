@@ -10,6 +10,7 @@ from balatro_ai.api.actions import Action, ActionType
 from balatro_ai.api.state import Card, GamePhase, GameState, Joker
 from balatro_ai.bots import basic_strategy_bot as strategy
 from balatro_ai.bots.basic_strategy_bot import BasicStrategyBot
+from balatro_ai.bots.config import BotConfig, bot_config_scope
 from balatro_ai.rules.hand_evaluator import HandType
 
 
@@ -1482,6 +1483,282 @@ class BasicStrategyBotTests(unittest.TestCase):
         self.assertEqual(audit["decision"], "take")
         self.assertEqual(audit["chosen_item"]["name"], "Cavendish")
         self.assertGreaterEqual(len(audit["options"]), 2)
+        self.assertIn("planner_terms", audit)
+        self.assertIn("pressure_delta_value", audit["planner_terms"])
+        self.assertIn("planner_terms", audit["options"][0])
+
+    def test_calibrated_shop_planner_can_be_disabled_for_legacy_value(self) -> None:
+        state = GameState(
+            ante=2,
+            money=10,
+            modifiers={"shop_cards": ({"label": "Joker", "set": "JOKER", "cost": {"buy": 4}},)},
+            legal_actions=(Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),),
+        )
+        action = state.legal_actions[0]
+        pressure = strategy._ShopPressure(
+            target_score=1200,
+            build_capacity=1000,
+            ratio=1.2,
+            raw_ratio=1.0,
+            safety_multiplier=1.2,
+            capacity_safety_factor=1.0,
+        )
+        legacy = strategy._shop_action_value(state, action, pressure)
+
+        with bot_config_scope(BotConfig(calibrated_shop_planner_enabled=False)):
+            terms = strategy._shop_planner_terms(state, action, pressure)
+
+        self.assertFalse(terms.enabled)
+        self.assertEqual(terms.legacy_value, legacy)
+        self.assertEqual(terms.total, legacy)
+
+    def test_calibrated_shop_planner_boosts_late_missing_xmult_buy(self) -> None:
+        state = GameState(
+            ante=6,
+            money=80,
+            jokers=(Joker("Banner"), Joker("Jolly Joker"), Joker("Blue Joker")),
+            modifiers={"shop_cards": ({"label": "Cavendish", "set": "JOKER", "cost": {"buy": 4}},)},
+            legal_actions=(Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),),
+        )
+        action = state.legal_actions[0]
+        pressure = strategy._ShopPressure(
+            target_score=30000,
+            build_capacity=18000,
+            ratio=1.67,
+            raw_ratio=1.2,
+            safety_multiplier=1.4,
+            capacity_safety_factor=0.8,
+        )
+
+        terms = strategy._shop_planner_terms(state, action, pressure)
+
+        self.assertTrue(terms.enabled)
+        self.assertGreater(terms.late_conversion_value, 0.0)
+        self.assertGreater(terms.total, terms.legacy_value)
+
+    def test_calibrated_shop_planner_rewards_pressure_relief(self) -> None:
+        state = GameState(
+            ante=6,
+            blind="Small Blind",
+            required_score=20000,
+            money=80,
+            jokers=(Joker("Joker"), Joker("Blue Joker")),
+            modifiers={
+                "upcoming_boss": {"name": "The Wall", "score": 40000},
+                "shop_cards": ({"label": "Bull", "set": "JOKER", "cost": {"buy": 6}},),
+            },
+            legal_actions=(Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),),
+        )
+        action = state.legal_actions[0]
+        pressure = strategy._shop_pressure(state)
+
+        terms = strategy._shop_planner_terms(state, action, pressure)
+
+        self.assertGreater(terms.pressure_delta_value, 0.0)
+        self.assertGreater(terms.total, terms.legacy_value)
+
+    def test_calibrated_shop_planner_penalizes_pressure_worsening_spend(self) -> None:
+        state = GameState(
+            ante=6,
+            blind="Small Blind",
+            required_score=20000,
+            money=80,
+            jokers=(Joker("Bull"), Joker("Joker"), Joker("Blue Joker")),
+            modifiers={
+                "upcoming_boss": {"name": "The Wall", "score": 40000},
+                "voucher_cards": ({"label": "Blank", "set": "VOUCHER", "cost": {"buy": 10}},),
+            },
+            legal_actions=(Action(ActionType.BUY, target_id="voucher", amount=0, metadata={"kind": "voucher", "index": 0}),),
+        )
+        action = state.legal_actions[0]
+        pressure = strategy._shop_pressure(state)
+
+        terms = strategy._shop_planner_terms(state, action, pressure)
+
+        self.assertLess(terms.pressure_delta_value, 0.0)
+        self.assertLess(terms.total, terms.legacy_value)
+
+    def test_calibrated_shop_planner_penalizes_last_slot_noncritical_buy(self) -> None:
+        state = GameState(
+            ante=5,
+            money=40,
+            jokers=(Joker("Stuntman"), Joker("Gros Michel"), Joker("Mystic Summit"), Joker("Golden Joker")),
+            modifiers={"shop_cards": ({"label": "Abstract Joker", "set": "JOKER", "cost": {"buy": 4}},)},
+            legal_actions=(Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),),
+        )
+        action = state.legal_actions[0]
+        pressure = strategy._ShopPressure(
+            target_score=16000,
+            build_capacity=14000,
+            ratio=1.14,
+            raw_ratio=0.95,
+            safety_multiplier=1.35,
+            capacity_safety_factor=0.82,
+        )
+
+        terms = strategy._shop_planner_terms(state, action, pressure)
+
+        self.assertGreater(terms.slot_risk_penalty, 0.0)
+
+    def test_calibrated_shop_planner_keeps_early_leaf_delta_legacy_anchored(self) -> None:
+        state = GameState(
+            ante=2,
+            money=25,
+            jokers=(Joker("Ice Cream"), Joker("Runner"), Joker("Jolly Joker"), Joker("Blue Joker")),
+            modifiers={"shop_cards": ({"label": "Popcorn", "set": "JOKER", "cost": {"buy": 7}},)},
+            legal_actions=(Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),),
+        )
+        action = state.legal_actions[0]
+        pressure = strategy._ShopPressure(
+            target_score=1904,
+            build_capacity=5759,
+            ratio=0.33,
+            raw_ratio=0.33,
+            safety_multiplier=1.2,
+            capacity_safety_factor=1.0,
+        )
+
+        terms = strategy._shop_planner_terms(state, action, pressure)
+
+        self.assertEqual(terms.leaf_delta_value, 0.0)
+        self.assertEqual(terms.total, terms.legacy_value)
+
+    def test_calibrated_shop_planner_waits_until_late_for_slot_risk(self) -> None:
+        state = GameState(
+            ante=4,
+            money=40,
+            jokers=(Joker("Stuntman"), Joker("Gros Michel"), Joker("Mystic Summit"), Joker("Golden Joker")),
+            modifiers={"shop_cards": ({"label": "Abstract Joker", "set": "JOKER", "cost": {"buy": 4}},)},
+            legal_actions=(Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),),
+        )
+        action = state.legal_actions[0]
+        pressure = strategy._ShopPressure(
+            target_score=16000,
+            build_capacity=14000,
+            ratio=1.14,
+            raw_ratio=0.95,
+            safety_multiplier=1.35,
+            capacity_safety_factor=0.82,
+        )
+
+        terms = strategy._shop_planner_terms(state, action, pressure)
+
+        self.assertEqual(terms.slot_risk_penalty, 0.0)
+
+    def test_calibrated_shop_planner_ignores_low_legacy_voucher_leaf_boost(self) -> None:
+        state = GameState(
+            ante=8,
+            money=13,
+            jokers=(
+                Joker("Spare Trousers"),
+                Joker("Seeing Double"),
+                Joker("Banner"),
+                Joker("Blue Joker"),
+                Joker("Photograph"),
+            ),
+            modifiers={"voucher_cards": ({"label": "Wasteful", "set": "VOUCHER", "cost": {"buy": 10}},)},
+            legal_actions=(Action(ActionType.BUY, target_id="voucher", amount=0, metadata={"kind": "voucher", "index": 0}),),
+        )
+        action = state.legal_actions[0]
+        pressure = strategy._ShopPressure(
+            target_score=145000,
+            build_capacity=28015,
+            ratio=5.18,
+            raw_ratio=5.18,
+            safety_multiplier=1.45,
+            capacity_safety_factor=0.72,
+        )
+
+        terms = strategy._shop_planner_terms(state, action, pressure)
+
+        self.assertLess(terms.legacy_value, 10.0)
+        self.assertEqual(terms.leaf_delta_value, 0.0)
+
+    def test_calibrated_shop_planner_ignores_low_margin_negative_voucher_leaf_delta(self) -> None:
+        state = GameState(
+            ante=6,
+            money=79,
+            jokers=(
+                Joker("Bootstraps"),
+                Joker("Burnt Joker"),
+                Joker("Green Joker"),
+                Joker("Seeing Double"),
+                Joker("Blue Joker"),
+            ),
+            modifiers={"voucher_cards": ({"label": "Nacho Tong", "set": "VOUCHER", "cost": {"buy": 10}},)},
+            legal_actions=(Action(ActionType.BUY, target_id="voucher", amount=0, metadata={"kind": "voucher", "index": 0}),),
+        )
+        action = state.legal_actions[0]
+        pressure = strategy._ShopPressure(
+            target_score=58000,
+            build_capacity=43380,
+            ratio=1.34,
+            raw_ratio=0.83,
+            safety_multiplier=1.45,
+            capacity_safety_factor=0.9,
+            boss_name="The Arm",
+        )
+
+        terms = strategy._shop_planner_terms(state, action, pressure)
+
+        self.assertGreater(terms.legacy_value, 10.0)
+        self.assertLess(terms.legacy_value, 20.0)
+        self.assertEqual(terms.leaf_delta_value, 0.0)
+        self.assertEqual(terms.boss_risk_penalty, 0.0)
+
+    def test_calibrated_shop_planner_keeps_late_planet_buy_legacy_anchored(self) -> None:
+        state = GameState(
+            ante=6,
+            money=90,
+            jokers=(
+                Joker("Bootstraps"),
+                Joker("Abstract Joker"),
+                Joker("Burnt Joker", edition="FOIL"),
+                Joker("Green Joker", edition="FOIL"),
+                Joker("Supernova"),
+            ),
+            modifiers={"shop_cards": ({"label": "Earth", "set": "PLANET", "cost": {"buy": 3}},)},
+            legal_actions=(Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),),
+        )
+        action = state.legal_actions[0]
+        pressure = strategy._ShopPressure(
+            target_score=42945,
+            build_capacity=34439,
+            ratio=1.25,
+            raw_ratio=0.83,
+            safety_multiplier=1.43,
+            capacity_safety_factor=0.96,
+            boss_name="The Arm",
+        )
+
+        terms = strategy._shop_planner_terms(state, action, pressure)
+
+        self.assertGreater(terms.legacy_value, 10.0)
+        self.assertEqual(terms.leaf_delta_value, 0.0)
+        self.assertEqual(terms.boss_risk_penalty, 0.0)
+        self.assertEqual(terms.total, terms.legacy_value)
+
+    def test_calibrated_shop_planner_penalizes_money_scaling_reserve_break(self) -> None:
+        state = GameState(
+            ante=5,
+            money=50,
+            jokers=(Joker("Bull"), Joker("Jolly Joker"), Joker("Blue Joker")),
+            modifiers={"shop_cards": ({"label": "Cavendish", "set": "JOKER", "cost": {"buy": 30}},)},
+            legal_actions=(Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),),
+        )
+        action = state.legal_actions[0]
+        pressure = strategy._ShopPressure(
+            target_score=16000,
+            build_capacity=17000,
+            ratio=0.94,
+            raw_ratio=0.82,
+            safety_multiplier=1.3,
+            capacity_safety_factor=1.0,
+        )
+
+        terms = strategy._shop_planner_terms(state, action, pressure)
+
+        self.assertGreater(terms.money_reserve_penalty, 0.0)
 
     def test_shop_can_buy_third_high_value_joker(self) -> None:
         state = GameState(
@@ -1836,7 +2113,6 @@ class BasicStrategyBotTests(unittest.TestCase):
         blocked = (
             "Planet Merchant",
             "Magic Trick",
-            "Director's Cut",
             "Crystal Ball",
             "Telescope",
         )
@@ -1881,14 +2157,74 @@ class BasicStrategyBotTests(unittest.TestCase):
             raw_ratio=1.4,
             safety_multiplier=1.2,
             capacity_safety_factor=0.85,
-            boss_name="The Needle",
+            boss_name="Violet Vessel",
         )
         profile = strategy._build_profile(state)
         plan = strategy._run_plan(state, profile, pressure)
 
-        self.assertNotIn("Director's Cut", plan.voucher_priorities)
-        self.assertEqual(strategy._voucher_value(state, {"label": "Director's Cut", "set": "VOUCHER"}, pressure), 0.0)
+        self.assertIn("Director's Cut", plan.voucher_priorities)
+        self.assertGreater(strategy._voucher_value(state, {"label": "Director's Cut", "set": "VOUCHER"}, pressure), 0.0)
         self.assertEqual(strategy._voucher_value(state, {"label": "Telescope", "set": "VOUCHER"}, pressure), 0.0)
+
+    def test_moderately_rich_midrun_heavily_discounts_speculative_directors_cut(self) -> None:
+        state = GameState(
+            phase=GamePhase.SHOP,
+            ante=3,
+            blind="Small Blind",
+            required_score=2000,
+            money=36,
+        )
+        pressure = strategy._ShopPressure(
+            target_score=4000,
+            build_capacity=5000,
+            ratio=0.8,
+            raw_ratio=0.8,
+            safety_multiplier=1.2,
+            capacity_safety_factor=1.0,
+            boss_name="The Mark",
+        )
+
+        self.assertLess(strategy._voucher_value(state, {"label": "Director's Cut", "set": "VOUCHER"}, pressure), 10.0)
+
+    def test_very_rich_midrun_can_buy_directors_cut_as_final_boss_insurance(self) -> None:
+        state = GameState(
+            phase=GamePhase.SHOP,
+            ante=3,
+            blind="Small Blind",
+            required_score=2000,
+            money=41,
+        )
+        pressure = strategy._ShopPressure(
+            target_score=4000,
+            build_capacity=5000,
+            ratio=0.8,
+            raw_ratio=0.8,
+            safety_multiplier=1.2,
+            capacity_safety_factor=1.0,
+            boss_name="The Mark",
+        )
+
+        self.assertGreater(strategy._voucher_value(state, {"label": "Director's Cut", "set": "VOUCHER"}, pressure), 0.0)
+
+    def test_rich_ante_seven_values_directors_cut_as_showdown_insurance(self) -> None:
+        state = GameState(
+            phase=GamePhase.SHOP,
+            ante=7,
+            blind="Small Blind",
+            required_score=35000,
+            money=70,
+        )
+        pressure = strategy._ShopPressure(
+            target_score=100000,
+            build_capacity=70000,
+            ratio=1.43,
+            raw_ratio=1.0,
+            safety_multiplier=1.4,
+            capacity_safety_factor=0.85,
+            boss_name="The Arm",
+        )
+
+        self.assertGreater(strategy._voucher_value(state, {"label": "Director's Cut", "set": "VOUCHER"}, pressure), 35.0)
 
     def test_standard_pack_requires_build_payoff(self) -> None:
         pack = {"label": "Standard Pack", "set": "BOOSTER", "cost": {"buy": 4}}
@@ -4210,6 +4546,25 @@ class BasicStrategyBotTests(unittest.TestCase):
         self.assertIsNotNone(action)
         self.assertEqual(action.action_type, ActionType.OPEN_PACK)
 
+    def test_final_pressure_pack_limit_allows_extra_score_fishing(self) -> None:
+        state = GameState(
+            ante=8,
+            blind="Small Blind",
+            required_score=50000,
+            money=30,
+        )
+        pressure = strategy._ShopPressure(
+            target_score=435000,
+            build_capacity=100000,
+            ratio=4.35,
+            raw_ratio=3.0,
+            safety_multiplier=1.45,
+            capacity_safety_factor=0.85,
+            boss_name="Violet Vessel",
+        )
+
+        self.assertEqual(strategy._late_pack_limit(state, pressure), 5)
+
     def test_late_shop_opens_planet_pack_when_missing_scaling(self) -> None:
         state = GameState(
             ante=5,
@@ -4271,7 +4626,7 @@ class BasicStrategyBotTests(unittest.TestCase):
             action.metadata["shop_audit"]["threshold"],
         )
 
-    def test_shop_buys_planet_for_direct_use_when_consumable_slots_are_full(self) -> None:
+    def test_shop_buys_and_uses_planet_when_consumable_slots_are_full(self) -> None:
         state = GameState(
             ante=6,
             blind="Small Blind",
@@ -4291,7 +4646,7 @@ class BasicStrategyBotTests(unittest.TestCase):
                 )
             },
             legal_actions=(
-                Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0}),
+                Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0, "buy_and_use": True}),
                 Action(ActionType.END_SHOP),
             ),
         )
@@ -4299,6 +4654,7 @@ class BasicStrategyBotTests(unittest.TestCase):
         action = BasicStrategyBot(seed=1).choose_action(state)
 
         self.assertEqual(action.action_type, ActionType.BUY)
+        self.assertTrue(action.metadata["buy_and_use"])
         self.assertEqual(action.metadata["shop_audit"]["decision"], "take")
 
     def test_ante_one_credit_card_debt_can_buy_flexible_planet(self) -> None:
@@ -5162,6 +5518,57 @@ class BasicStrategyBotTests(unittest.TestCase):
 
         self.assertEqual(action.action_type, ActionType.SELECT_BLIND)
 
+    def test_basic_bot_rerolls_dangerous_final_boss_when_under_pressure(self) -> None:
+        state = GameState(
+            phase=GamePhase.BLIND_SELECT,
+            ante=8,
+            blind="Violet Vessel",
+            required_score=300000,
+            hands_remaining=4,
+            discards_remaining=4,
+            money=20,
+            vouchers=("Director's Cut",),
+            jokers=(Joker("Joker"), Joker("Blue Joker")),
+            modifiers={
+                "upcoming_boss": {"name": "Violet Vessel", "type": "BOSS", "score": 300000},
+                "blinds": {"boss": {"name": "Violet Vessel", "type": "BOSS", "score": 300000}},
+            },
+            legal_actions=(
+                Action(ActionType.SELECT_BLIND),
+                Action(ActionType.REROLL, metadata={"kind": "boss"}),
+            ),
+        )
+
+        action = BasicStrategyBot(seed=1).choose_action(state)
+
+        self.assertEqual(action.action_type, ActionType.REROLL)
+        self.assertEqual(action.metadata["kind"], "boss")
+        self.assertIn("boss_reroll", action.metadata["reason"])
+
+    def test_basic_bot_keeps_paid_boss_reroll_for_early_bosses(self) -> None:
+        state = GameState(
+            phase=GamePhase.BLIND_SELECT,
+            ante=2,
+            blind="The Window",
+            required_score=1600,
+            hands_remaining=4,
+            discards_remaining=4,
+            money=20,
+            vouchers=("Director's Cut",),
+            modifiers={
+                "upcoming_boss": {"name": "The Window", "type": "BOSS", "score": 1600},
+                "blinds": {"boss": {"name": "The Window", "type": "BOSS", "score": 1600}},
+            },
+            legal_actions=(
+                Action(ActionType.SELECT_BLIND),
+                Action(ActionType.REROLL, metadata={"kind": "boss"}),
+            ),
+        )
+
+        action = BasicStrategyBot(seed=1).choose_action(state)
+
+        self.assertEqual(action.action_type, ActionType.SELECT_BLIND)
+
     def test_full_shop_replacement_values_missing_xmult_role(self) -> None:
         state = GameState(
             ante=6,
@@ -5198,6 +5605,7 @@ class BasicStrategyBotTests(unittest.TestCase):
         self.assertEqual(audit["decision"], "replace")
         self.assertEqual(audit["chosen_replacement"], "Cavendish")
         self.assertGreater(audit["replacement_options"][0]["role_upgrade"], 0)
+        self.assertIn("planner_adjustment", audit["replacement_options"][0])
 
     def test_pack_choice_takes_useful_card_over_skip(self) -> None:
         state = GameState(

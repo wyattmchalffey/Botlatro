@@ -308,6 +308,24 @@ def _score_play_action(
     joker_context=None,
 ) -> int:
     context = context or _BlindContext()
+    # Rust fast path: returns (score, hand_type_str) — boss adjustment
+    # still done Python-side. Bails on non-vanilla blinds + unsupported
+    # jokers + Wild cards, falling through to the Python evaluator.
+    from balatro_ai.search.rust_bridge import rust_evaluate_score_and_hand_type
+    cards = tuple(state.hand[index] for index in action.card_indices)
+    held_cards = tuple(card for index, card in enumerate(state.hand) if index not in action.card_indices)
+    rust_result = rust_evaluate_score_and_hand_type(
+        state, cards, held_cards, state.jokers,
+        played_hand_types=context.played_hand_types,
+    )
+    if rust_result is not None:
+        score, ht_str = rust_result
+        try:
+            hand_type = HandType(ht_str)
+        except ValueError:
+            hand_type = None
+        if hand_type is not None:
+            return _boss_adjusted_score(state, hand_type, score, context)
     evaluation = _evaluate_play_action(state, action, context, joker_context=joker_context)
     return _boss_adjusted_score(state, evaluation.hand_type, evaluation.score, context)
 
@@ -322,6 +340,29 @@ def _evaluate_play_action(
     context = context or _BlindContext()
     cards = tuple(state.hand[index] for index in action.card_indices)
     held_cards = tuple(card for index, card in enumerate(state.hand) if index not in action.card_indices)
+    # Rust fast path: synthesize a minimal HandEvaluation with score
+    # and hand_type populated. Most callers only need those two
+    # fields (the `.score` property reads from score_override).
+    # `scoring_indices` is left empty — the rare callers that need
+    # it (blind_setup) get an empty tuple, which is correct for "no
+    # cards score" but misleading otherwise. blind_setup uses it
+    # only for FYI / annotation purposes; if a regression surfaces
+    # there, narrow the wire-in via a `need_full` opt-in.
+    from balatro_ai.search.rust_bridge import rust_evaluate_score_and_hand_type
+    rust_result = rust_evaluate_score_and_hand_type(
+        state, cards, held_cards, state.jokers,
+        played_hand_types=context.played_hand_types,
+    )
+    if rust_result is not None:
+        score, ht_str = rust_result
+        try:
+            hand_type = HandType(ht_str)
+        except ValueError:
+            hand_type = None
+        if hand_type is not None:
+            return _synthesize_partial_hand_evaluation(
+                cards=cards, hand_type=hand_type, score=score,
+            )
     return evaluate_played_cards(
         cards,
         state.hand_levels,
@@ -336,6 +377,33 @@ def _evaluate_play_action(
         played_hand_types_this_round=context.played_hand_types,
         played_hand_counts=_played_hand_counts(state),
         _joker_context=joker_context,
+    )
+
+
+def _synthesize_partial_hand_evaluation(
+    cards: tuple,
+    hand_type: HandType,
+    score: int,
+):
+    """Build a HandEvaluation with just `cards`, `hand_type`, and
+    `score_override` populated. `.score` reads score_override;
+    `.hand_type` is direct; other numeric fields default to 0.
+    `.scoring_indices` is empty — accept that limitation in
+    exchange for the Rust fast path."""
+
+    from balatro_ai.rules.hand_evaluator import HandEvaluation, BASE_HAND_VALUES
+    base_chips, base_mult = BASE_HAND_VALUES[hand_type]
+    return HandEvaluation(
+        hand_type=hand_type,
+        cards=cards,
+        scoring_indices=(),
+        base_chips=base_chips,
+        base_mult=base_mult,
+        card_chips=0,
+        level=1,
+        level_chips=0,
+        level_mult=0,
+        score_override=int(score),
     )
 
 

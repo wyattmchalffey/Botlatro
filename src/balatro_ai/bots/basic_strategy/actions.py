@@ -6,6 +6,9 @@ from typing import Any
 
 from balatro_ai.api.actions import Action, ActionType
 from balatro_ai.api.state import GameState
+from balatro_ai.bots.basic_strategy.data import DANGEROUS_BOSS_BLINDS, FINAL_BOSS_BLINDS
+from balatro_ai.bots.basic_strategy.shop_forecast import _upcoming_boss_blind_name
+from balatro_ai.bots.basic_strategy.shop_pressure import _shop_pressure
 
 
 def _first_action_of_type(state: GameState, action_type: ActionType) -> Action | None:
@@ -19,7 +22,40 @@ def _blind_select_action(state: GameState) -> Action | None:
     select = _first_action_of_type(state, ActionType.SELECT_BLIND)
     if select is None:
         return None
+    boss_reroll = _boss_reroll_action(state)
+    if boss_reroll is not None and _should_reroll_boss_blind(state):
+        boss_name = _upcoming_boss_blind_name(state) or state.blind
+        pressure = _shop_pressure(state)
+        return _annotated_action(
+            boss_reroll,
+            reason=(
+                f"boss_reroll boss={boss_name} "
+                f"pressure={pressure.ratio:.2f} raw_pressure={pressure.raw_ratio:.2f}"
+            ),
+        )
     return select
+
+
+def _boss_reroll_action(state: GameState) -> Action | None:
+    for action in state.legal_actions:
+        if action.action_type != ActionType.REROLL:
+            continue
+        if str(action.metadata.get("kind", "")) == "boss":
+            return action
+    return None
+
+
+def _should_reroll_boss_blind(state: GameState) -> bool:
+    boss_name = _upcoming_boss_blind_name(state) or state.blind
+    if boss_name not in DANGEROUS_BOSS_BLINDS and boss_name not in FINAL_BOSS_BLINDS:
+        return False
+    if state.ante < 5:
+        return False
+
+    pressure = _shop_pressure(state)
+    if boss_name != "Violet Vessel":
+        return False
+    return pressure.ratio >= 1.0 or pressure.raw_ratio >= 0.75
 
 
 def _annotated_action(action: Action, *, reason: str, audit: dict[str, Any] | None = None) -> Action:

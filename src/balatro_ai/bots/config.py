@@ -23,6 +23,18 @@ class BotConfig:
     # Shop buy / reroll decision tolerance.
     shop_value_tolerance: float = 0.25
 
+    # Calibrated shop/build planner. The default keeps the legacy shop value as
+    # the anchor and adds bounded, auditable adjustments around it.
+    calibrated_shop_planner_enabled: bool = True
+    calibrated_shop_legacy_weight: float = 1.0
+    calibrated_shop_leaf_delta_weight: float = 0.35
+    calibrated_shop_pressure_delta_weight: float = 0.65
+    calibrated_shop_role_fill_weight: float = 1.0
+    calibrated_shop_late_conversion_weight: float = 1.0
+    calibrated_shop_reserve_risk_weight: float = 0.0
+    calibrated_shop_slot_risk_weight: float = 1.0
+    calibrated_shop_boss_risk_weight: float = 1.0
+
     # Pace-vs-target safety multipliers.
     shop_target_safety_base: float = 1.15
     hand_pace_safety_base: float = 1.05

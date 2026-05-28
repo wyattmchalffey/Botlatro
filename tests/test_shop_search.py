@@ -372,7 +372,7 @@ class ShopSearchTests(unittest.TestCase):
         self.assertEqual(action.action_type, ActionType.BUY)
         self.assertEqual(action.amount, 0)
 
-    def test_consumable_shop_card_is_not_bought_when_slots_are_full(self) -> None:
+    def test_consumable_shop_card_uses_buy_and_use_when_slots_are_full(self) -> None:
         state = GameState(
             phase=GamePhase.SHOP,
             money=10,
@@ -392,7 +392,8 @@ class ShopSearchTests(unittest.TestCase):
         )
 
         self.assertIsNotNone(action)
-        self.assertEqual(action.action_type, ActionType.END_SHOP)
+        self.assertEqual(action.action_type, ActionType.BUY)
+        self.assertTrue(action.metadata["buy_and_use"])
 
     def test_protected_joker_is_not_sold(self) -> None:
         state = GameState(

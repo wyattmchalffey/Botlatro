@@ -234,6 +234,26 @@ def _score_selected_cards(
     context = context or _BlindContext()
     if not selected_cards:
         return 0
+    # Rust fast path: returns (score, hand_type_str) when applicable.
+    # We still need Python's boss adjustment on top — which requires
+    # the hand_type — so use rust_evaluate_score_and_hand_type.
+    # Bails (and falls through) on non-vanilla blinds + unsupported
+    # jokers + Wild cards, where Python is needed anyway.
+    from balatro_ai.search.rust_bridge import rust_evaluate_score_and_hand_type
+    from balatro_ai.rules.hand_evaluator import HandType
+    rust_result = rust_evaluate_score_and_hand_type(
+        state, selected_cards, held_cards, state.jokers,
+        played_hand_types=context.played_hand_types,
+    )
+    if rust_result is not None:
+        score, ht_str = rust_result
+        # Map ht_str back to HandType enum for boss adjustment.
+        try:
+            hand_type = HandType(ht_str)
+        except ValueError:
+            hand_type = None
+        if hand_type is not None:
+            return _boss_adjusted_score(state, hand_type, score, context)
     evaluation = evaluate_played_cards(
         selected_cards,
         state.hand_levels,

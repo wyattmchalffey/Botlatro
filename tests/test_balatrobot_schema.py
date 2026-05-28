@@ -312,6 +312,19 @@ class BalatroBotSchemaTests(unittest.TestCase):
 
         self.assertEqual(client.calls[0], ("pack", {"card": 0, "targets": [1, 3]}))
 
+    def test_buy_and_use_action_sends_bridge_button_flag(self) -> None:
+        client = RecordingClient()
+        client.send_action(
+            Action(
+                ActionType.BUY,
+                target_id="card",
+                amount=0,
+                metadata={"kind": "card", "index": 0, "buy_and_use": True},
+            )
+        )
+
+        self.assertEqual(client.calls[0], ("buy", {"card": 0, "buy_and_use": True}))
+
     def test_shop_actions_filter_unaffordable_buys(self) -> None:
         state = GameState.from_mapping(
             {
@@ -352,6 +365,37 @@ class BalatroBotSchemaTests(unittest.TestCase):
         self.assertIn("buy||card|0", stable_keys)
         self.assertNotIn("buy||card|1", stable_keys)
         self.assertIn("open_pack||pack|0", stable_keys)
+
+    def test_shop_actions_use_buy_and_use_for_usable_consumables_when_slots_are_full(self) -> None:
+        state = GameState.from_mapping(
+            {
+                "state": "SHOP",
+                "money": 20,
+                "modifiers": {"consumable_slots": 2},
+                "consumables": {
+                    "cards": [
+                        {"label": "Venus", "set": "PLANET"},
+                        {"label": "Mars", "set": "PLANET"},
+                    ]
+                },
+                "shop": {
+                    "cards": [
+                        {"label": "Saturn", "set": "PLANET", "cost": {"buy": 3}},
+                        {"label": "The Emperor", "set": "TAROT", "cost": {"buy": 3}},
+                        {"label": "Joker", "set": "JOKER", "cost": {"buy": 4}},
+                    ]
+                },
+            }
+        )
+
+        stable_keys = {action.stable_key for action in state.legal_actions}
+        by_key = {action.stable_key: action for action in state.legal_actions}
+
+        self.assertIn("buy||card|0", stable_keys)
+        self.assertTrue(by_key["buy||card|0"].metadata["buy_and_use"])
+        self.assertNotIn("buy||card|1", stable_keys)
+        self.assertIn("buy||card|2", stable_keys)
+        self.assertNotIn("buy_and_use", by_key["buy||card|2"].metadata)
 
     def test_shop_actions_filter_normal_joker_buys_when_slots_are_full(self) -> None:
         state = GameState.from_mapping(

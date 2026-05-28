@@ -108,6 +108,16 @@ def _clear_probability_uncached(state: GameState, *, samples: int, seed: int) ->
     if not state.hand:
         return 0.0
 
+    # Rust fast path: runs all N rollouts internally without crossing
+    # the Python boundary per simulate_play. Bails on complex jokers,
+    # boss blinds, Glass cards, blue seals. May give a slightly
+    # different clear-probability estimate than Python (internal RNG
+    # differs from random.Random) — that's acceptable because this is
+    # an estimator and decisions remain quality-equivalent.
+    rust_result = _try_rust_clear_probability(state, samples, seed)
+    if rust_result is not None:
+        return rust_result
+
     total_samples = max(1, samples)
     rng = Random(seed)
     clears = 0
@@ -115,6 +125,120 @@ def _clear_probability_uncached(state: GameState, *, samples: int, seed: int) ->
         if _greedy_rollout_clears(state, rng):
             clears += 1
     return clears / total_samples
+
+
+# Wider blind set for the rollout estimator. The rollout is a noisy
+# clear-probability estimate, so we can include boss blinds whose
+# scoring effects are either absent (Manacle: just hand-size, score
+# math unchanged) or stochastic in a way the deterministic rollout
+# already approximates by not modeling them (Wheel: 1-in-7 face-down
+# per card — rollout overestimates by ignoring; Psychic: must play
+# 5 cards — rollout's argmax usually picks 5-card hands anyway).
+# Hook stays bailed because mid-play discards meaningfully shift
+# which cards get scored.
+_RUST_ROLLOUT_BLIND_SAFE: frozenset[str] = frozenset({
+    "", "Small Blind", "Big Blind",
+    # Suit-debuff bosses
+    "The Club", "The Goad", "The Head", "The Window",
+    # Non-scoring bosses whose impact is small in rollout context.
+    "The Manacle", "The Wheel", "The Psychic",
+})
+
+
+def _try_rust_clear_probability(state: GameState, samples: int, seed: int) -> float | None:
+    """Bridge to Rust `clear_probability_native`. Returns the clear
+    fraction (0.0-1.0) or None to bail to Python."""
+
+    try:
+        import balatro_core
+    except ImportError:
+        return None
+    if state.blind not in _RUST_ROLLOUT_BLIND_SAFE:
+        return None
+    hand_rust = _cached_hand_as_rust_cards(state, balatro_core)
+    if hand_rust is None:
+        try:
+            hand_rust = [balatro_core.RustCard.from_python(c) for c in state.hand]
+        except (AttributeError, TypeError, ValueError):
+            return None
+    try:
+        known_deck_rust = [balatro_core.RustCard.from_python(c) for c in state.known_deck]
+    except (AttributeError, TypeError, ValueError):
+        return None
+    try:
+        (joker_names, joker_editions, joker_plus_mult,
+         joker_plus_chips, joker_xmult,
+         joker_loyalty_ready, joker_drivers_active,
+         joker_leading_plus_mult, joker_leading_plus_chips,
+         joker_sell_value, joker_rarity,
+         joker_target_suit, joker_target_rank,
+         joker_obelisk_gain) = _cached_joker_data(state)
+    except Exception:  # noqa: BLE001
+        return None
+    # joker_current_remaining for Loyalty Card / Seltzer (drives
+    # in-rollout joker scaling updates).
+    try:
+        from balatro_ai.rules.hand_evaluator import _metadata_loyalty_remaining
+    except ImportError:
+        return None
+    joker_current_remaining: list[int] = []
+    for j in state.jokers:
+        if j.name in {"Loyalty Card", "Seltzer", "Yorick"}:
+            v = _metadata_loyalty_remaining(j)
+            joker_current_remaining.append(int(v) if v is not None else 0)
+        else:
+            joker_current_remaining.append(0)
+
+    if any(j.name in _PLAYED_STATE_JOKERS for j in state.jokers) or any(
+        j.name == "Obelisk" for j in state.jokers
+    ):
+        played_types_strs = _cached_played_hand_types_strs(state)
+    else:
+        played_types_strs = []
+    played_count_this = sum(1 for s in played_types_strs if s == "")  # placeholder
+    # Initial state: no played hand_types this rollout yet — we use
+    # the round's existing played_hand_types as the starting list.
+    debuffed = [s for s in debuffed_suits_for_blind(state.blind) if len(s) == 1]
+    pareidolia_active = any(j.name == "Pareidolia" for j in state.jokers)
+    # Vampire gain + Obelisk should_scale: we bail when Vampire is
+    # present (SIMPLE_BAIL_JOKERS), so all-zeros is safe. Obelisk
+    # works inside Rust based on played_count_max_other_hand_type
+    # which we recompute internally per rollout step.
+    joker_vampire_gain = [0.0] * len(joker_names)
+    joker_obelisk_should_scale = [False] * len(joker_names)
+
+    try:
+        result = balatro_core.clear_probability_native(
+            hand_rust, known_deck_rust,
+            state.hand_levels, debuffed,
+            joker_names=joker_names, joker_editions=joker_editions,
+            joker_current_plus_mult=joker_plus_mult,
+            joker_current_plus_chips=joker_plus_chips,
+            joker_current_xmult=joker_xmult,
+            joker_current_remaining=joker_current_remaining,
+            joker_loyalty_ready=joker_loyalty_ready,
+            joker_drivers_active=joker_drivers_active,
+            joker_leading_plus_mult=joker_leading_plus_mult,
+            joker_leading_plus_chips=joker_leading_plus_chips,
+            joker_sell_value=joker_sell_value, joker_rarity=joker_rarity,
+            joker_target_suit=joker_target_suit, joker_target_rank=joker_target_rank,
+            joker_obelisk_gain=joker_obelisk_gain,
+            joker_vampire_gain=joker_vampire_gain,
+            joker_obelisk_should_scale=joker_obelisk_should_scale,
+            money=int(state.money),
+            discards_remaining=int(max(0, state.discards_remaining)),
+            hands_remaining=int(max(0, state.hands_remaining)),
+            played_hand_types=played_types_strs,
+            deck_size=int(max(0, state.deck_size)),
+            pareidolia_active=pareidolia_active,
+            current_score=int(state.current_score),
+            required_score=int(state.required_score),
+            samples=int(max(1, samples)),
+            seed=int(seed) & 0xFFFFFFFFFFFFFFFF,
+        )
+    except Exception:  # noqa: BLE001
+        return None
+    return result
 
 
 def future_value(state: GameState) -> float:
@@ -350,12 +474,42 @@ def _best_greedy_play_action(state: GameState) -> Action | None:
 
 
 def _best_greedy_play_action_uncached(state: GameState) -> Action | None:
-    best_action: Action | None = None
+    # Rust fast path: combined enumerate+score+argmax in one FFI call
+    # (~16x faster than the Python per-action loop; this variant also
+    # eliminates the Python action-enumeration tuple allocations).
+    # Called inside greedy rollouts — the dominant rollout cost.
+    rust_best = _try_rust_best_play_action(state)
+    if rust_best is not None:
+        indices, _score = rust_best
+        return Action(ActionType.PLAY_HAND, card_indices=tuple(indices))
+
+    # Falls back to the batched scorer + Python argmax when the
+    # combined call bails entirely (Wild cards, unsupported jokers,
+    # boss-adjusted blinds).
+    actions = _play_actions_for_hand(state.hand)
+    if not actions:
+        return None
+    rust_scores = _try_rust_batch_scores(state, actions)
+    if rust_scores is not None:
+        best_action: Action | None = None
+        best_score = -1
+        blind_name = _effective_blind_name(state)
+        debuffed_suits = debuffed_suits_for_blind(blind_name)
+        for action, rs in zip(actions, rust_scores, strict=False):
+            score = int(rs) if rs is not None else _score_action(
+                state, action, blind_name=blind_name, debuffed_suits=debuffed_suits,
+            )
+            if score > best_score:
+                best_score = score
+                best_action = action
+        return best_action
+    # Python fallback (boss blinds + unsupported jokers).
+    best_action = None
     best_score = -1
     joker_context = _prepare_joker_evaluation_context(state.jokers)
     blind_name = _effective_blind_name(state)
     debuffed_suits = debuffed_suits_for_blind(blind_name)
-    for action in _play_actions_for_hand(state.hand):
+    for action in actions:
         score = _score_action(state, action, joker_context=joker_context, blind_name=blind_name, debuffed_suits=debuffed_suits)
         if score > best_score:
             best_score = score
@@ -363,18 +517,161 @@ def _best_greedy_play_action_uncached(state: GameState) -> Action | None:
     return best_action
 
 
+def _try_rust_best_play_action(state: GameState) -> tuple[list[int], int] | None:
+    """Bridge to Rust `best_play_action`. Returns (indices, score) or
+    None to bail. Same restrictions as `_try_rust_batch_scores`."""
+
+    try:
+        import balatro_core
+    except ImportError:
+        return None
+    if state.blind not in _RUST_BLIND_SAFE:
+        return None
+    hand_rust = _cached_hand_as_rust_cards(state, balatro_core)
+    if hand_rust is None:
+        try:
+            hand_rust = [balatro_core.RustCard.from_python(c) for c in state.hand]
+        except (AttributeError, TypeError, ValueError):
+            return None
+    try:
+        (joker_names, joker_editions, joker_plus_mult,
+         joker_plus_chips, joker_xmult,
+         joker_loyalty_ready, joker_drivers_active,
+         joker_leading_plus_mult, joker_leading_plus_chips,
+         joker_sell_value, joker_rarity,
+         joker_target_suit, joker_target_rank,
+         joker_obelisk_gain) = _cached_joker_data(state)
+    except Exception:  # noqa: BLE001
+        return None
+    if any(j.name in _PLAYED_STATE_JOKERS for j in state.jokers):
+        played_types_strs = _cached_played_hand_types_strs(state)
+    else:
+        played_types_strs = []
+    debuffed = [s for s in debuffed_suits_for_blind(state.blind) if len(s) == 1]
+    slot_limit_raw = state.modifiers.get("joker_slot_limit", 5)
+    try:
+        joker_slot_limit = int(slot_limit_raw) if slot_limit_raw is not None else 5
+    except (TypeError, ValueError):
+        joker_slot_limit = 5
+    try:
+        return balatro_core.best_play_action(
+            hand_rust, state.hand_levels, debuffed,
+            joker_names=joker_names, joker_editions=joker_editions,
+            joker_current_plus_mult=joker_plus_mult,
+            joker_current_plus_chips=joker_plus_chips,
+            joker_current_xmult=joker_xmult,
+            joker_loyalty_ready=joker_loyalty_ready,
+            joker_drivers_active=joker_drivers_active,
+            joker_leading_plus_mult=joker_leading_plus_mult,
+            joker_leading_plus_chips=joker_leading_plus_chips,
+            joker_sell_value=joker_sell_value, joker_rarity=joker_rarity,
+            joker_target_suit=joker_target_suit, joker_target_rank=joker_target_rank,
+            joker_obelisk_gain=joker_obelisk_gain,
+            money=int(state.money), joker_slot_limit=joker_slot_limit,
+            discards_remaining=int(max(0, state.discards_remaining)),
+            hands_remaining=int(max(0, state.hands_remaining)),
+            played_hand_types=played_types_strs,
+            deck_size=int(max(0, state.deck_size)),
+        )
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _best_immediate_score(state: GameState) -> int:
     return _state_content_cached_value("best_immediate_score", state, (), lambda: _best_immediate_score_uncached(state))
 
 
 def _best_immediate_score_uncached(state: GameState) -> int:
+    actions = _play_actions_for_hand(state.hand)
+    if not actions:
+        return 0
+    rust_scores = _try_rust_batch_scores(state, actions)
+    if rust_scores is not None:
+        best = 0
+        blind_name = _effective_blind_name(state)
+        debuffed_suits = debuffed_suits_for_blind(blind_name)
+        for action, rs in zip(actions, rust_scores, strict=False):
+            score = int(rs) if rs is not None else _score_action(
+                state, action, blind_name=blind_name, debuffed_suits=debuffed_suits,
+            )
+            if score > best:
+                best = score
+        return best
+    # Python fallback.
     best = 0
     joker_context = _prepare_joker_evaluation_context(state.jokers)
     blind_name = _effective_blind_name(state)
     debuffed_suits = debuffed_suits_for_blind(blind_name)
-    for action in _play_actions_for_hand(state.hand):
+    for action in actions:
         best = max(best, _score_action(state, action, joker_context=joker_context, blind_name=blind_name, debuffed_suits=debuffed_suits))
     return best
+
+
+def _try_rust_batch_scores(
+    state: GameState,
+    actions: tuple[Action, ...],
+) -> list[int | None] | None:
+    """Bridge to Rust `score_play_actions_batch` from state_value.
+    Returns per-action raw scores or None to bail. Restricted to
+    `_RUST_BLIND_SAFE` blinds since the Rust path doesn't apply
+    boss-blind scoring effects (Flint, Arm, Eye, Mouth, etc.)."""
+
+    try:
+        import balatro_core
+    except ImportError:
+        return None
+    if state.blind not in _RUST_BLIND_SAFE:
+        return None
+    hand_rust = _cached_hand_as_rust_cards(state, balatro_core)
+    if hand_rust is None:
+        try:
+            hand_rust = [balatro_core.RustCard.from_python(c) for c in state.hand]
+        except (AttributeError, TypeError, ValueError):
+            return None
+    try:
+        (joker_names, joker_editions, joker_plus_mult,
+         joker_plus_chips, joker_xmult,
+         joker_loyalty_ready, joker_drivers_active,
+         joker_leading_plus_mult, joker_leading_plus_chips,
+         joker_sell_value, joker_rarity,
+         joker_target_suit, joker_target_rank,
+         joker_obelisk_gain) = _cached_joker_data(state)
+    except Exception:  # noqa: BLE001
+        return None
+    if any(j.name in _PLAYED_STATE_JOKERS for j in state.jokers):
+        played_types_strs = _cached_played_hand_types_strs(state)
+    else:
+        played_types_strs = []
+    debuffed = [s for s in debuffed_suits_for_blind(state.blind) if len(s) == 1]
+    slot_limit_raw = state.modifiers.get("joker_slot_limit", 5)
+    try:
+        joker_slot_limit = int(slot_limit_raw) if slot_limit_raw is not None else 5
+    except (TypeError, ValueError):
+        joker_slot_limit = 5
+    action_indices_list = [list(a.card_indices) for a in actions]
+    try:
+        return balatro_core.score_play_actions_batch(
+            hand_rust, action_indices_list,
+            state.hand_levels, debuffed,
+            joker_names=joker_names, joker_editions=joker_editions,
+            joker_current_plus_mult=joker_plus_mult,
+            joker_current_plus_chips=joker_plus_chips,
+            joker_current_xmult=joker_xmult,
+            joker_loyalty_ready=joker_loyalty_ready,
+            joker_drivers_active=joker_drivers_active,
+            joker_leading_plus_mult=joker_leading_plus_mult,
+            joker_leading_plus_chips=joker_leading_plus_chips,
+            joker_sell_value=joker_sell_value, joker_rarity=joker_rarity,
+            joker_target_suit=joker_target_suit, joker_target_rank=joker_target_rank,
+            joker_obelisk_gain=joker_obelisk_gain,
+            money=int(state.money), joker_slot_limit=joker_slot_limit,
+            discards_remaining=int(max(0, state.discards_remaining)),
+            hands_remaining=int(max(0, state.hands_remaining)),
+            played_hand_types=played_types_strs,
+            deck_size=int(max(0, state.deck_size)),
+        )
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _play_actions_for_hand(hand: tuple[Card, ...]) -> tuple[Action, ...]:
@@ -398,6 +695,13 @@ def _score_action(
     blind_name: str | None = None,
     debuffed_suits: set[str] | frozenset[str] | None = None,
 ) -> int:
+    # Profiling note (2026-05-26): tried wrapping this in
+    # `_state_content_cached_value` for the solver beam. Hit rate was
+    # 0.2% — states are too content-unique within a single decision
+    # (each rollout step changes hand+deck_size). Removed; the right
+    # fix is to make `_score_action_uncached` faster, not to avoid
+    # calls to it. Tier 2 #4 (Cython port of evaluate_played_cards)
+    # addresses this directly.
     return _score_action_uncached(
         state,
         action,
@@ -419,6 +723,22 @@ def _score_action_uncached(
     selected = tuple(card for index, card in enumerate(state.hand) if index in selected_indices)
     held = tuple(card for index, card in enumerate(state.hand) if index not in selected_indices)
     effective_blind = _effective_blind_name(state) if blind_name is None else blind_name
+
+    # Native (Rust) fast path. Activates when:
+    #   - No jokers (joker effects need Python's full _effect_adjustments)
+    #   - Blind has no score-multiplier override (most non-boss blinds)
+    #   - Played cards have no Stone/Wild enhancement (Rust bails internally)
+    # Returns int score identical to what the Python path computes,
+    # or None to fall through. Parity verified by
+    # `tests/test_rust_score_action_parity.py` on canonical-seed
+    # state corpus before this hook went live. We pass card_indices
+    # so the helper can use the cached whole-hand RustCard conversion.
+    rust_score = _try_rust_evaluate_simple(
+        state, action.card_indices, effective_blind, debuffed_suits,
+    )
+    if rust_score is not None:
+        return rust_score
+
     try:
         evaluation = evaluate_played_cards(
             selected,
@@ -436,6 +756,335 @@ def _score_action_uncached(
     except ValueError:
         return 0
     return evaluation.score
+
+
+# Blinds whose score math is the same vanilla (chips * mult) formula
+# Rust implements. We bail to Python for any blind not in this set.
+#
+# Includes:
+# - "Small Blind", "Big Blind", "" — vanilla.
+# - Suit-debuff bosses: The Club/Goad/Head/Window. Math is unchanged
+#   except one suit is debuffed; we already pass debuffed_suits to
+#   Rust, so these activate Rust on most mid-run plays.
+#
+# Bosses with effects beyond suit debuffs (Hook, Pillar, Plant, Wall,
+# Mark, Manacle, Ox, etc.) bail to Python because Rust's
+# `evaluate_simple` doesn't implement their score/play-rule overrides.
+_RUST_BLIND_SAFE = frozenset({
+    "", "Small Blind", "Big Blind",
+    "The Club", "The Goad", "The Head", "The Window",
+})
+
+# Jokers whose effect needs run-state Rust can't currently compute.
+# (Card Sharp / Supernova used to be here — now they get the
+# played-hand state via the ctx fields populated below.)
+_RUST_JOKERS_NEEDING_PLAYED_STATE: frozenset[str] = frozenset()
+
+# Jokers that consult played-hand-types this round. We compute the
+# `played_types_strs` argument ONLY when one of these is present, so
+# the common case (run without Card Sharp / Supernova) doesn't pay
+# the per-call lookup cost.
+_PLAYED_STATE_JOKERS = frozenset({"Card Sharp", "Supernova"})
+
+
+def _try_rust_evaluate_simple(
+    state: GameState,
+    card_indices: tuple[int, ...],
+    effective_blind: str,
+    debuffed_suits: set[str] | frozenset[str] | None,
+) -> int | None:
+    """Try to score the selected indices via the Rust fast path.
+
+    Returns the score (int) on success, None to fall through to
+    the Python implementation. The decision is deliberately
+    conservative — when in doubt, fall back to Python.
+
+    Joker support: passes joker NAMES (no metadata) to Rust. Rust
+    bails (returns None) if any joker isn't in its supported set —
+    that's the safety net that prevents silent miscalculation when
+    a complex joker (Photograph, Vampire, etc.) is in the run.
+    """
+
+    # Eligibility: vanilla blind, non-empty selection. Jokers are no
+    # longer a blanket blocker — Rust will bail on unsupported names.
+    # Joker editions are now handled natively (Phase 2d batch 6).
+    if effective_blind not in _RUST_BLIND_SAFE:
+        return None
+    if not card_indices:
+        return None
+    # Bail when Rust support exists but needs ctx fields we don't yet
+    # plumb through. Solver runs that don't have these jokers (most
+    # opening-blind decisions) are unaffected.
+    if any(j.name in _RUST_JOKERS_NEEDING_PLAYED_STATE for j in state.jokers):
+        return None
+
+    try:
+        import balatro_core
+    except ImportError:
+        return None
+
+    hand_rust = _cached_hand_as_rust_cards(state, balatro_core)
+    if hand_rust is None:
+        try:
+            rs_cards = [
+                balatro_core.RustCard.from_python(state.hand[i])
+                for i in card_indices
+            ]
+            # Held cards = the rest of the hand (not in selected).
+            selected_set = set(card_indices)
+            rs_held = [
+                balatro_core.RustCard.from_python(state.hand[i])
+                for i in range(len(state.hand))
+                if i not in selected_set
+            ]
+        except (ValueError, AttributeError):
+            return None
+    else:
+        try:
+            rs_cards = [hand_rust[i] for i in card_indices]
+            selected_set = set(card_indices)
+            rs_held = [hand_rust[i] for i in range(len(hand_rust)) if i not in selected_set]
+        except IndexError:
+            return None
+
+    if debuffed_suits is None:
+        debuffed = debuffed_suits_for_blind(effective_blind)
+    else:
+        debuffed = debuffed_suits
+    debuffed_list = [s for s in debuffed if len(s) == 1]
+    # Joker metadata is extracted ONCE per state.jokers reference
+    # via identity-cache. state.jokers is a frozen tuple — same
+    # id means same content means same extracted values. Saves
+    # ~25 Python helper calls per _score_action invocation when
+    # multiple jokers are held.
+    (joker_names, joker_editions, joker_current_plus_mult,
+     joker_current_plus_chips, joker_current_xmult,
+     joker_loyalty_ready, joker_drivers_active,
+     joker_leading_plus_mult, joker_leading_plus_chips,
+     joker_sell_value, joker_rarity_list,
+     joker_target_suit, joker_target_rank,
+     joker_obelisk_gain) = _cached_joker_data(state)
+
+    # Played-hand state for Card Sharp + Supernova. Only compute when
+    # one of those jokers is actually present — the per-call lookup
+    # adds measurable overhead across ~70K evals/decision and is a
+    # net loss when those jokers aren't held (the dominant case).
+    if any(j.name in _PLAYED_STATE_JOKERS for j in state.jokers):
+        played_types_strs = _cached_played_hand_types_strs(state)
+    else:
+        played_types_strs = []
+
+    # joker_slot_limit: Python reads state.modifiers["joker_slot_limit"]
+    # with default 5. Match the same default.
+    slot_limit_raw = state.modifiers.get("joker_slot_limit", 5)
+    try:
+        joker_slot_limit = int(slot_limit_raw) if slot_limit_raw is not None else 5
+    except (TypeError, ValueError):
+        joker_slot_limit = 5
+
+    try:
+        result = balatro_core.evaluate_simple_with_levels(
+            rs_cards,
+            state.hand_levels,
+            debuffed_suits=debuffed_list,
+            joker_names=joker_names,
+            joker_editions=joker_editions,
+            held_cards=rs_held,
+            joker_current_plus_mult=joker_current_plus_mult,
+            joker_current_plus_chips=joker_current_plus_chips,
+            joker_current_xmult=joker_current_xmult,
+            joker_loyalty_ready=joker_loyalty_ready,
+            joker_drivers_active=joker_drivers_active,
+            joker_leading_plus_mult=joker_leading_plus_mult,
+            joker_leading_plus_chips=joker_leading_plus_chips,
+            joker_sell_value=joker_sell_value,
+            joker_rarity=joker_rarity_list,
+            joker_target_suit=joker_target_suit,
+            joker_target_rank=joker_target_rank,
+            joker_obelisk_gain=joker_obelisk_gain,
+            money=int(state.money),
+            joker_slot_limit=joker_slot_limit,
+            discards_remaining=int(max(0, state.discards_remaining)),
+            hands_remaining=int(max(0, state.hands_remaining)),
+            played_hand_types=played_types_strs,
+            deck_size=int(max(0, state.deck_size)),
+        )
+    except Exception:  # noqa: BLE001 — never crash the bot path
+        return None
+    if result is None:
+        return None
+    _chips, _mult, score, _ht = result
+    return int(score)
+
+
+_RARITY_TO_INT = {"common": 0, "uncommon": 1, "rare": 2, "legendary": 3}
+
+
+def _cached_joker_data(state: GameState):
+    """Identity-cached extraction of joker names/editions/metadata.
+
+    state.jokers is a frozen tuple — same id() means same content.
+    Returns a 14-tuple of parallel lists used by the Rust wire-in:
+      (names, editions, plus_mult, plus_chips, xmult,
+       loyalty_ready, drivers_active,
+       leading_plus_mult, leading_plus_chips,
+       sell_value, rarity,
+       target_suit, target_rank, obelisk_gain)
+    Computed at most once per (state.jokers, scope) pair.
+    """
+
+    cache = _current_state_value_cache()
+    jokers = state.jokers
+    if cache is not None:
+        key = ("rust_joker_data", id(jokers))
+        entry = cache.get(key)
+        if entry is not None and entry[0] is jokers:
+            return entry[1]
+    from balatro_ai.rules.hand_evaluator import (
+        _joker_current_plus, _joker_current_xmult,
+        _joker_leading_plus,
+        _loyalty_card_ready, _drivers_license_active,
+        _joker_rarity, _joker_target_suit, _joker_target_rank_suit,
+        _obelisk_xmult_gain, _effective_ability_joker_indices,
+    )
+    # Blueprint/Brainstorm copy-effect resolution: returns the index
+    # of the joker whose EFFECT logic and METADATA each slot should
+    # use. The PHYSICAL edition + rarity + sell_value stay at the
+    # original slot — only the name + scaling metadata get copied.
+    ability_indices = _effective_ability_joker_indices(jokers)
+    ability = [jokers[ability_indices[i]] for i in range(len(jokers))]
+    # `names` and the metadata fields read from the COPIED joker
+    # (ability_jokers); editions/rarity/sell read from the PHYSICAL
+    # joker. This mirrors Python's `_effect_adjustments` ability pass
+    # which uses `ability_joker.name` but `physical_joker.edition`.
+    names = [a.name for a in ability]
+    editions = [getattr(j, "edition", None) for j in jokers]
+    plus_mult = [int(_joker_current_plus(a, suffix="mult")) for a in ability]
+    plus_chips = [int(_joker_current_plus(a, suffix="chips")) for a in ability]
+    xmult = [float(_joker_current_xmult(a)) for a in ability]
+    # Gating bools — cheap evaluation, only used by the named jokers
+    # in Rust's ability pass. Compute always for simplicity (the per-
+    # joker helper is a tight loop over metadata dicts).
+    # Gating bools, scaling fallbacks, and target metadata all read
+    # from the COPIED joker (ability) — Blueprint copying Loyalty
+    # Card should use Loyalty Card's ready flag, etc.
+    loyalty_ready = [
+        bool(_loyalty_card_ready(a)) if a.name == "Loyalty Card" else False
+        for a in ability
+    ]
+    drivers_active = [
+        bool(_drivers_license_active(a)) if a.name == "Driver's License" else False
+        for a in ability
+    ]
+    leading_plus_mult = [
+        int(_joker_leading_plus(a, suffix="mult")) if a.name == "Popcorn" else 0
+        for a in ability
+    ]
+    leading_plus_chips = [
+        int(_joker_leading_plus(a, suffix="chips")) if a.name == "Ice Cream" else 0
+        for a in ability
+    ]
+    # Sell value: PHYSICAL — used by Swashbuckler to sum over other
+    # physical jokers (a Blueprint's sell value still counts toward
+    # an actual Swashbuckler's tally).
+    sell_value = [int(getattr(j, "sell_value", 0) or 0) for j in jokers]
+    # Rarity: PHYSICAL — Baseball Card gates on physical_joker's
+    # rarity per Python (`joker_rarity(physical_joker)`).
+    rarity = [_RARITY_TO_INT.get(_joker_rarity(j), 0) for j in jokers]
+    target_suit: list[str | None] = []
+    target_rank: list[str | None] = []
+    for a in ability:
+        if a.name == "Ancient Joker":
+            target_suit.append(_joker_target_suit(a))
+            target_rank.append(None)
+        elif a.name == "The Idol":
+            ts = _joker_target_rank_suit(a)
+            if ts is None:
+                target_rank.append(None)
+                target_suit.append(None)
+            else:
+                rk, st = ts
+                target_rank.append(rk)
+                target_suit.append(st)
+        else:
+            target_suit.append(None)
+            target_rank.append(None)
+    obelisk_gain = [
+        float(_obelisk_xmult_gain(a)) if a.name == "Obelisk" else 0.0
+        for a in ability
+    ]
+    # Swashbuckler precompute: the active Swashbuckler's contribution
+    # is the SUM of OTHER jokers' sell_value. Python's ability arm
+    # uses `current_plus_mult` when not active and the sum when active;
+    # we always store the sum-of-others into current_plus_mult for
+    # Swashbuckler so Rust just reads `meta.current_plus_mult`.
+    if "Swashbuckler" in names:
+        total_sell = sum(sell_value)
+        for i, n in enumerate(names):
+            if n == "Swashbuckler":
+                plus_mult[i] = total_sell - sell_value[i]
+    result = (names, editions, plus_mult, plus_chips, xmult,
+              loyalty_ready, drivers_active,
+              leading_plus_mult, leading_plus_chips,
+              sell_value, rarity,
+              target_suit, target_rank, obelisk_gain)
+    if cache is not None:
+        cache[("rust_joker_data", id(jokers))] = (jokers, result)
+    return result
+
+
+def _cached_played_hand_types_strs(state: GameState) -> list[str]:
+    """Identity-cached `[ht.value for ht in played_hand_types(state)]`.
+
+    Same key (id(state.modifiers)) as Python's identity-cached
+    `_played_hand_types_this_round`. Computed once per unique
+    state.modifiers reference; on hot beam paths this means once
+    per branch, not once per `_score_action`.
+    """
+
+    cache = _current_state_value_cache()
+    mods = state.modifiers
+    if cache is not None:
+        key = ("rust_played_types_strs", id(mods))
+        entry = cache.get(key)
+        if entry is not None and entry[0] is mods:
+            return entry[1]
+    try:
+        from balatro_ai.bots.basic_strategy.play_scoring import (
+            _played_hand_types_this_round,
+        )
+        result = [ht.value for ht in _played_hand_types_this_round(state)]
+    except (ImportError, AttributeError, ValueError, TypeError):
+        result = []
+    if cache is not None:
+        cache[("rust_played_types_strs", id(mods))] = (mods, result)
+    return result
+
+
+def _cached_hand_as_rust_cards(state: GameState, balatro_core_mod) -> list | None:
+    """Return a list of RustCard mirroring `state.hand`, cached for
+    the duration of the active `state_value_cache_scope` (if any).
+
+    Returns None when no scope is active (caller falls back to
+    per-call conversion). Cache key is `id(state.hand)` since the
+    hand tuple is frozen — if it ever changes identity, we get a
+    fresh conversion automatically.
+    """
+
+    cache = _current_state_value_cache()
+    if cache is None:
+        return None
+    key = ("rust_hand", id(state.hand))
+    entry = cache.get(key)
+    if entry is not None and entry[0] is state.hand:
+        return entry[1]
+    try:
+        rust_hand = [balatro_core_mod.RustCard.from_python(c) for c in state.hand]
+    except (ValueError, AttributeError):
+        cache[key] = (state.hand, None)
+        return None
+    cache[key] = (state.hand, rust_hand)
+    return rust_hand
 
 
 def _rollout_discard_rank_value(card: Card) -> int:

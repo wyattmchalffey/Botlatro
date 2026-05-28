@@ -84,7 +84,11 @@ def _shop_action_value(
         if index >= len(shop_cards):
             return 0.0
         card = shop_cards[index]
-        if not _api_shop_card_can_be_bought(state, card):
+        if not _api_shop_card_can_be_bought(
+            state,
+            card,
+            buy_and_use=bool(action.metadata.get("buy_and_use")),
+        ):
             return 0.0
         if context.filled_last_joker_slot and _normal_slot_joker_card(card):
             return 0.0

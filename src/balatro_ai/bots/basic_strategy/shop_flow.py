@@ -37,13 +37,18 @@ from balatro_ai.bots.basic_strategy.shop_jokers import (
     _replacement_upgrade_threshold,
 )
 from balatro_ai.bots.basic_strategy.shop_money import _money_plan_payload, _spendable_money
+from balatro_ai.bots.basic_strategy.shop_planner import (
+    _calibrated_shop_action_value,
+    _replacement_planner_adjustment,
+    _shop_planner_terms,
+    _shop_planner_terms_payload,
+)
 from balatro_ai.bots.basic_strategy.shop_forecast import _shop_cleared_blind_kind, _upcoming_boss_blind_name
 from balatro_ai.bots.basic_strategy.shop_pressure import _shop_pressure
 from balatro_ai.bots.basic_strategy.shop_reroll import _pressure_spend_mode, _pressure_spend_reserve_slack
 from balatro_ai.bots.basic_strategy.shop_values import (
     _shop_action_cost,
     _shop_action_reveals_information_before_joker_buy,
-    _shop_action_value,
     _shop_buy_threshold,
     _shop_information_action_can_take_joker_slot,
 )
@@ -89,7 +94,7 @@ def _shop_action(
     best_value = 0.0
 
     for action in state.legal_actions:
-        value = _shop_action_value(state, action, pressure, context, run_plan)
+        value = _calibrated_shop_action_value(state, action, pressure, context, run_plan, profile=profile)
         if value > best_value:
             best_action = action
             best_value = value
@@ -104,6 +109,7 @@ def _shop_action(
             best_value=best_value,
             threshold=threshold,
             run_plan=run_plan,
+            profile=profile,
         )
         if sequenced_info_action is not None:
             info_action, info_value, planned_item = sequenced_info_action
@@ -274,6 +280,7 @@ def _shop_information_first_action(
     best_value: float,
     threshold: float,
     run_plan: _RunPlan,
+    profile: _BuildProfile,
 ) -> tuple[Action, float, object] | None:
     if context.packs_opened_in_shop > 0:
         return None
@@ -300,7 +307,7 @@ def _shop_information_first_action(
             and _normal_joker_open_slots(state) <= 1
         ):
             continue
-        value = _shop_action_value(state, action, pressure, context, run_plan)
+        value = _calibrated_shop_action_value(state, action, pressure, context, run_plan, profile=profile)
         if value + active_config().shop_value_tolerance < threshold:
             continue
         if value > best_info_value:
@@ -335,7 +342,7 @@ def _replacement_sell_action(state: GameState, pressure: _ShopPressure) -> Actio
     best_upgrade = 0.0
     best_label = ""
     candidate_options: list[dict[str, object]] = []
-    for card in shop_cards:
+    for card_index, card in enumerate(shop_cards):
         if not _is_joker_card(card):
             continue
         cost = _card_cost(card)
@@ -350,12 +357,29 @@ def _replacement_sell_action(state: GameState, pressure: _ShopPressure) -> Actio
             - weakest_value
             - max(0, cost - sell_value) * _replacement_cost_weight(pressure)
         )
+        planner_adjustment = (
+            _replacement_planner_adjustment(
+                state,
+                sell_action=sell_actions[weakest_index],
+                candidate_action=Action(
+                    ActionType.BUY,
+                    target_id="card",
+                    amount=card_index,
+                    metadata={"kind": "card", "index": card_index},
+                ),
+                pressure=pressure,
+            )
+            if weakest_index in sell_actions
+            else 0.0
+        )
+        upgrade += planner_adjustment
         candidate_options.append(
             {
                 "name": candidate.name,
                 "cost": cost,
                 "candidate_value": round(candidate_value, 2),
                 "role_upgrade": round(role_upgrade, 2),
+                "planner_adjustment": round(planner_adjustment, 2),
                 "upgrade": round(upgrade, 2),
             }
         )
@@ -404,8 +428,8 @@ def _shop_decision_audit(
     context = context or _ShopContext()
     profile = profile or _build_profile(state)
     run_plan = run_plan or _run_plan(state, profile, pressure)
-    options = [
-        _shop_option_payload(state, action, _shop_action_value(state, action, pressure, context, run_plan))
+    option_actions = [
+        action
         for action in state.legal_actions
         if action.action_type in {
             ActionType.BUY,
@@ -414,6 +438,11 @@ def _shop_decision_audit(
             ActionType.END_SHOP,
         }
     ]
+    options = [
+        _shop_option_payload_with_planner(state, action, pressure, context, run_plan, profile)
+        for action in option_actions
+    ]
+    chosen_terms = _shop_planner_terms(state, chosen_action, pressure, context, run_plan, profile=profile)
     return {
         "decision": decision,
         "build_profile": _build_profile_payload(profile),
@@ -424,6 +453,7 @@ def _shop_decision_audit(
         "chosen_value": round(chosen_value, 2),
         "chosen_action": _action_payload(chosen_action),
         "chosen_item": _item_payload_for_action(state, chosen_action),
+        "planner_terms": _shop_planner_terms_payload(chosen_terms),
         "money": state.money,
         "jokers": [joker.name for joker in state.jokers],
         "shop_context": {
@@ -432,6 +462,20 @@ def _shop_decision_audit(
         },
         "options": sorted(options, key=lambda item: item["value"], reverse=True),
     }
+
+
+def _shop_option_payload_with_planner(
+    state: GameState,
+    action: Action,
+    pressure: _ShopPressure,
+    context: _ShopContext,
+    run_plan: _RunPlan,
+    profile: _BuildProfile,
+) -> dict[str, object]:
+    terms = _shop_planner_terms(state, action, pressure, context, run_plan, profile=profile)
+    payload = _shop_option_payload(state, action, terms.total)
+    payload["planner_terms"] = _shop_planner_terms_payload(terms)
+    return payload
 
 
 def _owned_joker_value_payloads(

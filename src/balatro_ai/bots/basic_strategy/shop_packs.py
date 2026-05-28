@@ -154,6 +154,8 @@ def _run_plan_pack_floor_factor(plan: _RunPlan) -> float:
 def _late_pack_limit(state: GameState, pressure: _ShopPressure) -> int:
     if state.ante < 5:
         return 99
+    if state.ante >= 8 and pressure.boss_name == "Violet Vessel" and pressure.ratio >= 2.0 and state.money >= 25:
+        return 5
     if _late_pressure_closer_mode(state, pressure):
         if pressure.ratio >= 3.0 or pressure.raw_ratio >= 1.75:
             return 5

@@ -114,7 +114,10 @@ class JsonRpcBalatroClient:
         if action.action_type.value == "open_pack":
             return "buy", _indexed_params(action, default_kind="pack")
         if action.action_type.value == "buy":
-            return "buy", _indexed_params(action, default_kind="card")
+            params = _indexed_params(action, default_kind="card")
+            if action.metadata.get("buy_and_use"):
+                params["buy_and_use"] = True
+            return "buy", params
         if action.action_type.value == "sell":
             return "sell", _indexed_params(action, default_kind="joker")
         if action.action_type.value == "rearrange":

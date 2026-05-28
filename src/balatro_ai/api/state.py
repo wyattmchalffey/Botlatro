@@ -815,8 +815,19 @@ def _derive_legal_actions(
         actions.extend(_consumable_sell_actions(state))
         actions.extend(_consumable_use_actions(state, allow_hand_targets=False))
         for index in range(len(shop_cards)):
-            if _is_affordable(shop_cards[index], state) and _shop_card_can_be_bought(state, shop_cards[index]):
+            if not _is_affordable(shop_cards[index], state):
+                continue
+            if _shop_card_can_be_bought(state, shop_cards[index]):
                 actions.append(Action(ActionType.BUY, target_id="card", amount=index, metadata={"kind": "card", "index": index}))
+            elif _shop_card_can_be_bought(state, shop_cards[index], buy_and_use=True):
+                actions.append(
+                    Action(
+                        ActionType.BUY,
+                        target_id="card",
+                        amount=index,
+                        metadata={"kind": "card", "index": index, "buy_and_use": True},
+                    )
+                )
         for index in range(len(voucher_cards)):
             if _is_affordable(voucher_cards[index], state):
                 actions.append(Action(ActionType.BUY, target_id="voucher", amount=index, metadata={"kind": "voucher", "index": index}))
@@ -884,7 +895,7 @@ def _action_can_be_taken(state: GameState, action: Action) -> bool:
         shop_cards = state.modifiers.get("shop_cards", ())
         if index is None or not 0 <= index < len(shop_cards):
             return True
-        return _shop_card_can_be_bought(state, shop_cards[index])
+        return _shop_card_can_be_bought(state, shop_cards[index], buy_and_use=_truthy(action.metadata.get("buy_and_use")))
     return True
 
 
@@ -1002,14 +1013,33 @@ def _card_is_forced_selection(card: Card) -> bool:
     return bool(state.get("forced_selection"))
 
 
-def _shop_card_can_be_bought(state: GameState, card: Any) -> bool:
+def _shop_card_can_be_bought(state: GameState, card: Any, *, buy_and_use: bool = False) -> bool:
+    if buy_and_use:
+        return _shop_card_can_be_bought_and_used(state, card)
     if _shop_card_is_consumable(card) and not _has_consumable_room(state):
-        return bool(_consumable_target_index_sets(_card_label(card), state, allow_hand_targets=False))
+        return False
     if not _is_joker_shop_card(card):
         return True
     if not _shop_joker_uses_normal_slot(card):
         return True
     return _normal_joker_slots_used(state) < _normal_joker_slot_limit(state)
+
+
+def _shop_card_can_be_bought_and_used(state: GameState, card: Any) -> bool:
+    if not _shop_card_is_consumable(card):
+        return False
+    name = _card_label(card)
+    if name in PLANET_CONSUMABLES or name in {"The Hermit", "Temperance", "Black Hole"}:
+        return True
+    if name == "The Wheel of Fortune":
+        return bool(state.jokers)
+    if name == "Judgement" or name in {"The Soul", "Wraith"}:
+        return _normal_joker_slots_used(state) < _normal_joker_slot_limit(state)
+    if name == "Ankh":
+        return bool(state.jokers) and _normal_joker_slot_limit(state) > 1
+    if name in {"Hex", "Ectoplasm"}:
+        return any(joker.edition is None for joker in state.jokers)
+    return False
 
 
 def _shop_card_is_consumable(card: Any) -> bool:

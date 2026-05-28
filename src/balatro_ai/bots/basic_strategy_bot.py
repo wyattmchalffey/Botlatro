@@ -521,6 +521,12 @@ from balatro_ai.bots.basic_strategy.shop_money import (
     _money_plan_payload,
     _spendable_money,
 )
+from balatro_ai.bots.basic_strategy.shop_planner import (
+    _calibrated_shop_action_value,
+    _replacement_planner_adjustment,
+    _shop_planner_terms,
+    _shop_planner_terms_payload,
+)
 from balatro_ai.bots.basic_strategy.shop_packs import (
     _celestial_candidate_hand_types,
     _celestial_pack_capacity_gain,

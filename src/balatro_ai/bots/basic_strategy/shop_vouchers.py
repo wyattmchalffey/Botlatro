@@ -146,8 +146,8 @@ def _voucher_dynamic_adjustment(
         bonus += _interest_cap_voucher_adjustment(state, name, pressure, profile)
     elif name in {"Hieroglyph", "Petroglyph"}:
         bonus += _ante_step_voucher_adjustment(state, pressure, profile)
-    elif name == "Retcon":
-        bonus += _retcon_voucher_adjustment(state, pressure, profile)
+    elif name in {"Director's Cut", "Retcon"}:
+        bonus += _boss_reroll_voucher_adjustment(state, name, pressure, profile)
     elif name == "Antimatter":
         bonus += _antimatter_voucher_adjustment(state, pressure, profile)
     elif name in {"Tarot Merchant", "Tarot Tycoon", "Planet Tycoon", "Illusion"}:
@@ -376,21 +376,61 @@ def _ante_step_voucher_adjustment(
     return 6.0 if state.ante <= 5 else -10.0
 
 
-def _retcon_voucher_adjustment(
+def _boss_reroll_voucher_adjustment(
     state: GameState,
+    name: str,
     pressure: _ShopPressure,
     profile: _BuildProfile,
 ) -> float:
-    if _shop_cleared_blind_kind(state) != "BIG" or not pressure.boss_name:
-        return -12.0
-    if pressure.boss_name not in DANGEROUS_BOSS_BLINDS:
-        return -6.0
-    bonus = 12.0 + pressure.danger * 18.0
+    if name == "Director's Cut" and ("Director's Cut" in state.vouchers or "Retcon" in state.vouchers):
+        return -30.0
+    if name == "Retcon" and "Retcon" in state.vouchers:
+        return -30.0
+    if not pressure.boss_name:
+        return -14.0
+    if name == "Director's Cut" and pressure.boss_name != "Violet Vessel":
+        if state.ante >= 7 and state.money >= 55:
+            return 34.0
+        if 3 <= state.ante <= 6 and state.money >= 40:
+            return -6.0
+        return -30.0
+
+    dangerous = pressure.boss_name in DANGEROUS_BOSS_BLINDS
+    if not dangerous:
+        return -26.0
+
+    bonus = 0.0
+    if _shop_cleared_blind_kind(state) == "BIG":
+        bonus += 12.0 + pressure.danger * 18.0
+    elif state.ante >= 7:
+        bonus += 8.0 + pressure.danger * 12.0
+    elif state.ante >= 5 and (pressure.ratio >= 1.05 or pressure.raw_ratio >= 1.0):
+        bonus += 4.0 + pressure.danger * 8.0
+    else:
+        bonus -= 12.0
+
+    if pressure.boss_name == "Violet Vessel":
+        bonus += 10.0
+    if name == "Director's Cut":
+        if state.money < 18:
+            bonus -= 10.0
+        if state.ante <= 2:
+            bonus -= 8.0
+    else:
+        bonus += 4.0
     if profile.rich:
         bonus += 6.0
     if state.money < 20:
         bonus -= 8.0
     return bonus
+
+
+def _retcon_voucher_adjustment(
+    state: GameState,
+    pressure: _ShopPressure,
+    profile: _BuildProfile,
+) -> float:
+    return _boss_reroll_voucher_adjustment(state, "Retcon", pressure, profile)
 
 
 def _antimatter_voucher_adjustment(

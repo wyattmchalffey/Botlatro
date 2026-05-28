@@ -16,6 +16,13 @@ from balatro_ai.api.state import Card, GamePhase, GameState, Joker
 from balatro_ai.rules.hand_evaluator import HandType, debuffed_suits_for_blind, evaluate_played_cards
 from balatro_ai.rules.joker_compat import is_blueprint_compatible
 
+# Optional Rust accelerator. None when balatro_core isn't installed;
+# helpers fall back to their Python implementations transparently.
+try:
+    import balatro_core as _balatro_core
+except ImportError:
+    _balatro_core = None
+
 
 @dataclass(frozen=True, slots=True)
 class _DrawResult:
@@ -184,6 +191,250 @@ SHOP_EDITION_BY_TAG = {
 EDITION_EXTRA_COST = {"FOIL": 2, "HOLOGRAPHIC": 3, "POLYCHROME": 5, "NEGATIVE": 5}
 
 
+# Set of blinds the Rust simulate_play_simple fast path understands.
+# Anything else (boss blinds with mid-play effects, suit-debuff bosses
+# are handled via debuffed_suits, but mid-round-state bosses like
+# The Hook / The Ox are NOT) → bail to Python.
+_RUST_SIM_SIMPLE_BLINDS: frozenset[str] = frozenset({
+    "", "Small Blind", "Big Blind",
+    # Suit-debuff bosses: scoring handles debuff via card_chip_value.
+    "The Club", "The Goad", "The Head", "The Window",
+})
+
+
+def _try_rust_simulate_play(
+    state: GameState,
+    action: Action,
+    drawn_cards: tuple[Card, ...],
+    *,
+    stochastic_outcomes: object,
+    created_consumables: object,
+) -> GameState | None:
+    """Try the Rust simulate_play_simple fast path. Returns the new
+    GameState on success, None to fall through to the Python
+    implementation.
+
+    The fast path requires:
+    - Standard blind (no Hook / Ox / Wall / etc.)
+    - No stochastic outcomes (empty in solver's deterministic search)
+    - No injected created_consumables
+    - No "complex" jokers (Vampire, Midas Mask, Hiker, Sixth Sense,
+      Gift Card, Mr. Bones, etc. — full list in Rust SIMPLE_BAIL_JOKERS)
+    - No Glass-enhanced cards in play
+    - No blue seals on held cards
+    """
+
+    if _balatro_core is None:
+        return None
+    blind_name = _effective_blind_name(state)
+    if blind_name not in _RUST_SIM_SIMPLE_BLINDS:
+        return None
+    # Non-empty stochastic outcomes mean stuff fires that we'd need
+    # to apply (Glass shatter, Bloodstone, Lucky Card, etc.).
+    if stochastic_outcomes:
+        return None
+    if created_consumables:
+        return None
+
+    # Extract selected vs held.
+    selected_cards, held_cards = _split_action_cards(state, action)
+    if not selected_cards:
+        return None
+
+    # Extract joker data (re-using the existing cached extractor).
+    try:
+        from balatro_ai.search.state_value import _cached_joker_data
+    except ImportError:
+        return None
+    try:
+        (joker_names, joker_editions, joker_plus_mult,
+         joker_plus_chips, joker_xmult,
+         joker_loyalty_ready, joker_drivers_active,
+         joker_leading_plus_mult, joker_leading_plus_chips,
+         joker_sell_value, joker_rarity,
+         joker_target_suit, joker_target_rank,
+         joker_obelisk_gain) = _cached_joker_data(state)
+    except Exception:  # noqa: BLE001
+        return None
+
+    # joker_current_remaining is needed for Loyalty Card / Seltzer /
+    # Yorick updates. Extract via the same hand_evaluator helper.
+    try:
+        from balatro_ai.rules.hand_evaluator import _metadata_loyalty_remaining
+    except ImportError:
+        return None
+    joker_current_remaining: list[int] = []
+    for j in state.jokers:
+        if j.name in {"Loyalty Card", "Seltzer", "Yorick"}:
+            v = _metadata_loyalty_remaining(j)
+            joker_current_remaining.append(int(v) if v is not None else 0)
+        else:
+            joker_current_remaining.append(0)
+
+    # Convert cards to RustCard.
+    try:
+        rust_played = [_balatro_core.RustCard.from_python(c) for c in selected_cards]
+        rust_held = [_balatro_core.RustCard.from_python(c) for c in held_cards]
+        rust_drawn = [_balatro_core.RustCard.from_python(c) for c in drawn_cards]
+        rust_known = [_balatro_core.RustCard.from_python(c) for c in state.known_deck]
+    except (AttributeError, TypeError):
+        return None
+
+    # Look up the current level for this hand type. The Python state
+    # uses HandType enum values as keys.
+    from balatro_ai.rules.hand_evaluator import _identify_hand_type
+    ht = _identify_hand_type(selected_cards, jokers=state.jokers)
+    if ht is None:
+        return None
+    hand_level = int(state.hand_levels.get(ht.value, 1))
+
+    # Played-hand-type context (for Card Sharp / Supernova / Obelisk).
+    played_types_strs: list[str] = []
+    if any(n in {"Card Sharp", "Supernova", "Obelisk"} for n in joker_names):
+        try:
+            from balatro_ai.search.state_value import _cached_played_hand_types_strs
+            played_types_strs = _cached_played_hand_types_strs(state)
+        except Exception:  # noqa: BLE001
+            return None
+    played_count_this = sum(1 for s in played_types_strs if s == ht.value)
+    played_count_max_other = 0
+    if played_types_strs:
+        from collections import Counter
+        counts = Counter(s for s in played_types_strs if s != ht.value)
+        played_count_max_other = max(counts.values(), default=0)
+
+    pareidolia_active = any(n == "Pareidolia" for n in joker_names)
+    debuffed_list = [s for s in debuffed_suits_for_blind(blind_name) if len(s) == 1]
+    has_mr_bones = any(j.name == "Mr. Bones" for j in state.jokers)
+    mime_count = sum(1 for j in state.jokers if j.name == "Mime")
+
+    # Vampire gain and Obelisk should_scale: bail if either present
+    # (in SIMPLE_BAIL_JOKERS already, but make sure we pass zeros).
+    joker_vampire_gain = [0.0] * len(joker_names)
+    joker_obelisk_should_scale = [False] * len(joker_names)
+
+    is_the_arm_blind = blind_name == "The Arm"
+    if is_the_arm_blind:
+        # Arm blind isn't in _RUST_SIM_SIMPLE_BLINDS so we'd have
+        # already bailed; keep for safety.
+        return None
+
+    # joker_slot_limit
+    slot_limit_raw = state.modifiers.get("joker_slot_limit", 5)
+    try:
+        joker_slot_limit = int(slot_limit_raw) if slot_limit_raw is not None else 5
+    except (TypeError, ValueError):
+        joker_slot_limit = 5
+
+    result = _balatro_core.simulate_play_simple(
+        rust_played, rust_held, rust_drawn, rust_known,
+        joker_names, joker_editions,
+        joker_plus_mult, joker_plus_chips, joker_xmult,
+        joker_current_remaining,
+        joker_loyalty_ready, joker_drivers_active,
+        joker_leading_plus_mult, joker_leading_plus_chips,
+        joker_sell_value, joker_rarity,
+        joker_target_suit, joker_target_rank,
+        joker_obelisk_gain, joker_vampire_gain,
+        joker_obelisk_should_scale,
+        hand_level,
+        int(state.money), joker_slot_limit,
+        int(max(0, state.discards_remaining)),
+        int(max(0, state.hands_remaining)),
+        played_types_strs, played_count_this, played_count_this > 0,
+        int(max(0, state.deck_size)),
+        played_count_max_other, pareidolia_active,
+        debuffed_list,
+        int(state.current_score), int(state.required_score),
+        is_the_arm_blind, has_mr_bones, mime_count,
+    )
+    if result is None:
+        return None
+
+    (next_score, next_money, next_hands, next_deck_size, deck_indices,
+     next_phase_str, mr_bones_fired, ht_str, new_hand_level,
+     held_end_money, joker_updates) = result
+
+    # Apply deck indices to slice known_deck (preserves Card.metadata).
+    remaining_deck = list(state.known_deck)
+    for i in reversed(deck_indices):
+        del remaining_deck[i]
+
+    # Apply joker updates to rebuild joker tuple.
+    next_jokers: list[Joker] = []
+    for j, (new_chips, new_mult, new_xmult, new_remaining, remove) in zip(
+        state.jokers, joker_updates, strict=False,
+    ):
+        if remove:
+            continue
+        updates: dict[str, object] = {}
+        if new_chips is not None:
+            updates["current_chips"] = new_chips
+        if new_mult is not None:
+            updates["current_mult"] = new_mult
+        if new_xmult is not None:
+            updates["current_xmult"] = new_xmult
+        if new_remaining is not None:
+            updates["current_remaining"] = new_remaining
+        if updates:
+            next_jokers.append(_with_joker_metadata(j, updates))
+        else:
+            next_jokers.append(j)
+    next_jokers_tuple = tuple(next_jokers)
+
+    # Update hand_levels if the played hand type's level changed.
+    if new_hand_level is not None and new_hand_level != hand_level:
+        next_hand_levels = dict(state.hand_levels)
+        next_hand_levels[ht.value] = new_hand_level
+    else:
+        next_hand_levels = state.hand_levels
+
+    # Determine next phase + hand contents.
+    if next_phase_str == "ROUND_EVAL":
+        next_phase = GamePhase.ROUND_EVAL
+    elif next_phase_str == "RUN_OVER":
+        next_phase = GamePhase.RUN_OVER
+    else:
+        next_phase = state.phase
+
+    if next_phase == GamePhase.ROUND_EVAL or next_phase == GamePhase.RUN_OVER:
+        # End of round: no new hand (Python handles played_pile etc.)
+        # Fall back to Python for the round-end logic.
+        return None
+
+    # Mid-round: build next hand = held + drawn.
+    next_hand = _sort_hand_cards(held_cards + drawn_cards)
+
+    # Modifier dict updates: append to played_hand_types, played_pile,
+    # etc. We do this by mutating a copy of state.modifiers.
+    next_modifiers = dict(state.modifiers)
+    # _with_played_hand_type / _with_played_pile do this in Python; we
+    # use the Python helpers for correctness rather than duplicating
+    # their logic.
+    next_modifiers = _with_played_hand_type(next_modifiers, ht)
+    # Space joker is bailed (stochastic_outcomes empty), so 0 level gain.
+    next_modifiers = _with_played_hand_level(next_modifiers, ht, 0)
+    marked_played = _cards_marked_played_this_ante(selected_cards)
+    next_modifiers = _with_played_pile(next_modifiers, marked_played)
+
+    from dataclasses import replace
+    next_state = replace(
+        state,
+        phase=next_phase,
+        current_score=next_score,
+        money=next_money,
+        hands_remaining=next_hands,
+        deck_size=next_deck_size,
+        hand_levels=next_hand_levels,
+        hand=next_hand,
+        known_deck=tuple(remaining_deck),
+        jokers=next_jokers_tuple,
+        modifiers=next_modifiers,
+        legal_actions=(),
+    )
+    return _state_with_dynamic_joker_values(next_state)
+
+
 def simulate_play(
     state: GameState,
     action: Action,
@@ -196,6 +447,21 @@ def simulate_play(
 
     if action.action_type != ActionType.PLAY_HAND:
         raise ValueError(f"simulate_play requires play_hand, got {action.action_type.value}")
+
+    # Rust fast path: one FFI call handles scoring + counter updates +
+    # joker scaling + deck draw + phase transition + held-end money.
+    # Returns None to bail on any unsupported configuration (complex
+    # jokers, special blinds, stochastic outcomes, blue seals, etc.).
+    # Materialize drawn_cards once (it may be a single-use iterator).
+    drawn_cards = tuple(drawn_cards)
+    rust_result = _try_rust_simulate_play(
+        state, action, drawn_cards,
+        stochastic_outcomes=stochastic_outcomes,
+        created_consumables=created_consumables,
+    )
+    if rust_result is not None:
+        return rust_result
+
     selected_cards, held_cards = _split_action_cards(state, action)
     if not selected_cards:
         raise ValueError("Cannot simulate playing zero cards")
@@ -252,7 +518,9 @@ def simulate_play(
         played_hand_counts=_played_hand_counts(state),
         stochastic_outcomes=outcome_map,
     )
-    next_hand_levels = _hand_levels_after_play(state.hand_levels, evaluation, stochastic_outcomes=outcome_map)
+    next_hand_levels = _hand_levels_after_play(
+        state.hand_levels, evaluation, stochastic_outcomes=outcome_map, blind_name=blind_name
+    )
     mutated_played_cards = _played_cards_after_play(state, selected_cards, evaluation)
     dna_cards = _dna_cards_after_play(state, selected_cards, evaluation)
     shattered_glass_cards = _outcome_cards(outcome_map, "shattered_glass_cards")
@@ -429,7 +697,9 @@ def simulate_buy(
     cost = _effective_item_buy_cost(state, item)
     if not _can_afford_cost(state, cost):
         raise ValueError(f"Cannot buy {_item_label(item)} for ${cost} with ${state.money}")
-    buy_and_use_consumable = _item_is_consumable(item) and not _has_consumable_room(state)
+    buy_and_use_consumable = _item_is_consumable(item) and (
+        bool(action.metadata.get("buy_and_use")) or not _has_consumable_room(state)
+    )
     if buy_and_use_consumable and not _shop_consumable_can_be_used_directly(state, item, action):
         raise ValueError(
             f"Cannot buy/use {_item_label(item)} with full consumable slots: "
@@ -925,6 +1195,18 @@ def _draw_from_deck(state: GameState, drawn_cards: tuple[Card, ...]) -> _DrawRes
         return _DrawResult(deck_size=state.deck_size, known_deck=state.known_deck)
     if not state.known_deck:
         return _DrawResult(deck_size=max(0, state.deck_size - len(drawn_cards)), known_deck=())
+
+    # NOTE: We have a Rust port of this helper
+    # (`balatro_core.draw_indices_to_remove`) that's 1.29× faster per
+    # call on a 40-card deck. But wiring it into this Python helper
+    # consistently costs ~7s of trajectory wall-time vs the
+    # pure-Python version: the FFI cost of converting state.known_deck
+    # to RustCard EVERY call outweighs the small per-call algorithm
+    # win. The Rust version stays available for use by a future
+    # native simulate_play (Phase 4) that can amortize the conversion
+    # across the whole transition. See RUST_PORT_PLAN.md §3 for the
+    # design discussion. Triple-run measurement 2026-05-27:
+    # baseline 236s → wired 243s (consistent across 3 runs).
 
     exact_known_deck = len(state.known_deck) == state.deck_size
     remaining = list(state.known_deck)
@@ -2310,13 +2592,20 @@ def _hand_levels_after_play(
     evaluation,
     *,
     stochastic_outcomes: dict[str, object],
+    blind_name: str = "",
 ) -> dict[str, int]:
     level_gain = _outcome_int(stochastic_outcomes, "space_joker_triggers")
-    if level_gain <= 0:
+    # The Arm permanently decrements the played hand type's stored level by 1
+    # (minimum 1). The scoring path in hand_evaluator already accounts for the
+    # -1 via _adjusted_hand_level, so subsequent plays will keep matching once
+    # the stored level reaches 1.
+    arm_decrement = 1 if blind_name == "The Arm" else 0
+    if level_gain <= 0 and arm_decrement <= 0:
         return hand_levels
     updated = dict(hand_levels)
     hand_name = evaluation.hand_type.value
-    updated[hand_name] = max(1, _int_value(updated.get(hand_name))) + level_gain
+    current = max(1, _int_value(updated.get(hand_name)))
+    updated[hand_name] = max(1, current + level_gain - arm_decrement)
     return updated
 
 

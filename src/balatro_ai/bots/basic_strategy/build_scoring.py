@@ -168,22 +168,29 @@ def _sample_hand_build_score(
     joker_context,
 ) -> float:
     played_types = _played_hand_types_this_round(state)
-    evaluation = evaluate_played_cards(
-        sample.cards,
-        state.hand_levels,
-        debuffed_suits=debuffed_suits_for_blind(state.blind),
-        blind_name=state.blind,
-        jokers=jokers,
-        discards_remaining=state.discards_remaining,
-        hands_remaining=max(1, state.hands_remaining),
-        held_cards=sample.held_cards,
-        deck_size=max(30, state.deck_size),
-        money=state.money,
-        played_hand_types_this_round=played_types,
-        played_hand_counts=_played_hand_counts(state),
-        _joker_context=joker_context,
-    )
-    score = float(evaluation.score)
+    # Rust fast path: when the blind is safe + all jokers are supported,
+    # call evaluate_simple_with_levels directly. This is the hottest
+    # shop-search evaluation (~500K calls per trajectory).
+    rust_score = _try_rust_sample_score(state, jokers, sample, played_types)
+    if rust_score is not None:
+        score = float(rust_score)
+    else:
+        evaluation = evaluate_played_cards(
+            sample.cards,
+            state.hand_levels,
+            debuffed_suits=debuffed_suits_for_blind(state.blind),
+            blind_name=state.blind,
+            jokers=jokers,
+            discards_remaining=state.discards_remaining,
+            hands_remaining=max(1, state.hands_remaining),
+            held_cards=sample.held_cards,
+            deck_size=max(30, state.deck_size),
+            money=state.money,
+            played_hand_types_this_round=played_types,
+            played_hand_counts=_played_hand_counts(state),
+            _joker_context=joker_context,
+        )
+        score = float(evaluation.score)
     if not _should_project_card_sharp_repeat_value(state, joker_context, played_types):
         return score
 
@@ -218,6 +225,69 @@ def _should_project_card_sharp_repeat_value(
     if state.blind == "The Eye":
         return False
     return _card_sharp_repeat_projection_weight(state) > 0.0
+
+
+def _try_rust_sample_score(
+    state: GameState,
+    jokers: tuple[Joker, ...],
+    sample: _SampleHand,
+    played_types: tuple,
+) -> int | None:
+    """Rust fast path for shop sample-hand scoring. Delegates to the
+    shared `search.rust_bridge` helper so the joker-data extraction
+    is cached and re-used across the ~20-30 sample-hand calls per
+    shop decision."""
+
+    # The shop builder synthesizes states by overriding hand_levels,
+    # hands_remaining, etc.; the bridge handles the boss-blind + joker
+    # bail checks. The synthetic state passed here has state.blind set
+    # to the live blind, so blind-safety filtering works correctly.
+    from balatro_ai.search.rust_bridge import rust_evaluate_score
+    return rust_evaluate_score(
+        state, sample.cards, sample.held_cards, jokers,
+        played_hand_types=played_types,
+    )
+
+    # played_hand_types is only needed for Card Sharp / Supernova /
+    # Obelisk. Compute strs only when one of those is present.
+    if any(n in {"Card Sharp", "Supernova", "Obelisk"} for n in joker_names):
+        played_types_strs = [ht.value for ht in played_types]
+    else:
+        played_types_strs = []
+
+    debuffed = [s for s in debuffed_suits_for_blind(state.blind) if len(s) == 1]
+    slot_limit_raw = state.modifiers.get("joker_slot_limit", 5)
+    try:
+        joker_slot_limit = int(slot_limit_raw) if slot_limit_raw is not None else 5
+    except (TypeError, ValueError):
+        joker_slot_limit = 5
+    try:
+        result = balatro_core.evaluate_simple_with_levels(
+            rust_cards, state.hand_levels, debuffed_suits=debuffed,
+            joker_names=joker_names, joker_editions=joker_editions,
+            held_cards=rust_held,
+            joker_current_plus_mult=joker_plus_mult,
+            joker_current_plus_chips=joker_plus_chips,
+            joker_current_xmult=joker_xmult,
+            joker_loyalty_ready=joker_loyalty_ready,
+            joker_drivers_active=joker_drivers_active,
+            joker_leading_plus_mult=joker_leading_plus_mult,
+            joker_leading_plus_chips=joker_leading_plus_chips,
+            joker_sell_value=joker_sell_value, joker_rarity=joker_rarity,
+            joker_target_suit=joker_target_suit, joker_target_rank=joker_target_rank,
+            joker_obelisk_gain=joker_obelisk_gain,
+            money=int(state.money), joker_slot_limit=joker_slot_limit,
+            discards_remaining=int(max(0, state.discards_remaining)),
+            hands_remaining=int(max(1, state.hands_remaining)),
+            played_hand_types=played_types_strs,
+            deck_size=int(max(30, state.deck_size)),
+        )
+    except Exception:  # noqa: BLE001
+        return None
+    if result is None:
+        return None
+    _chips, _mult, score, _ht = result
+    return int(score)
 
 
 def _card_sharp_repeat_projection_weight(state: GameState) -> float:

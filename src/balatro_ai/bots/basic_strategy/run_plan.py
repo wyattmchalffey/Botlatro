@@ -308,9 +308,13 @@ def _voucher_priorities(
     priorities: list[str] = []
     names = _active_joker_names(state)
     dangerous_boss = bool(pressure.boss_name in DANGEROUS_BOSS_BLINDS or pressure.boss_name in FINAL_BOSS_BLINDS)
+    boss_control_target = pressure.boss_name == "Violet Vessel"
 
-    if dangerous_boss and (posture in {"spend", "panic"} or state.money >= 25):
-        priorities.append("Retcon")
+    if boss_control_target and dangerous_boss and (posture in {"spend", "panic"} or state.money >= 25):
+        if "Director's Cut" in state.vouchers or "Retcon" in state.vouchers:
+            priorities.append("Retcon")
+        elif state.ante >= 5 or state.money >= 30:
+            priorities.append("Director's Cut")
     if "Constellation" in names or (primary_hands and _has_planet_investment(state) and state.ante <= 5):
         priorities.append("Planet Tycoon")
     if _standard_pack_payoff_names(names):

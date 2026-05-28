@@ -1,5 +1,10 @@
 [build-system]
-requires = ["setuptools>=69"]
+# Cython is needed at build time for the hand_evaluator_native extension
+# (Tier 2 #4 of SOLVER_OPTIMIZATION_PLAN.md). The extension build is
+# optional — `setup.py` falls back to a Python-only install if Cython
+# isn't available — but declaring it here ensures `pip install -e .`
+# picks it up automatically in a fresh environment.
+requires = ["setuptools>=69", "cython>=3.0"]
 build-backend = "setuptools.build_meta"
 
 [project]

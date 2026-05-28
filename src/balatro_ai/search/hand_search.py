@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from random import Random
@@ -14,6 +15,13 @@ from balatro_ai.search.forward_sim import simulate_discard, simulate_play
 from balatro_ai.search.state_value import _card_cache_key, _freeze_for_cache, _jokers_cache_key, planning_value, state_value
 
 ValueFn = Callable[[GameState], float]
+
+# Opt-in A/B switch for the native (Rust) beam subtree evaluator.
+# Default OFF so production / default runs use the pure-Python legacy
+# beam. Set BALATRO_NATIVE_BEAM=1 to route `_beam_plan_value`'s subtree
+# through `beam_play_value_native` for quality/speed comparison against
+# the deterministic legacy beam (Phase 4d.2 re-validation).
+_NATIVE_BEAM_ENABLED = os.environ.get("BALATRO_NATIVE_BEAM") == "1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -205,6 +213,36 @@ def _beam_plan_value(
     if memo is not None and memo_key in memo:
         return memo[memo_key]
 
+    # A/B opt-in (BALATRO_NATIVE_BEAM=1): route the whole subtree
+    # value through the native Rust beam. Compared against the
+    # deterministic legacy Python beam on a seed batch (quality gate,
+    # not step-identity). Default OFF.
+    if _NATIVE_BEAM_ENABLED:
+        rust_value = _try_rust_beam_plan_value(state, depth, config, seed_offset)
+        if rust_value is not None:
+            if memo is not None:
+                memo[memo_key] = rust_value
+            return rust_value
+
+    # NOTE: `beam.rs` has a complete native beam with discards +
+    # play ranking + xoshiro rollouts (Phase 4d.2 proper). When
+    # wired into _beam_plan_value, both the minimal version (plays
+    # only) AND the full version (plays + discards) broke parity
+    # severely (130 steps → 33-34 steps on AAAAAAA). The bot's
+    # value estimates diverge enough from Python's that it makes
+    # quality-eroding decisions. Likely causes that need more
+    # careful work to fix:
+    #   - apply_play's joker metadata + modifier updates may
+    #     differ subtly from Python's simulate_play
+    #   - xoshiro RNG draws differ from Python's random.Random,
+    #     leading to different rollout outcomes the beam treats
+    #     as ground truth at each branch
+    #   - The mixed play/discard ranking and limit selection may
+    #     not exactly match Python's _beam_future_actions
+    # Leaving `beam.rs` in the tree as scaffolding. To productize,
+    # would need a careful side-by-side instrumentation pass to
+    # find exactly which sub-decision diverges first.
+
     actions = _beam_future_actions(state, config)
     if not actions:
         return _beam_leaf_value(state, config=config, seed_offset=seed_offset, memo=memo)
@@ -227,6 +265,106 @@ def _beam_plan_value(
     if memo is not None:
         memo[memo_key] = best_value
     return best_value
+
+
+def _try_rust_beam_plan_value(
+    state: GameState,
+    depth: int,
+    config: HandSearchConfig,
+    seed_offset: int,
+) -> float | None:
+    """Bridge to Rust `beam_play_value_native`. Returns the plan
+    value or None to bail."""
+
+    try:
+        import balatro_core
+    except ImportError:
+        return None
+    from balatro_ai.search.state_value import (
+        _RUST_BLIND_SAFE, _cached_hand_as_rust_cards, _cached_joker_data,
+        _cached_played_hand_types_strs, _PLAYED_STATE_JOKERS,
+    )
+    # Use the wider rollout blind set since the beam's leaf evaluator
+    # is the rollout — same constraints apply.
+    try:
+        from balatro_ai.search.state_value import _RUST_ROLLOUT_BLIND_SAFE
+    except ImportError:
+        _RUST_ROLLOUT_BLIND_SAFE = _RUST_BLIND_SAFE
+    if state.blind not in _RUST_ROLLOUT_BLIND_SAFE:
+        return None
+    hand_rust = _cached_hand_as_rust_cards(state, balatro_core)
+    if hand_rust is None:
+        try:
+            hand_rust = [balatro_core.RustCard.from_python(c) for c in state.hand]
+        except (AttributeError, TypeError, ValueError):
+            return None
+    try:
+        known_deck_rust = [balatro_core.RustCard.from_python(c) for c in state.known_deck]
+    except (AttributeError, TypeError, ValueError):
+        return None
+    try:
+        (joker_names, joker_editions, joker_plus_mult,
+         joker_plus_chips, joker_xmult,
+         joker_loyalty_ready, joker_drivers_active,
+         joker_leading_plus_mult, joker_leading_plus_chips,
+         joker_sell_value, joker_rarity,
+         joker_target_suit, joker_target_rank,
+         joker_obelisk_gain) = _cached_joker_data(state)
+    except Exception:  # noqa: BLE001
+        return None
+    try:
+        from balatro_ai.rules.hand_evaluator import _metadata_loyalty_remaining
+    except ImportError:
+        return None
+    joker_current_remaining: list[int] = []
+    for j in state.jokers:
+        if j.name in {"Loyalty Card", "Seltzer", "Yorick"}:
+            v = _metadata_loyalty_remaining(j)
+            joker_current_remaining.append(int(v) if v is not None else 0)
+        else:
+            joker_current_remaining.append(0)
+    if any(j.name in _PLAYED_STATE_JOKERS for j in state.jokers) or any(
+        j.name == "Obelisk" for j in state.jokers
+    ):
+        played_types_strs = _cached_played_hand_types_strs(state)
+    else:
+        played_types_strs = []
+    from balatro_ai.rules.hand_evaluator import debuffed_suits_for_blind
+    debuffed = [s for s in debuffed_suits_for_blind(state.blind) if len(s) == 1]
+    pareidolia_active = any(j.name == "Pareidolia" for j in state.jokers)
+    joker_vampire_gain = [0.0] * len(joker_names)
+    joker_obelisk_should_scale = [False] * len(joker_names)
+    try:
+        return balatro_core.beam_play_value_native(
+            hand_rust, known_deck_rust,
+            state.hand_levels, debuffed,
+            int(max(0, depth)), int(max(1, config.beam_width)),
+            joker_names=joker_names, joker_editions=joker_editions,
+            joker_current_plus_mult=joker_plus_mult,
+            joker_current_plus_chips=joker_plus_chips,
+            joker_current_xmult=joker_xmult,
+            joker_current_remaining=joker_current_remaining,
+            joker_loyalty_ready=joker_loyalty_ready,
+            joker_drivers_active=joker_drivers_active,
+            joker_leading_plus_mult=joker_leading_plus_mult,
+            joker_leading_plus_chips=joker_leading_plus_chips,
+            joker_sell_value=joker_sell_value, joker_rarity=joker_rarity,
+            joker_target_suit=joker_target_suit, joker_target_rank=joker_target_rank,
+            joker_obelisk_gain=joker_obelisk_gain,
+            joker_vampire_gain=joker_vampire_gain,
+            joker_obelisk_should_scale=joker_obelisk_should_scale,
+            money=int(state.money),
+            discards_remaining=int(max(0, state.discards_remaining)),
+            hands_remaining=int(max(0, state.hands_remaining)),
+            played_hand_types=played_types_strs,
+            deck_size=int(max(0, state.deck_size)),
+            pareidolia_active=pareidolia_active,
+            current_score=int(state.current_score),
+            required_score=int(state.required_score),
+            seed=int(seed_offset) & 0xFFFFFFFFFFFFFFFF,
+        )
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _beam_leaf_value(
@@ -346,7 +484,114 @@ def _cheap_beam_action_rank(
 
 
 def _cheap_beam_play_scores(state: GameState, actions: tuple[Action, ...], context) -> dict[tuple[int, ...], int]:
-    return {action.card_indices: _score_play_action(state, action, context) for action in actions}
+    if not actions:
+        return {}
+    # Rust batched scorer: ~16× faster than the per-action Python loop
+    # on AAAAAAA-style states. Returns RAW scores; we still need
+    # boss-adjustment (The Eye / The Mouth) on top. Falls back to
+    # Python for any action Rust returns None for.
+    rust_scores = _rust_batch_play_scores(state, actions)
+    if rust_scores is None:
+        return {action.card_indices: _score_play_action(state, action, context) for action in actions}
+    out: dict[tuple[int, ...], int] = {}
+    needs_boss_adj = state.blind in {"The Eye", "The Mouth"}
+    for idx, action in enumerate(actions):
+        rs = rust_scores[idx]
+        if rs is None:
+            out[action.card_indices] = _score_play_action(state, action, context)
+            continue
+        score = int(rs)
+        # Apply The Eye / The Mouth adjustment Python-side. We need
+        # the played hand_type for the action; cheapest path is to
+        # ask the Python evaluator for it (only when boss adjustment
+        # is relevant). For other blinds, raw score is correct.
+        if needs_boss_adj and score > 0 and context.played_hand_types:
+            # Re-score Python-side to get the hand_type + adjustment
+            # in one go. Boss-blind plays are rare so the slow path
+            # here is fine.
+            out[action.card_indices] = _score_play_action(state, action, context)
+        else:
+            out[action.card_indices] = score
+    return out
+
+
+def _rust_batch_play_scores(
+    state: GameState,
+    actions: tuple[Action, ...],
+) -> list[int | None] | None:
+    """Try the Rust batched action scorer. Returns per-action scores
+    or None if the Rust extension isn't loadable / extraction fails.
+    Per-action entries may be None to signal Python fallback.
+
+    Bails entirely when the blind is one Rust doesn't handle (The
+    Flint halves chips/mult, The Arm decrements level, The Tooth
+    money penalty, The Psychic requires 5 cards, The Eye / The
+    Mouth / The Plant per-hand-type rules). Same set as the
+    Phase 2 wire-in's `_RUST_BLIND_SAFE`.
+    """
+
+    try:
+        import balatro_core
+    except ImportError:
+        return None
+    from balatro_ai.search.state_value import (
+        _RUST_BLIND_SAFE,
+        _cached_hand_as_rust_cards, _cached_joker_data,
+        _cached_played_hand_types_strs, _PLAYED_STATE_JOKERS,
+    )
+    if state.blind not in _RUST_BLIND_SAFE:
+        return None
+    from balatro_ai.rules.hand_evaluator import debuffed_suits_for_blind
+    hand_rust = _cached_hand_as_rust_cards(state, balatro_core)
+    if hand_rust is None:
+        try:
+            hand_rust = [balatro_core.RustCard.from_python(c) for c in state.hand]
+        except (AttributeError, TypeError, ValueError):
+            return None
+    try:
+        (joker_names, joker_editions, joker_plus_mult,
+         joker_plus_chips, joker_xmult,
+         joker_loyalty_ready, joker_drivers_active,
+         joker_leading_plus_mult, joker_leading_plus_chips,
+         joker_sell_value, joker_rarity,
+         joker_target_suit, joker_target_rank,
+         joker_obelisk_gain) = _cached_joker_data(state)
+    except Exception:  # noqa: BLE001
+        return None
+    if any(j.name in _PLAYED_STATE_JOKERS for j in state.jokers):
+        played_types_strs = _cached_played_hand_types_strs(state)
+    else:
+        played_types_strs = []
+    debuffed = [s for s in debuffed_suits_for_blind(state.blind) if len(s) == 1]
+    slot_limit_raw = state.modifiers.get("joker_slot_limit", 5)
+    try:
+        joker_slot_limit = int(slot_limit_raw) if slot_limit_raw is not None else 5
+    except (TypeError, ValueError):
+        joker_slot_limit = 5
+    action_indices_list = [list(a.card_indices) for a in actions]
+    try:
+        return balatro_core.score_play_actions_batch(
+            hand_rust, action_indices_list,
+            state.hand_levels, debuffed,
+            joker_names=joker_names, joker_editions=joker_editions,
+            joker_current_plus_mult=joker_plus_mult,
+            joker_current_plus_chips=joker_plus_chips,
+            joker_current_xmult=joker_xmult,
+            joker_loyalty_ready=joker_loyalty_ready,
+            joker_drivers_active=joker_drivers_active,
+            joker_leading_plus_mult=joker_leading_plus_mult,
+            joker_leading_plus_chips=joker_leading_plus_chips,
+            joker_sell_value=joker_sell_value, joker_rarity=joker_rarity,
+            joker_target_suit=joker_target_suit, joker_target_rank=joker_target_rank,
+            joker_obelisk_gain=joker_obelisk_gain,
+            money=int(state.money), joker_slot_limit=joker_slot_limit,
+            discards_remaining=int(max(0, state.discards_remaining)),
+            hands_remaining=int(max(0, state.hands_remaining)),
+            played_hand_types=played_types_strs,
+            deck_size=int(max(0, state.deck_size)),
+        )
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _cheap_beam_play_rank(
@@ -482,6 +727,29 @@ def _candidate_play_actions(
 
 def _play_candidate_rank(state: GameState, action: Action, context, remaining_score: int) -> float:
     score = _score_play_action(state, action, context)
+    return _play_candidate_rank_from_score(state, action, context, remaining_score, score)
+
+
+def _play_candidate_rank_cached(
+    state: GameState,
+    action: Action,
+    context,
+    remaining_score: int,
+    score_cache: dict[tuple[int, ...], int],
+) -> float:
+    score = score_cache.get(action.card_indices)
+    if score is None:
+        score = _score_play_action(state, action, context)
+    return _play_candidate_rank_from_score(state, action, context, remaining_score, score)
+
+
+def _play_candidate_rank_from_score(
+    state: GameState,
+    action: Action,
+    context,
+    remaining_score: int,
+    score: int,
+) -> float:
     value = float(score)
     if remaining_score > 0:
         if score >= remaining_score:

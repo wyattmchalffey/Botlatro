@@ -212,6 +212,39 @@ class ForwardSimTests(unittest.TestCase):
         self.assertEqual(next_state.jokers[1].metadata["state"]["debuff"], True)
         self.assertEqual(next_state.jokers[1].metadata["value"]["effect"], "All abilities are disabled")
 
+    def test_simulate_play_decrements_stored_hand_level_under_the_arm(self) -> None:
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            blind="The Arm",
+            required_score=10_000,
+            hands_remaining=4,
+            deck_size=0,
+            hand=(Card("A", "S"), Card("A", "H"), Card("K", "D")),
+            hand_levels={"Pair": 3, "High Card": 1},
+            modifiers={"hand_size": 3, "current_blind": {"name": "The Arm", "type": "BOSS"}},
+        )
+
+        next_state = simulate_play(state, Action(ActionType.PLAY_HAND, card_indices=(0, 1)))
+
+        self.assertEqual(next_state.hand_levels["Pair"], 2)
+        self.assertEqual(next_state.hand_levels["High Card"], 1)
+
+    def test_simulate_play_clamps_stored_hand_level_at_one_under_the_arm(self) -> None:
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            blind="The Arm",
+            required_score=10_000,
+            hands_remaining=4,
+            deck_size=0,
+            hand=(Card("A", "S"), Card("A", "H"), Card("K", "D")),
+            hand_levels={"Pair": 1},
+            modifiers={"hand_size": 3, "current_blind": {"name": "The Arm", "type": "BOSS"}},
+        )
+
+        next_state = simulate_play(state, Action(ActionType.PLAY_HAND, card_indices=(0, 1)))
+
+        self.assertEqual(next_state.hand_levels["Pair"], 1)
+
     def test_simulate_play_marks_played_cards_this_ante_for_pillar(self) -> None:
         state = GameState(
             phase=GamePhase.SELECTING_HAND,
@@ -1491,9 +1524,16 @@ class ForwardSimTests(unittest.TestCase):
             for action in derived_full_slots.legal_actions
             if action.action_type == ActionType.BUY and action.target_id == "card"
         }
+        buy_by_amount = {
+            action.amount: action
+            for action in derived_full_slots.legal_actions
+            if action.action_type == ActionType.BUY and action.target_id == "card"
+        }
         self.assertNotIn(0, buy_amounts)
         self.assertIn(1, buy_amounts)
         self.assertIn(2, buy_amounts)
+        self.assertTrue(buy_by_amount[1].metadata["buy_and_use"])
+        self.assertTrue(buy_by_amount[2].metadata["buy_and_use"])
 
         card_state = GameState(
             phase=GamePhase.SHOP,

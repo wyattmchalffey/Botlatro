@@ -150,7 +150,29 @@ _SCORED_CARD_JOKER_NAMES = frozenset(
     }
 )
 _RETRIGGER_JOKER_NAMES = frozenset({"Hack", "Sock and Buskin", "Dusk", "Seltzer", "Hanging Chad"})
-_DOLLAR_EFFECT_JOKER_NAMES = frozenset({"Golden Ticket", "Rough Gem", "Business Card", "Reserved Parking", "Matador"})
+_DOLLAR_EFFECT_JOKER_NAMES = frozenset(
+    {"Golden Ticket", "Rough Gem", "Business Card", "Reserved Parking", "Matador", "To Do List"}
+)
+_TO_DO_LIST_REWARD = 4
+_TO_DO_LIST_TARGET_RE = re.compile(r"poker hand is an?\s+([A-Za-z][A-Za-z ]+?)(?:,|\.|$)", re.IGNORECASE)
+
+
+def _to_do_list_target(joker: Joker) -> str | None:
+    value = joker.metadata.get("value")
+    if isinstance(value, dict):
+        text = str(value.get("effect", ""))
+    else:
+        text = str(joker.metadata.get("effect", ""))
+    if not text:
+        return None
+    match = _TO_DO_LIST_TARGET_RE.search(text)
+    if not match:
+        return None
+    candidate = match.group(1).strip()
+    for hand_type in HandType:
+        if hand_type.value.lower() == candidate.lower():
+            return hand_type.value
+    return None
 _HELD_CARD_EFFECT_JOKER_NAMES = frozenset({"Shoot the Moon", "Raised Fist", "Baron"})
 
 
@@ -690,6 +712,13 @@ def _money_after_scoring_dollar_effects(
         stochastic_outcomes=outcomes,
     ):
         adjusted += 8 * matador_count
+    if name_counts.get("To Do List", 0):
+        for joker in ability_jokers:
+            if joker.name != "To Do List":
+                continue
+            target = _to_do_list_target(joker)
+            if target is not None and target == hand_type.value:
+                adjusted += _TO_DO_LIST_REWARD
     return adjusted
 
 

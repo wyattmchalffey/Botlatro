@@ -435,6 +435,16 @@ Milestone:
 
 ## Phase 7: Search Planner
 
+**Status note (2026-05-25):** the active framing of Phase 7 pivoted from
+"make the live search bot win" to "build an offline expert solver that
+generates Phase 8 training data." Live search bots tied
+`basic_strategy_bot` at ~5–7% across many variants and the gap to the
+Phase 8 ~40% gate is not closable by leaf tuning. The detailed working
+plan for the offline-solver path lives in
+[`PHASE7_OFFLINE_SOLVER_PLAN.md`](PHASE7_OFFLINE_SOLVER_PLAN.md). The
+search/beam-search ideas below remain relevant — they describe the
+solver's internal mechanism, not the live bot it has to beat.
+
 Search is the first major strength jump. For each decision, generate legal
 candidate actions and estimate their value.
 

@@ -72,3 +72,36 @@ Then run a 10-seed smoke test:
 $env:PYTHONPATH = "src"
 python -m balatro_ai.eval.benchmark --bot random_bot --seeds 10 --stake white
 ```
+
+## Rust Native Extension (Optional but Recommended)
+
+The hot scoring + simulation paths are ported to a PyO3 Rust extension
+under `botlatro-core/`. Without it Python falls back to the
+pure-Python implementations; with it solver trajectories run roughly
+2× faster.
+
+Prerequisites:
+
+- Rust toolchain (cargo 1.95+, rustc 1.95+)
+- maturin 1.13+ (`pip install maturin`)
+
+Build + install:
+
+```powershell
+pip install ./botlatro-core --no-build-isolation --force-reinstall --quiet
+```
+
+Verify:
+
+```powershell
+python -c "import balatro_core; print(balatro_core.version(), balatro_core.is_native_available())"
+```
+
+Run the Rust-extension test suite:
+
+```powershell
+python -m unittest discover -s tests -p "test_rust*.py"
+```
+
+See [`RUST_PORT_PLAN.md`](RUST_PORT_PLAN.md) for the port roadmap
+and current status.

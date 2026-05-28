@@ -1,0 +1,32 @@
+# Python packaging metadata for `botlatro-core`. The actual build is
+# driven by maturin (declared in [build-system]). This file is what
+# `pip install -e .` reads when run from this directory.
+#
+# Usage from project root (with venv active):
+#     cd botlatro-core
+#     maturin develop --release
+#
+# Or via pip:
+#     pip install -e ./botlatro-core
+#
+# After build, the extension is importable as `balatro_core`.
+
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "balatro-core"
+version = "0.1.0"
+description = "Native Rust core for the Balatro AI solver."
+requires-python = ">=3.11"
+license = { text = "Private research project" }
+authors = [{ name = "Botlatro contributors" }]
+# No Python deps at the package level — this is pure Rust + PyO3.
+dependencies = []
+
+[tool.maturin]
+# Bind ABI3 for forward compatibility — one binary works across
+# Python 3.11+ minor versions. The minor version after `cp` is the
+# minimum supported.
+features = ["pyo3/abi3-py311"]

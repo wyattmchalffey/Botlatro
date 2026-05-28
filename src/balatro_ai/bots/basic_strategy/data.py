@@ -754,7 +754,6 @@ VOUCHER_BUY_DENYLIST = frozenset(
     {
         "planet merchant",
         "magic trick",
-        "directors cut",
         "crystal ball",
         "telescope",
     }
@@ -770,6 +769,7 @@ VOUCHER_IMMEDIATE_SCORE_NAMES = frozenset(
         "Palette",
         "Hone",
         "Glow Up",
+        "Director's Cut",
         "Retcon",
         "Antimatter",
     }
@@ -783,6 +783,7 @@ VOUCHER_PRESSURE_ALLOWED_NAMES = frozenset(
         "Recyclomancy",
         "Paint Brush",
         "Palette",
+        "Director's Cut",
         "Antimatter",
     }
 )
