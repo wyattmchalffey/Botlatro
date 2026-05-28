@@ -714,6 +714,21 @@ def _planet_key_by_hand() -> Mapping[str, str]:
     return planets
 
 
+def predict_ancient_suit(
+    seed_or_rng: str | BalatroRNG, *, ante: int, previous_suit: str | None = None
+) -> str:
+    """Predict Ancient Joker's chosen suit for a round.
+
+    Balatro's ``reset_ancient_card`` picks
+    ``pseudorandom_element(['Spades','Hearts','Clubs','Diamonds'] minus the
+    previous suit, pseudoseed('anc'+ante))``. Single-char suits here preserve
+    that S,H,C,D order. ``previous_suit`` (single char, or None at run start)
+    is excluded; the result chains into the next round's exclusion."""
+
+    pool = tuple(suit for suit in ("S", "H", "C", "D") if suit != previous_suit)
+    return _pick_from_pool(_rng(seed_or_rng), pool, "anc" + str(ante))
+
+
 def predict_sigil_suit(seed_or_rng: str | BalatroRNG) -> str:
     return _pick_from_pool(_rng(seed_or_rng), ("S", "H", "D", "C"), "sigil")
 

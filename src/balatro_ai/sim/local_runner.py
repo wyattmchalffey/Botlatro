@@ -309,6 +309,10 @@ class LocalBalatroSimulator:
     # independent "boss" rng stream (ante 1 from the initial surface; ante 2+
     # from predict_boss). Keyed by boss KEY (e.g. "bl_manacle").
     _sf_boss_use_counts: dict[str, int] = field(default_factory=dict, init=False, repr=False)
+    # Seed-faithful Ancient Joker suit chain: Balatro rolls 'anc'+ante once per
+    # round (at blind select in this model), excluding the previous suit. The
+    # chain advances every round regardless of ownership; None = run start.
+    _ancient_suit_chain: str | None = field(default=None, init=False, repr=False)
     _tag_by_blind: dict[tuple[int, str], str] = field(default_factory=dict, init=False, repr=False)
     _economy: EconomyLedger = field(default_factory=EconomyLedger, init=False, repr=False)
 
@@ -325,6 +329,7 @@ class LocalBalatroSimulator:
         self._rng_diverged = False
         self._voucher_by_ante = {}
         self._sf_boss_use_counts = {}
+        self._ancient_suit_chain = None
         if not self.balatro_seed:
             return
         try:
@@ -1635,6 +1640,19 @@ class LocalBalatroSimulator:
         return tuple(self._rng.choice(state.consumables) for _ in range(count))
 
     def _ancient_suit(self, state: GameState) -> str | None:
+        # Seed-faithful: advance the 'anc'+ante chain EVERY round (called once
+        # per blind select) so the stream stays synced even before the joker is
+        # owned; only surface the suit when Ancient Joker is in play.
+        if self._balatro_rng is not None and not self._rng_diverged:
+            try:
+                from balatro_ai.rng.surfaces import predict_ancient_suit
+                suit = predict_ancient_suit(
+                    self._balatro_rng, ante=state.ante, previous_suit=self._ancient_suit_chain,
+                )
+                self._ancient_suit_chain = suit
+                return suit if _active_joker_count(state, "Ancient Joker") > 0 else None
+            except Exception:  # noqa: BLE001 — fall back to generic
+                pass
         if _active_joker_count(state, "Ancient Joker") <= 0:
             return None
         previous = _current_target_suit(state.jokers, "Ancient Joker")
