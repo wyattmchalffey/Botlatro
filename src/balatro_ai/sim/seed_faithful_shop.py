@@ -74,18 +74,58 @@ def seed_faithful_shop(
     caller so it advances exactly once per ante."""
 
     try:
-        from balatro_ai.rng.surfaces import predict_shop_cards, predict_shop_boosters
+        from balatro_ai.rng.surfaces import predict_shop_boosters
         from balatro_ai.search.shop_sampler import _booster_slot_count
     except ImportError:
         return None
 
+    # Shop cards first (advances the cdt/sho streams), then boosters —
+    # matching the validated shop-sequence walk order.
+    shop_cards = _shop_card_payloads(sampler, state, rng)
+    if shop_cards is None:
+        return None
+
     try:
-        n_slots = sampler.shop_slot_count(state)
         n_boosters = _booster_slot_count(sampler.data)
-        predicted_cards = predict_shop_cards(rng, ante=state.ante, n_slots=n_slots)
         predicted_boosters = predict_shop_boosters(
             rng, ante=state.ante, n_slots=n_boosters, first_shop_buffoon=first_shop,
         )
+    except Exception:  # noqa: BLE001 — never crash the sim path
+        return None
+
+    voucher: dict[str, Any] | None = None
+    if voucher_key:
+        voucher = _payload_for_key(sampler, state, "Voucher", voucher_key)
+        if voucher is None:
+            return None
+
+    boosters: list[dict[str, Any]] = []
+    for booster_key in predicted_boosters:
+        payload = _payload_for_key(sampler, state, "Booster", booster_key)
+        if payload is None:
+            return None
+        boosters.append(payload)
+
+    return shop_cards, voucher, tuple(boosters)
+
+
+def _shop_card_payloads(
+    sampler: "ShopSampler",
+    state: "GameState",
+    rng: Any,
+) -> tuple[dict[str, Any], ...] | None:
+    """Predict the rerollable shop-card slots and map them to ShopSampler
+    payloads, advancing ``rng`` by exactly one shop-card roll. Returns None
+    (after advancing the rng) on any unsourced slot — playing-card / unknown
+    key — so the caller can fall back to generic sampling."""
+
+    try:
+        from balatro_ai.rng.surfaces import predict_shop_cards
+    except ImportError:
+        return None
+    try:
+        n_slots = sampler.shop_slot_count(state)
+        predicted_cards = predict_shop_cards(rng, ante=state.ante, n_slots=n_slots)
     except Exception:  # noqa: BLE001 — never crash the sim path
         return None
 
@@ -101,21 +141,23 @@ def seed_faithful_shop(
         if payload is None:
             return None
         shop_cards.append(payload)
+    return tuple(shop_cards)
 
-    voucher: dict[str, Any] | None = None
-    if voucher_key:
-        voucher = _payload_for_key(sampler, state, "Voucher", voucher_key)
-        if voucher is None:
-            return None
 
-    boosters: list[dict[str, Any]] = []
-    for booster_key in predicted_boosters:
-        payload = _payload_for_key(sampler, state, "Booster", booster_key)
-        if payload is None:
-            return None
-        boosters.append(payload)
+def seed_faithful_reroll(
+    sampler: "ShopSampler",
+    state: "GameState",
+    rng: Any,
+) -> tuple[dict[str, Any], ...] | None:
+    """Return the new rerollable shop-card slots after a shop reroll, or
+    None to fall back to generic sampling.
 
-    return tuple(shop_cards), voucher, tuple(boosters)
+    A reroll re-rolls ONLY the shop cards (voucher and booster packs are
+    untouched), consuming exactly one ``predict_shop_cards`` worth of the
+    persistent rng — the same advance as opening the next shop. Validated
+    20/20 against captured reroll fixtures (4 seeds x initial + 4 rerolls)."""
+
+    return _shop_card_payloads(sampler, state, rng)
 
 
 def seed_faithful_pack_contents(

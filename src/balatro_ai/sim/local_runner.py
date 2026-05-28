@@ -447,13 +447,15 @@ class LocalBalatroSimulator:
         if self.state is None:
             raise RuntimeError("Call reset() before step().")
         state = self.state
-        # Reroll and consumable-use consume the shop-card RNG stream in
-        # ways we don't model yet, so they desync the persistent rng:
-        # stop emitting seed-faithful shops afterward. Pack-opens use
-        # independent (seed, ante, pack_key) keys (validated 24/24) and
-        # do NOT touch the shop stream, so they are NOT a divergence
-        # event — shops stay seed-faithful through pack opens.
-        if action.action_type in (ActionType.REROLL, ActionType.USE_CONSUMABLE):
+        # Consumable-use consumes the shop-card RNG stream in ways we don't
+        # model yet, so it desyncs the persistent rng: stop emitting
+        # seed-faithful shops afterward. Shop REROLL is modeled (one extra
+        # predict_shop_cards roll, handled in _apply_action) and stays
+        # seed-faithful; the boss/blind-select reroll desyncs and marks
+        # divergence there. Pack-opens use independent (seed, ante, pack_key)
+        # keys (validated 24/24) and do NOT touch the shop stream, so they
+        # are NOT a divergence event — shops stay seed-faithful through them.
+        if action.action_type == ActionType.USE_CONSUMABLE:
             self._rng_diverged = True
         next_state = self._apply_action(state, action)
         self._economy.record(state, action, next_state)
@@ -502,8 +504,16 @@ class LocalBalatroSimulator:
             return self._use_consumable(state, action)
         if action.action_type == ActionType.REROLL:
             if state.phase == GamePhase.BLIND_SELECT or str(action.metadata.get("kind", "")) == "boss":
+                # Boss/blind-select reroll isn't modeled in the persistent
+                # rng walk, so it desyncs the seed-faithful stream.
+                self._rng_diverged = True
                 return self._reroll_boss_voucher(state)
-            return simulate_reroll(state, action, self.sampler.sample_shop(state, rng=self._rng))
+            new_cards = self._seed_faithful_reroll_cards(state)
+            if new_cards is None:
+                # Generic reroll desyncs the seed-faithful shop stream.
+                self._rng_diverged = True
+                new_cards = self.sampler.sample_shop(state, rng=self._rng)
+            return simulate_reroll(state, action, new_cards)
         if action.action_type == ActionType.OPEN_PACK:
             return self._open_pack(state, action)
         if action.action_type == ActionType.CHOOSE_PACK_CARD:
@@ -847,6 +857,19 @@ class LocalBalatroSimulator:
         if voucher_key:
             self._voucher_by_ante[ante] = voucher_key
         return voucher_key
+
+    def _seed_faithful_reroll_cards(self, state: GameState):
+        """Seed-faithful shop cards for a reroll (one extra
+        predict_shop_cards roll on the persistent rng), or None to use
+        generic sampling. Voucher/boosters are untouched by a reroll."""
+
+        if self._balatro_rng is None or self._rng_diverged:
+            return None
+        try:
+            from balatro_ai.sim.seed_faithful_shop import seed_faithful_reroll
+        except ImportError:
+            return None
+        return seed_faithful_reroll(self.sampler, state, self._balatro_rng)
 
     def _seed_faithful_pack_contents(self, state: GameState, pack):
         """Seed-faithful contents for an opened pack, or None to use
