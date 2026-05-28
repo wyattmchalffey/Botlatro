@@ -664,19 +664,12 @@ class LocalBalatroSimulator:
         # owned (the game only rolls 'bloodstone' while Bloodstone is in
         # play); the generic path keeps rolling unconditionally (its result
         # is just ignored downstream when the joker is absent).
-        sf = self.balatro_seed is not None and self._balatro_rng is not None and not self._rng_diverged
         bloodstone_owned = _active_joker_count(state, "Bloodstone") > 0
         business_owned = _active_joker_count(state, "Business Card") > 0
         parking_owned = _active_joker_count(state, "Reserved Parking") > 0
-        if sf:
-            from balatro_ai.rng.surfaces import pseudorandom_float
 
         def hit(key: str, odds: int | float, *, owned: bool = True) -> bool:
-            if sf:
-                if not owned:
-                    return False
-                return pseudorandom_float(self._balatro_rng, key) < min(1.0, probability_multiplier / float(odds))
-            return self._roll_odds(odds, probability_multiplier=probability_multiplier)
+            return self._prob_hit(key, odds, probability_multiplier, owned=owned)
 
         lucky_mult_triggers = 0
         lucky_money_triggers = 0
@@ -783,7 +776,7 @@ class LocalBalatroSimulator:
         tarot_count += sum(
             1
             for _ in range(eight_ball_candidates)
-            if self._roll_odds(4, probability_multiplier=_probability_multiplier(state))
+            if self._prob_hit("8ball", 4, _probability_multiplier(state))
         )
         tarot_count = min(room, tarot_count)
         created.extend(self._sample_created_consumables_of_type(state, "Tarot", tarot_count, used_consumables=used_consumables))
@@ -804,6 +797,22 @@ class LocalBalatroSimulator:
         if odds <= 0:
             return True
         return self._rng.random() < min(1.0, probability_multiplier / float(odds))
+
+    def _prob_hit(self, key: str, odds: int | float, probability_multiplier: float, *, owned: bool = True) -> bool:
+        """One Balatro probability check. When seed-faithful + the effect's
+        joker is owned, rolls that effect's independent pseudorandom stream
+        (pseudorandom(key) < normal/odds) on the persistent rng; otherwise the
+        generic Random. ``owned=False`` skips the roll entirely so an absent
+        joker never advances its key (matching the game)."""
+
+        if self.balatro_seed is not None and self._balatro_rng is not None and not self._rng_diverged:
+            if not owned:
+                return False
+            if odds <= 0:
+                return True
+            from balatro_ai.rng.surfaces import pseudorandom_float
+            return pseudorandom_float(self._balatro_rng, key) < min(1.0, probability_multiplier / float(odds))
+        return self._roll_odds(odds, probability_multiplier=probability_multiplier)
 
     def _roll_joker_extinction(
         self,

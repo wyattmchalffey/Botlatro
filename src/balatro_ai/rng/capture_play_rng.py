@@ -23,7 +23,7 @@ from typing import Any, Callable, Mapping
 from balatro_ai.api.client import BalatroBridgeError, JsonRpcBalatroClient
 from balatro_ai.rng.capture import CANONICAL_SEEDS, DEFAULT_FIXTURE_DIR
 from balatro_ai.rng.capture_shop_sequence import _bridge_state, _settled_raw_state
-from balatro_ai.rng.capture_surfaces import save_fixture
+from balatro_ai.rng.capture_surfaces import extract_area_cards, save_fixture
 
 
 def _phase(state: Mapping[str, Any]) -> str:
@@ -42,6 +42,10 @@ def _high_card_level(state: Mapping[str, Any]) -> int:
     hands = state.get("hands")
     hc = hands.get("High Card") if isinstance(hands, Mapping) else None
     return int(hc.get("level", 1)) if isinstance(hc, Mapping) else 1
+
+
+def _consumable_count(state: Mapping[str, Any]) -> int:
+    return len(extract_area_cards(state, "consumables"))
 
 
 # Each effect: a controlled single-effect setup + how to read the per-hand
@@ -82,6 +86,12 @@ EFFECT_SPECS: tuple[dict[str, Any], ...] = (
         "key": "parking", "kind": "float", "odds": 2,
         "jokers": [{"key": "j_reserved_parking"}], "hand": [{"key": "S_5"}, {"key": "H_K"}], "play": [0],
         "observe": lambda before, after: (_money(after) - _money(before)) >= 1,
+    },
+    {
+        "key": "8ball", "kind": "float", "odds": 4,
+        "jokers": [{"key": "j_8_ball"}], "hand": [{"key": "S_8"}], "play": [0],
+        "scenario_extra": {"clear_consumables": True},
+        "observe": lambda before, after: _consumable_count(after) > _consumable_count(before),
     },
 )
 
@@ -139,6 +149,7 @@ def _capture_effect(
             "clear_jokers": True, "jokers": list(spec["jokers"]),
             "clear_hand": True, "hand": list(spec["hand"]),
         }
+        params.update(spec.get("scenario_extra", {}))
         # The controlled deck depletes after a handful of hands and the run
         # ends; that's expected — keep the samples gathered so far rather
         # than failing the whole capture.
