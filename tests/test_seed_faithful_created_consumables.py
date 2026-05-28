@@ -38,6 +38,23 @@ class SeedFaithfulCreatedConsumableTests(unittest.TestCase):
     def test_high_priestess_planets(self) -> None:
         self._check("Planet", "pri")
 
+    def test_judgement_and_soul_jokers(self) -> None:
+        # Judgement ('jud') and The Soul ('sou', legendary) create jokers.
+        # Bridge-validated 3/3 seeds each.
+        for seed in ("AAAAAAA", "BBBBBBB", "CCCCCCC"):
+            sim = LocalBalatroSimulator(seed=1, stake="white", balatro_seed=seed)
+            state = sim.reset()
+            with self.subTest(seed=seed, effect="Judgement"):
+                got = sim._seed_faithful_created_card(state, "Joker", "jud", used_consumables=set())
+                pc = predict_card(BalatroRNG(seed), "Joker", ante=1, key_append="jud")
+                self.assertEqual(str(got.get("key")), pc.key)
+            sim2 = LocalBalatroSimulator(seed=1, stake="white", balatro_seed=seed)
+            state2 = sim2.reset()
+            with self.subTest(seed=seed, effect="The Soul"):
+                got = sim2._seed_faithful_created_card(state2, "Joker", "sou", used_consumables=set(), legendary=True)
+                pc = predict_card(BalatroRNG(seed), "Joker", ante=1, key_append="sou", legendary=True)
+                self.assertEqual(str(got.get("key")), pc.key)
+
     def test_falls_back_to_generic_without_balatro_seed(self) -> None:
         sim = LocalBalatroSimulator(seed=1, stake="white")
         state = sim.reset()

@@ -1303,7 +1303,18 @@ class LocalBalatroSimulator:
             injections["created_consumables"] = self._created_consumables_of_type(state, "Planet", storage_use=storage_use, max_count=2, key_append="pri")
         elif name in {"Judgement", "The Soul", "Wraith"}:
             if _normal_joker_open_slots(state) > 0:
-                injections["created_jokers"] = (self.sampler.sample_card_of_type(state, "Joker", self._rng),)
+                joker_key = {"Judgement": "jud", "The Soul": "sou", "Wraith": "wra"}[name]
+                card = self._seed_faithful_created_card(
+                    state,
+                    "Joker",
+                    joker_key,
+                    used_consumables=set(),
+                    legendary=name == "The Soul",
+                    rarity=0.99 if name == "Wraith" else None,
+                )
+                if card is None:
+                    card = self.sampler.sample_card_of_type(state, "Joker", self._rng)
+                injections["created_jokers"] = (card,)
         elif name == "Aura":
             injections["aura_edition"] = self._wheel_of_fortune_edition()
         elif name in {"Familiar", "Grim", "Incantation"}:
@@ -1371,12 +1382,16 @@ class LocalBalatroSimulator:
         key_append: str,
         *,
         used_consumables: set[str],
+        legendary: bool = False,
+        rarity: float | int | None = None,
     ) -> dict[str, Any] | None:
-        """Seed-faithful identity for a created Tarot/Planet/Spectral consumable
-        via predict_card with the effect's create_card key_append (e.g. 'emp'
-        for The Emperor, '8ba' for 8-Ball) on the persistent rng. These creators
-        pass soulable=false, so there's no Soul/Black-Hole roll. Returns None to
-        fall back to generic sampling (incl. joker creators, handled elsewhere)."""
+        """Seed-faithful identity for a created card via predict_card with the
+        effect's create_card key_append (e.g. 'emp' Tarot for The Emperor, 'jud'
+        Joker for Judgement, 'sou' legendary Joker for The Soul) on the
+        persistent rng. These creators pass soulable=false (no Soul/Black-Hole
+        roll). Joker stickers stay disabled (white-stake correct; higher-stake
+        sticker rolls are a documented gap). Returns None to fall back to
+        generic sampling."""
 
         if self.balatro_seed is None or self._balatro_rng is None or self._rng_diverged:
             return None
@@ -1392,6 +1407,8 @@ class LocalBalatroSimulator:
                 ante=state.ante,
                 key_append=key_append,
                 used_consumables=set(used_consumables),
+                legendary=legendary,
+                rarity=rarity,
             )
         except Exception:  # noqa: BLE001 — never crash the sim path
             return None
