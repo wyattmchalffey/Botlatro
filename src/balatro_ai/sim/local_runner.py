@@ -447,16 +447,16 @@ class LocalBalatroSimulator:
         if self.state is None:
             raise RuntimeError("Call reset() before step().")
         state = self.state
-        # Consumable-use consumes the shop-card RNG stream in ways we don't
-        # model yet, so it desyncs the persistent rng: stop emitting
-        # seed-faithful shops afterward. Shop REROLL is modeled (one extra
-        # predict_shop_cards roll, handled in _apply_action) and stays
-        # seed-faithful; the boss/blind-select reroll desyncs and marks
-        # divergence there. Pack-opens use independent (seed, ante, pack_key)
-        # keys (validated 24/24) and do NOT touch the shop stream, so they
-        # are NOT a divergence event — shops stay seed-faithful through them.
-        if action.action_type == ActionType.USE_CONSUMABLE:
-            self._rng_diverged = True
+        # Divergence is now handled per-action in _apply_action (only the
+        # unmodeled boss/blind-select reroll and the generic shop-reroll
+        # fallback desync the persistent rng). Notably NOT divergence events,
+        # all confirmed by per-key RNG independence + bridge fixtures:
+        #   - shop REROLL: one extra predict_shop_cards roll (validated 20/20);
+        #   - USE_CONSUMABLE: consumable effects roll on their own keyed
+        #     streams, never the shop-card stream — verified no-shift across
+        #     4 seeds x 5 consumables (validate_consumable_shop), and the
+        #     sim's simulate_use_consumable never touches the persistent rng;
+        #   - pack-opens: independent (seed, ante, pack_key) keys (24/24).
         next_state = self._apply_action(state, action)
         self._economy.record(state, action, next_state)
         self.state = _with_local_legal_actions(next_state)
