@@ -966,7 +966,14 @@ class LocalBalatroSimulator:
         return seed_faithful_pack_contents(self.sampler, state, pack, self.balatro_seed)
 
     def _cash_out(self, state: GameState) -> GameState:
-        seed_faithful = self._seed_faithful_shop(state)
+        # Defeating a boss increments the ante, and the post-boss shop is the
+        # FIRST shop of the new ante — so its seed-faithful cards/voucher/
+        # boosters must be drawn with the incremented ante (e.g. 'cdt2' not
+        # 'cdt1'). Generate the shop from a state with the post-cash-out ante.
+        shop_state = state
+        if _blind_kind(state) == "BOSS" and state.ante < 8:
+            shop_state = replace(state, ante=state.ante + 1)
+        seed_faithful = self._seed_faithful_shop(shop_state)
         if seed_faithful is not None:
             shop_cards, voucher_payload, booster_packs = seed_faithful
             next_voucher_cards = _optional_tuple(voucher_payload)
