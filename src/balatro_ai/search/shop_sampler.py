@@ -1072,9 +1072,17 @@ def _bankrupt_at(state: GameState) -> int:
         return 0
 
 
-def _normalized(raw: object) -> str:
-    text = str(raw or "").strip().lower().replace("_", " ")
+@lru_cache(maxsize=8192)
+def _normalized_text(text: str) -> str:
+    text = text.strip().lower().replace("_", " ")
     return text.removesuffix(" card")
+
+
+def _normalized(raw: object) -> str:
+    # Cached on the string form: called ~9.5M times per profiled batch
+    # over a bounded set of pool keys / names. str() guarantees a
+    # hashable cache key for any input.
+    return _normalized_text(str(raw or ""))
 
 
 def _is_number(raw: object) -> bool:

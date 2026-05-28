@@ -249,6 +249,16 @@ def _try_rust_sample_score(
     # bail checks. The synthetic state passed here has state.blind set
     # to the live blind, so blind-safety filtering works correctly.
     from balatro_ai.search.rust_bridge import rust_evaluate_score
+    # Match the Python sample-scoring path's deck_size floor of 30
+    # (used by the evaluate_played_cards call below). Without this,
+    # deck-size-dependent jokers (Blue Joker: +2 chips per remaining
+    # deck card) score differently between Rust and Python whenever
+    # state.deck_size < 30 — which shifts build valuations and flips
+    # shop reroll/reserve decisions. rust_evaluate_score reads
+    # state.deck_size, so floor it here; the hand/joker tuples are
+    # shared, so the id()-keyed Rust caches still hit.
+    if state.deck_size < 30:
+        state = replace(state, deck_size=30)
     return rust_evaluate_score(
         state, sample.cards, sample.held_cards, jokers,
         played_hand_types=played_types,

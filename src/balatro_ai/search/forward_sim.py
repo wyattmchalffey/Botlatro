@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass, replace
+from functools import lru_cache as _lru_cache
 import re
 from typing import Iterable
 
@@ -235,6 +236,11 @@ def _try_rust_simulate_play(
         return None
     if created_consumables:
         return None
+    # Observatory: held planet consumables multiply the hand score
+    # (applied Python-side in simulate_play). The Rust fast path has no
+    # voucher/consumable input, so bail to keep the multiplier correct.
+    if "Observatory" in state.vouchers:
+        return None
 
     # Extract selected vs held.
     selected_cards, held_cards = _split_action_cards(state, action)
@@ -255,6 +261,14 @@ def _try_rust_simulate_play(
          joker_target_suit, joker_target_rank,
          joker_obelisk_gain) = _cached_joker_data(state)
     except Exception:  # noqa: BLE001
+        return None
+
+    # Obelisk's scoring xmult depends on round-history hand COUNTS
+    # (hand_evaluator._obelisk_scoring_xmult reads played_hand_counts),
+    # but this fast path only forwards the this-round hand-type list to
+    # Rust — not enough to compute should_scale correctly. Bail so the
+    # Python path applies Obelisk's pre-scoring scaling.
+    if "Obelisk" in joker_names:
         return None
 
     # joker_current_remaining is needed for Loyalty Card / Seltzer /
@@ -308,8 +322,10 @@ def _try_rust_simulate_play(
     has_mr_bones = any(j.name == "Mr. Bones" for j in state.jokers)
     mime_count = sum(1 for j in state.jokers if j.name == "Mime")
 
-    # Vampire gain and Obelisk should_scale: bail if either present
-    # (in SIMPLE_BAIL_JOKERS already, but make sure we pass zeros).
+    # Vampire is in SIMPLE_BAIL_JOKERS; Obelisk now bails above (its
+    # should_scale needs round-history hand COUNTS, which this path
+    # doesn't receive — the Rust side only sees the this-round
+    # hand-type list). All-zeros/False is correct given those bails.
     joker_vampire_gain = [0.0] * len(joker_names)
     joker_obelisk_should_scale = [False] * len(joker_names)
 
@@ -4328,8 +4344,15 @@ def _joker_effect_text(joker: Joker) -> str:
     return joker.effect.text
 
 
+@_lru_cache(maxsize=8192)
+def _normalized_text(text: str) -> str:
+    return text.removeprefix("m_").replace("_", " ").lower()
+
+
 def _normalized(value: object) -> str:
-    return str(value or "").removeprefix("m_").replace("_", " ").lower()
+    # Cached on the string form: ~8.7M calls per profiled batch over a
+    # bounded set of card/enhancement keys. str() ensures a hashable key.
+    return _normalized_text(str(value or ""))
 
 
 def _normalize_suit(suit: str) -> str:

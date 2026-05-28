@@ -362,6 +362,7 @@ def _evaluate_play_action(
         if hand_type is not None:
             return _synthesize_partial_hand_evaluation(
                 cards=cards, hand_type=hand_type, score=score,
+                jokers=state.jokers,
             )
     return evaluate_played_cards(
         cards,
@@ -384,19 +385,30 @@ def _synthesize_partial_hand_evaluation(
     cards: tuple,
     hand_type: HandType,
     score: int,
+    jokers: tuple = (),
 ):
-    """Build a HandEvaluation with just `cards`, `hand_type`, and
-    `score_override` populated. `.score` reads score_override;
-    `.hand_type` is direct; other numeric fields default to 0.
-    `.scoring_indices` is empty — accept that limitation in
-    exchange for the Rust fast path."""
+    """Build a HandEvaluation with `cards`, `hand_type`, `score_override`,
+    and real `scoring_indices` populated. `.score` reads score_override.
 
-    from balatro_ai.rules.hand_evaluator import HandEvaluation, BASE_HAND_VALUES
+    `scoring_indices` is computed via the same `_scoring_indices` helper
+    the Python evaluator uses — it's cheap (card selection only, no
+    joker effect loop) and several callers read it (e.g. the bot's Ride
+    the Bus reset detection, blind_setup annotations). Leaving it empty
+    silently broke those (a non-face play would look like it scored no
+    faces, so Ride-the-Bus face-avoidance picked the wrong line)."""
+
+    from balatro_ai.rules.hand_evaluator import (
+        HandEvaluation, BASE_HAND_VALUES, _scoring_indices,
+    )
     base_chips, base_mult = BASE_HAND_VALUES[hand_type]
+    try:
+        scoring_indices = _scoring_indices(cards, hand_type, jokers)
+    except (ValueError, IndexError):
+        scoring_indices = ()
     return HandEvaluation(
         hand_type=hand_type,
         cards=cards,
-        scoring_indices=(),
+        scoring_indices=scoring_indices,
         base_chips=base_chips,
         base_mult=base_mult,
         card_chips=0,

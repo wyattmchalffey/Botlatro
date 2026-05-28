@@ -222,23 +222,16 @@ def _straight_support_score(cards: tuple[Card, ...]) -> float:
     return float(best)
 
 
+_RANK_VALUE_MAP = {
+    "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9,
+    "10": 10, "T": 10, "J": 11, "Q": 12, "K": 13, "A": 14,
+}
+
+
 def _rank_value(card: Card) -> int:
-    return {
-        "2": 2,
-        "3": 3,
-        "4": 4,
-        "5": 5,
-        "6": 6,
-        "7": 7,
-        "8": 8,
-        "9": 9,
-        "10": 10,
-        "T": 10,
-        "J": 11,
-        "Q": 12,
-        "K": 13,
-        "A": 14,
-    }.get(card.rank, 0)
+    # Module-level map (not a per-call dict literal): this is called
+    # ~10M times per profiled batch in discard ranking.
+    return _RANK_VALUE_MAP.get(card.rank, 0)
 
 
 def _default_value_fn(config: DiscardSearchConfig, *, action_index: int) -> ValueFn:
