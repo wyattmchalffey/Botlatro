@@ -60,6 +60,16 @@ Verified building blocks for the new path:
   trajectory time and ~46% of hand evaluations still fall back to
   Python — the largest remaining Rust-port opportunities.
 
+  **Opt-in best-play fast path (2026-05-29):** `best_play_from_hand` (the
+  live bot's hottest loop, ~333K Python hand-evals/game) can route per-subset
+  scoring through `score_play_actions_batch` via
+  `search/rust_bridge.rust_best_play_scores` — **2.1× faster (26.6→11.0
+  s/game)**. Gated `BALATRO_RUST_BESTPLAY` (default OFF) because the Rust
+  simple-evaluator diverges from the Python evaluator on a few stateful
+  jokers (Ride the Bus / Bull / Banner / Blue Joker / The Family), shifting
+  ~1.5% of decisions; the canonical bot stays bit-for-bit pure-Python. Parity
+  tool: `scripts/bestplay_parity_check.py` (`BALATRO_BESTPLAY_PARITY=1`).
+
 Live-bot historical context (no longer the target metric — the offline
 solver is the data generator now):
 
@@ -68,6 +78,15 @@ solver is the data generator now):
 - `search_bot_v2` and earlier search variants tie `basic_strategy_bot` at
   ~5–7% across same-seed comparisons; leaf-tuning has stopped moving the
   number, which is what motivated the pivot.
+- **Tuning win (2026-05-29):** a causal config sweep raised
+  `shop_target_safety_base` 1.15→1.30 (new `bots/config.py` default), which
+  lifted the small-seed-set white-stake winrate from **12.5% → 17.0%**
+  (34/200 vs 25/200, stable across both seed halves). It came from a Phase 8
+  value-model *probe* — the learned value function itself was redundant with
+  the heuristic and regressed winrate, but its calibration diagnostic showed
+  the bot was over-optimistic / under-building in antes 1–2, which this knob
+  fixes. A fresh 1000-seed confirmation is still pending. Tooling:
+  `scripts/winrate_bench_config.py` (causal `BotConfig`-override A/Bs).
 - Phase 8 neural training still gates on a stronger teacher (~40–50%
   white-stake winrate equivalent on trajectory quality), but the teacher
   is now the offline solver, not the live bot.
@@ -141,6 +160,9 @@ no longer the primary winrate path — see
 [`PHASE7_OFFLINE_SOLVER_PLAN.md`](PHASE7_OFFLINE_SOLVER_PLAN.md) for why.
 
 ## RNG matching commands
+
+See [`docs/LIVE_BRIDGE_TESTS.md`](docs/LIVE_BRIDGE_TESTS.md) for the bridge
+launch command, health check, and full live capture workflow.
 
 With the bridge running, capture seed-faithful ground truth:
 

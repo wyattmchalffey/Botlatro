@@ -531,6 +531,19 @@ rough working threshold is:
 Weak exploratory datasets are fine, but they should not be treated as the main
 neural-bot training target.
 
+**Value-head design lesson (2026-05-29 probe).** A pure-numpy logistic value
+model trained on shop-entry states labeled by run outcome (`ml/`,
+`scripts/phase8_*`) reached val AUC ~0.72 but, used as a 1-step shop-buy bonus,
+*regressed* the live bot's winrate. The features were derived from the
+heuristic's own build signals, so the linear model was redundant with — and
+strictly less informed than — the simulation-backed `_joker_card_value`. The
+takeaway for the real Phase 8 value head: it must consume **richer raw inputs
+the heuristic does not already collapse** (joker identities/synergies, deck
+composition, shop contents — per the input list below) rather than re-weighting
+the heuristic's aggregate scores. The probe's calibration-by-ante was still
+useful: it exposed early-game over-optimism that a config change then fixed
+(see `PROGRESS.md`, 2026-05-29).
+
 Model inputs:
 
 - Game phase.

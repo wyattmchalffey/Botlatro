@@ -971,3 +971,31 @@ prior "divergences" were this bug, not Rust.
   `evaluate_simple_with_levels` 158K) — reducing that bail rate is
   the second-biggest lever. Note: more Rust speed helps Phase-8
   data-gen throughput, not winrate (winrate is value-function-bound).
+
+### 2026-05-29 — opt-in Rust best-play fast path; exact parity blocked by stateful jokers
+
+Profiled the **live `basic_strategy_bot`** (separate from the solver) and
+found its play-search spends ~87% of a game in pure-Python
+`hand_evaluator.best_play_from_hand`, which brute-enumerates every 1..5-card
+subset (~333K `evaluate_played_cards` calls/game, ~38 s/game). The build/shop
+valuation already uses Rust; this hot loop did not.
+
+Added `search/rust_bridge.rust_best_play_scores` — batch-scores every subset
+via `balatro_core.score_play_actions_batch` in one FFI call, then Python
+builds the full `HandEvaluation` only for the winner (ties broken in Python on
+the exact `(score, chips, mult)` key). Gated behind `BALATRO_RUST_BESTPLAY`.
+**Measured 2.1× (26.6 → 11.0 s/game).**
+
+**Default OFF — exact parity is not achievable here.** A full-vector parity
+check (`scripts/bestplay_parity_check.py`, `BALATRO_BESTPLAY_PARITY=1`) over 8
+games showed ~9% of calls bail and ~1.5% of *decisions* differ. The
+divergences concentrate on **stateful jokers** — Ride the Bus, Bull, Banner,
+Blue Joker, The Family — where the Rust *simple* evaluator and Python
+`evaluate_played_cards` legitimately disagree (e.g. Rust models Ride the Bus's
+face-card mult reset; the Python projection path does not, and the live bot
+compensates for that in `play_scoring`'s explicit `_ride_the_bus_*` logic).
+The culprits co-occur, so a clean bail-list isn't tractable, and the shift
+moved a 100-seed winrate 14→11. Decision: keep the canonical bot bit-for-bit
+pure-Python, expose the fast path as an opt-in for speed-tolerant bulk work
+(e.g. data-gen). Reinforces the standing note: Rust play-search speed is a
+throughput lever, not a winrate lever.
