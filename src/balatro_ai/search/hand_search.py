@@ -10,7 +10,11 @@ from random import Random
 from balatro_ai.api.actions import Action, ActionType
 from balatro_ai.api.state import Card, GamePhase, GameState, with_derived_legal_actions
 from balatro_ai.search.deck_model import DeckModel
-from balatro_ai.search.discard_search import _candidate_discard_actions, _discard_candidate_score
+from balatro_ai.search.discard_search import (
+    _candidate_discard_actions,
+    _discard_candidate_score,
+    _rust_batch_discard_scores,
+)
 from balatro_ai.search.forward_sim import simulate_discard, simulate_play
 from balatro_ai.search.state_value import _card_cache_key, _freeze_for_cache, _jokers_cache_key, planning_value, state_value
 
@@ -460,9 +464,17 @@ def _cheap_beam_discard_actions(
     if not actions:
         return ()
     indexed = tuple(enumerate(actions))
+    # Precompute all candidate discard scores in ONE Rust FFI call, then rank.
+    discard_scores = _rust_batch_discard_scores(state, actions)
     ranked = sorted(
         indexed,
-        key=lambda item: (_cheap_beam_discard_rank(state, item[1], context, best_play_score=best_play_score), -item[0]),
+        key=lambda item: (
+            _cheap_beam_discard_rank(
+                state, item[1], context,
+                best_play_score=best_play_score, discard_scores=discard_scores,
+            ),
+            -item[0],
+        ),
         reverse=True,
     )
     return tuple(action for _, action in ranked[:limit])
@@ -614,13 +626,25 @@ def _cheap_beam_play_rank(
     return value
 
 
-def _cheap_beam_discard_rank(state: GameState, action: Action, context, *, best_play_score: int) -> float:
+def _cheap_beam_discard_rank(
+    state: GameState, action: Action, context, *, best_play_score: int,
+    discard_scores: dict[tuple[int, ...], float] | None = None,
+) -> float:
     remaining_score = max(0, state.required_score - state.current_score)
     pace_score = remaining_score / max(1, state.hands_remaining)
     pressure_bonus = 0.0
     if state.discards_remaining > 0 and best_play_score < pace_score:
         pressure_bonus = 15_000.0
-    return pressure_bonus + (_discard_candidate_score(state, action) * 500.0)
+    # discard_scores: optional batch-precomputed _discard_candidate_score values
+    # (one Rust FFI call for all candidates) — this rank is the solver's hottest
+    # discard path (~310K per-action Python calls/trajectory). Lazy fallback on a
+    # cache miss keeps the value byte-identical to the per-action version.
+    if discard_scores is not None:
+        key = action.card_indices
+        cand = discard_scores[key] if key in discard_scores else _discard_candidate_score(state, action)
+    else:
+        cand = _discard_candidate_score(state, action)
+    return pressure_bonus + (cand * 500.0)
 
 
 def _beam_action_rank(state: GameState, action: Action, context) -> float:

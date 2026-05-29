@@ -69,6 +69,23 @@ RUST_BLIND_SAFE: frozenset[str] = frozenset({
     # within the same evaluation, so Rust (pre-deduction money)
     # diverges from Python (post-deduction).
     "The Ox", "The Needle", "The Mark", "The Pillar",
+    # Pure target-multiplier bosses (added 2026-05-29): The Wall (×2 required
+    # score) and Violet Vessel (×3). The multiplier is data-driven boss
+    # metadata on required_score, not a scoring effect — neither name appears
+    # in evaluate_played_cards, so Rust returns the same hand score as Python.
+    "The Wall", "Violet Vessel",
+    # The Water (added 2026-05-29): start with 0 discards — flows in via the
+    # discards_remaining arg both paths already receive (so Banner etc. match).
+    # Verified behavior-identical on a solver trajectory through The Water
+    # (seed 0000017: 145 steps, ante 5, score 10014 before == after).
+    #
+    # NOT added: The House / The Fish (face-down draws) — empirically DIVERGE
+    # (seed 0000004 trajectory changed 187->214 steps). Although face-down is
+    # nominally a simulate_play effect, face-down HELD cards interact with
+    # held-card joker effects in ways rust_evaluate_score doesn't replicate,
+    # so they stay bailed. The Serpent (draw 3) is left bailed for the same
+    # caution pending a per-boss fingerprint check.
+    "The Water",
 })
 
 # Identity-keyed cache for the Rust-format joker data. The jokers

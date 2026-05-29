@@ -125,12 +125,20 @@ def _candidate_discard_actions(
     # unavailable or card extraction fails.
     score_cache = _rust_batch_discard_scores(state, actions)
     if score_cache is not None:
+        # NB: use a LAZY fallback. The previous `score_cache.get(key,
+        # _discard_candidate_score(...))` evaluated the Python scorer eagerly
+        # for EVERY candidate (Python always evaluates a .get() default),
+        # discarding the result on a cache hit — defeating the whole point of
+        # the one-shot Rust batch. The ternary only calls the Python scorer on
+        # an actual miss (Rust card-extraction failure), so the ranking values
+        # are byte-identical to before, minus the wasted recomputation.
+        def _cand_score(action: Action) -> float:
+            key = action.card_indices
+            return score_cache[key] if key in score_cache else _discard_candidate_score(state, action)
+
         ranked = sorted(
             indexed,
-            key=lambda item: (
-                score_cache.get(item[1].card_indices, _discard_candidate_score(state, item[1])),
-                -item[0],
-            ),
+            key=lambda item: (_cand_score(item[1]), -item[0]),
             reverse=True,
         )
     else:

@@ -583,9 +583,22 @@ def _rank_discards(
         return ()
     if len(actions) <= limit:
         return actions
-    scored = [
-        (_discard_candidate_score(state, action), -idx, action)
-        for idx, action in enumerate(actions)
-    ]
+    # Precompute all candidate heuristic scores in ONE Rust FFI call
+    # (discard_candidate_scores_batch) rather than N per-action Python calls —
+    # this ranking is the solver's hottest discard path (~280K Python calls /
+    # trajectory). The Rust batch is the faithful port of _discard_candidate_score
+    # (already trusted for ranking in discard_search._candidate_discard_actions);
+    # the lazy fallback only runs on a cache miss (Rust card-extraction failure),
+    # so the ranking is identical to the per-action Python version.
+    from balatro_ai.search.discard_search import _rust_batch_discard_scores
+    score_cache = _rust_batch_discard_scores(state, actions)
+    if score_cache is not None:
+        def _cs(action: Action) -> float:
+            key = action.card_indices
+            return score_cache[key] if key in score_cache else _discard_candidate_score(state, action)
+    else:
+        def _cs(action: Action) -> float:
+            return _discard_candidate_score(state, action)
+    scored = [(_cs(action), -idx, action) for idx, action in enumerate(actions)]
     scored.sort(reverse=True)
     return tuple(action for _, _, action in scored[:limit])

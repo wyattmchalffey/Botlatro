@@ -783,6 +783,21 @@ _RUST_BLIND_SAFE = frozenset({
     # Flint/Psychic/Eye/Mouth (real score effects).
     "The Ox", "The Needle", "The Wheel", "The Manacle",
     "The Hook", "The Mark", "The Pillar",
+    # Pure target-multiplier bosses (added 2026-05-29): The Wall is ×2
+    # required score, Violet Vessel is ×3. Neither touches chips/mult/score
+    # or which cards are drawn/scored — the multiplier is data-driven boss
+    # metadata applied to required_score, which the Rust rollout already
+    # reads from state (clear_probability_native(required_score=...)). The
+    # name "The Wall" appears nowhere in evaluate_played_cards. The Wall was
+    # ~51% of this trajectory's Rust-eval bails on AAAAAAA.
+    "The Wall", "Violet Vessel",
+    # The Water (added 2026-05-29): start with 0 discards. The ONLY effect is
+    # discards_remaining=0, which the rollout already receives via
+    # clear_probability_native(discards_remaining=...). No draw/face-down/score
+    # change, so the Rust rollout models it exactly. (The House/Fish/Serpent are
+    # deliberately kept OUT of this rollout set — the Rust rollout doesn't model
+    # their face-down/draw-count mechanics — but ARE in the evaluator set.)
+    "The Water",
 })
 
 # Jokers whose effect needs run-state Rust can't currently compute.
@@ -818,7 +833,20 @@ def _try_rust_evaluate_simple(
     # Eligibility: vanilla blind, non-empty selection. Jokers are no
     # longer a blanket blocker — Rust will bail on unsupported names.
     # Joker editions are now handled natively (Phase 2d batch 6).
-    if effective_blind not in _RUST_BLIND_SAFE:
+    if effective_blind == "The Psychic":
+        # The Psychic: a play with != 5 cards scores 0; a 5-card play scores
+        # normally (Psychic adds no scoring effect of its own). Mirror
+        # rust_bridge's short-circuit so this per-action scorer stops bailing
+        # to Python on Psychic — a very common ante-1/2 boss that was ~97% of
+        # this path's fallbacks. Matches the Python evaluator exactly, so it's
+        # behavior-preserving. (Psychic stays OUT of _RUST_BLIND_SAFE, so the
+        # whole-rollout clear_probability_native still bails to Python.)
+        if not card_indices:
+            return None
+        if len(card_indices) != 5:
+            return 0
+        # 5-card Psychic play: fall through to the normal Rust scoring path.
+    elif effective_blind not in _RUST_BLIND_SAFE:
         return None
     if not card_indices:
         return None
