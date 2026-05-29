@@ -205,6 +205,97 @@ def _rust_cards_from_tuple(cards: tuple) -> list | None:
     return out
 
 
+def rust_best_play_scores(
+    cards: tuple,
+    hand_levels: dict | None,
+    blind_name: str,
+    jokers: tuple,
+    *,
+    discards_remaining: int = 0,
+    hands_remaining: int = 0,
+    deck_size: int = 0,
+    money: int = 0,
+    played_hand_types: tuple = (),
+    max_cards: int = 5,
+) -> tuple[list[tuple[int, ...]], list[int]] | None:
+    """Score EVERY 1..max_cards-card subset of ``cards`` via the Rust
+    batched scorer, returning ``(action_indices_list, scores)`` in the
+    SAME enumeration order as ``itertools.combinations`` (so callers can
+    apply their own tie-break), or None to signal Python fallback.
+
+    Bails (returns None) on: non-vanilla scoring blinds, The Psychic
+    (Python zeroes !=5-card plays — handled by Python loop), empty hand,
+    balatro_core unavailable, card/joker extraction failure, or any Rust
+    internal bail (Wild cards / unsupported jokers -> batch returns None).
+    """
+
+    if not cards:
+        return None
+    try:
+        import balatro_core
+    except ImportError:
+        return None
+    if blind_name not in RUST_BLIND_SAFE or blind_name == "The Psychic":
+        return None
+    rust_hand = _rust_cards_from_tuple(tuple(cards))
+    if rust_hand is None:
+        return None
+    joker_data = rust_joker_data(tuple(jokers))
+    if joker_data is None:
+        return None
+    (joker_names, joker_editions, joker_plus_mult, joker_plus_chips,
+     joker_xmult, joker_loyalty_ready, joker_drivers_active,
+     joker_leading_plus_mult, joker_leading_plus_chips,
+     joker_sell_value, joker_rarity, joker_target_suit,
+     joker_target_rank, joker_obelisk_gain) = joker_data
+
+    if any(n in {"Card Sharp", "Supernova", "Obelisk"} for n in joker_names):
+        played_types_strs = [
+            ht.value if hasattr(ht, "value") else str(ht) for ht in played_hand_types
+        ]
+    else:
+        played_types_strs = []
+
+    from itertools import combinations
+
+    from balatro_ai.rules.hand_evaluator import debuffed_suits_for_blind
+    debuffed = [s for s in debuffed_suits_for_blind(blind_name) if len(s) == 1]
+    n = len(cards)
+    max_size = min(max_cards, n)
+    action_indices_list = [
+        list(idxs) for size in range(1, max_size + 1)
+        for idxs in combinations(range(n), size)
+    ]
+    if not action_indices_list:
+        return None
+    try:
+        scores = balatro_core.score_play_actions_batch(
+            rust_hand, action_indices_list,
+            hand_levels or {}, debuffed,
+            joker_names=joker_names, joker_editions=joker_editions,
+            joker_current_plus_mult=joker_plus_mult,
+            joker_current_plus_chips=joker_plus_chips,
+            joker_current_xmult=joker_xmult,
+            joker_loyalty_ready=joker_loyalty_ready,
+            joker_drivers_active=joker_drivers_active,
+            joker_leading_plus_mult=joker_leading_plus_mult,
+            joker_leading_plus_chips=joker_leading_plus_chips,
+            joker_sell_value=joker_sell_value, joker_rarity=joker_rarity,
+            joker_target_suit=joker_target_suit, joker_target_rank=joker_target_rank,
+            joker_obelisk_gain=joker_obelisk_gain,
+            money=int(money), joker_slot_limit=5,
+            discards_remaining=int(max(0, discards_remaining)),
+            hands_remaining=int(max(0, hands_remaining)),
+            played_hand_types=played_types_strs,
+            deck_size=int(max(0, deck_size)),
+        )
+    except Exception:  # noqa: BLE001
+        return None
+    if scores is None or len(scores) != len(action_indices_list):
+        return None
+    return [tuple(a) for a in action_indices_list], [int(s) for s in scores]
+
+
 def rust_evaluate_score(
     state: "GameState",
     played_cards: tuple,

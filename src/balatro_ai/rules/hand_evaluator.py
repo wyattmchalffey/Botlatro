@@ -15,11 +15,64 @@ from enum import StrEnum
 from functools import lru_cache
 from itertools import combinations
 import math
+import os
 import re
 from typing import Callable
 
 from balatro_ai.api.state import Card, Joker
 from balatro_ai.rules.joker_compat import is_blueprint_compatible
+
+# best_play_from_hand enumerates every 1..5-card subset and scores each in
+# pure Python — the single hottest loop in the bot's play-search (~333K
+# evals/game). Setting BALATRO_RUST_BESTPLAY=1 routes per-subset scoring
+# through the Rust batched scorer (2.1x faster) and builds the full Python
+# HandEvaluation only for the chosen winner. OFF by default: the Rust simple
+# evaluator diverges from the Python evaluator on a handful of stateful jokers
+# (Ride the Bus, Bull, Banner, Blue Joker, The Family — Rust models the
+# play-content reset that Python's projection ignores), which shifts ~1.5% of
+# play decisions and moved a 100-seed winrate 14->11. Kept as an opt-in for
+# speed-tolerant bulk work; the canonical bot stays bit-for-bit pure-Python.
+_RUST_BESTPLAY_ENABLED = os.environ.get("BALATRO_RUST_BESTPLAY", "0") == "1"
+
+# Parity-validation mode: when BALATRO_BESTPLAY_PARITY=1, every call computes
+# BOTH paths, records whether the chosen play matches, and returns the Python
+# result (safe). Used by scripts/bestplay_parity_check.py to prove the fast
+# path is decision-identical before trusting it. Off (and zero-cost) normally.
+_BESTPLAY_PARITY_CHECK = os.environ.get("BALATRO_BESTPLAY_PARITY", "0") == "1"
+_BESTPLAY_PARITY_STATS: dict = {
+    "n": 0, "fast_none": 0, "vector_div": 0, "examples": [],
+    "present": Counter(), "div_jokers": Counter(), "div_blinds": Counter(),
+}
+
+
+def _record_bestplay_parity(cards, blind_name, jokers, fast, eval_subset) -> None:
+    """Compare the FULL Rust vs Python score vectors for every subset
+    (de-confounds joker attribution: a joker is unsafe iff it appears when
+    the vectors diverge, independent of whether the argmax happened to agree)."""
+    s = _BESTPLAY_PARITY_STATS
+    s["n"] += 1
+    jnames = [j.name for j in jokers]
+    if fast is None:
+        s["fast_none"] += 1
+        return
+    s["present"].update(set(jnames))
+    action_list, rust_scores = fast
+    py_scores = [eval_subset(idxs).score for idxs in action_list]
+    diverged = [
+        (idxs, int(p), int(r))
+        for idxs, p, r in zip(action_list, py_scores, rust_scores)
+        if int(p) != int(r)
+    ]
+    if diverged:
+        s["vector_div"] += 1
+        s["div_jokers"].update(set(jnames))
+        s["div_blinds"][blind_name] += 1
+        if len(s["examples"]) < 6:
+            worst = max(diverged, key=lambda d: abs(d[1] - d[2]))
+            s["examples"].append({
+                "blind": blind_name, "jokers": jnames,
+                "subset_size": len(worst[0]), "py_score": worst[1], "rust_score": worst[2],
+            })
 
 
 class HandType(StrEnum):
@@ -362,33 +415,88 @@ def best_play_from_hand(
 
     joker_tuple = tuple(jokers)
     joker_context = _joker_context or _prepare_joker_evaluation_context(joker_tuple)
-    best: HandEvaluation | None = None
     max_size = min(max_cards, len(cards))
-    for size in range(1, max_size + 1):
-        for indexes in combinations(range(len(cards)), size):
-            candidate_cards = tuple(cards[index] for index in indexes)
-            held_cards = tuple(cards[index] for index in range(len(cards)) if index not in indexes)
-            evaluation = evaluate_played_cards(
-                candidate_cards,
-                hand_levels,
-                debuffed_suits=debuffed_suits,
-                blind_name=blind_name,
-                jokers=joker_tuple,
+
+    def _eval_subset(indexes: tuple[int, ...]) -> HandEvaluation:
+        candidate_cards = tuple(cards[index] for index in indexes)
+        held_cards = tuple(cards[index] for index in range(len(cards)) if index not in indexes)
+        return evaluate_played_cards(
+            candidate_cards,
+            hand_levels,
+            debuffed_suits=debuffed_suits,
+            blind_name=blind_name,
+            jokers=joker_tuple,
+            discards_remaining=discards_remaining,
+            hands_remaining=hands_remaining,
+            held_cards=held_cards,
+            deck_size=deck_size,
+            money=money,
+            played_hand_types_this_round=played_hand_types_this_round,
+            played_hand_counts=played_hand_counts,
+            _joker_context=joker_context,
+        )
+
+    def _python_winner() -> HandEvaluation:
+        best: HandEvaluation | None = None
+        for size in range(1, max_size + 1):
+            for indexes in combinations(range(len(cards)), size):
+                evaluation = _eval_subset(indexes)
+                if best is None or _evaluation_sort_key(evaluation) > _evaluation_sort_key(best):
+                    best = evaluation
+        if best is None:
+            raise RuntimeError("No candidate plays were evaluated")
+        return best
+
+    # Rust fast path: batch-score every subset, then build the full Python
+    # HandEvaluation only for the winner (ties broken in Python on the exact
+    # (score, chips, mult) key, in enumeration order — identical to the loop).
+    def _fast_winner() -> HandEvaluation | None:
+        try:
+            from balatro_ai.search.rust_bridge import rust_best_play_scores
+            fast = rust_best_play_scores(
+                cards, hand_levels, blind_name, joker_tuple,
                 discards_remaining=discards_remaining,
                 hands_remaining=hands_remaining,
-                held_cards=held_cards,
-                deck_size=deck_size,
-                money=money,
-                played_hand_types_this_round=played_hand_types_this_round,
-                played_hand_counts=played_hand_counts,
-                _joker_context=joker_context,
+                deck_size=deck_size, money=money,
+                played_hand_types=tuple(played_hand_types_this_round),
+                max_cards=max_cards,
             )
-            if best is None or _evaluation_sort_key(evaluation) > _evaluation_sort_key(best):
-                best = evaluation
+        except Exception:  # noqa: BLE001 — never let the fast path break scoring
+            return None
+        if fast is None:
+            return None
+        action_list, scores = fast
+        top = max(scores)
+        tied = [idxs for idxs, sc in zip(action_list, scores) if sc == top]
+        if len(tied) == 1:
+            return _eval_subset(tied[0])
+        best_tie: HandEvaluation | None = None
+        for idxs in tied:  # enumeration order preserved by rust_best_play_scores
+            ev = _eval_subset(idxs)
+            if best_tie is None or _evaluation_sort_key(ev) > _evaluation_sort_key(best_tie):
+                best_tie = ev
+        return best_tie
 
-    if best is None:
-        raise RuntimeError("No candidate plays were evaluated")
-    return best
+    if _BESTPLAY_PARITY_CHECK:
+        py_result = _python_winner()
+        try:
+            from balatro_ai.search.rust_bridge import rust_best_play_scores
+            _fast = rust_best_play_scores(
+                cards, hand_levels, blind_name, joker_tuple,
+                discards_remaining=discards_remaining, hands_remaining=hands_remaining,
+                deck_size=deck_size, money=money,
+                played_hand_types=tuple(played_hand_types_this_round), max_cards=max_cards,
+            )
+        except Exception:  # noqa: BLE001
+            _fast = None
+        _record_bestplay_parity(cards, blind_name, joker_tuple, _fast, _eval_subset)
+        return py_result
+
+    if _RUST_BESTPLAY_ENABLED and max_size >= 1:
+        winner = _fast_winner()
+        if winner is not None:
+            return winner
+    return _python_winner()
 
 
 def _identify_hand_type(cards: tuple[Card, ...], jokers: tuple[Joker, ...] = ()) -> HandType:

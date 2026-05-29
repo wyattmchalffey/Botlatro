@@ -36,7 +36,14 @@ class BotConfig:
     calibrated_shop_boss_risk_weight: float = 1.0
 
     # Pace-vs-target safety multipliers.
-    shop_target_safety_base: float = 1.15
+    # shop_target_safety_base raised 1.15 -> 1.30 (2026-05-29 causal config
+    # sweep): the value model's calibration showed the bot was over-optimistic
+    # at antes 1-2 and under-built early; demanding more score headroom before
+    # settling lifted winrate ~12.5% -> 17.0% across 200 seeds (stable 17/17 on
+    # both seed halves, never below control) and pushed +6 runs to ante 8. The
+    # benefit is early-only: pushing to 1.40 or raising shop_safety_cap (which
+    # extends it past ante 2) both regressed back toward baseline.
+    shop_target_safety_base: float = 1.30
     hand_pace_safety_base: float = 1.05
 
     # _shop_target_safety_multiplier ante bonuses and slot bonus.

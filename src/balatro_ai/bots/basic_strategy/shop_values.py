@@ -5,6 +5,7 @@ from __future__ import annotations
 from balatro_ai.api.actions import Action, ActionType
 from balatro_ai.api.state import GameState, _shop_card_can_be_bought as _api_shop_card_can_be_bought
 from balatro_ai.bots.basic_strategy.build_profile import _build_profile, _reroll_role_hunt_bonus, _urgent_late_role_hunt
+from balatro_ai.bots.basic_strategy.value_guidance import value_bonus_for_card
 from balatro_ai.bots.basic_strategy.build_scoring import _buy_would_overfill_joker_slots, _normal_slot_joker_card
 from balatro_ai.bots.basic_strategy.cards import (
     _card_cost,
@@ -204,11 +205,11 @@ def _shop_reroll_cost(state: GameState) -> int:
 
 def _shop_card_value(state: GameState, card: object, pressure: _ShopPressure | None = None) -> float:
     if _is_joker_card(card):
-        return _joker_card_value(state, card, pressure)
+        return _joker_card_value(state, card, pressure) + value_bonus_for_card(state, card)
     if _is_black_hole_card(card):
         return _black_hole_card_value(state)
     if _is_planet_card(card):
-        return _planet_card_value(state, card)
+        return _planet_card_value(state, card) + value_bonus_for_card(state, card)
     if _is_tarot_card(card):
         if _pack_card_requires_targets(card) and not _target_required_tarot_is_supported(state, card):
             return 0.0
