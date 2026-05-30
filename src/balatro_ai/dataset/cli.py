@@ -71,8 +71,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Play-search depth (v2 and multi-archetype only).",
     )
     p.add_argument(
-        "--width", type=int, default=2,
-        help="Play-search width (v2 and multi-archetype only).",
+        "--width", type=int, default=1,
+        help="Play-search width (v2 and multi-archetype only). Default 1: "
+             "~1.8x faster data-gen than width=2 while KEEPING full depth-3 "
+             "lookahead. Measured 2026-05-30 (datagen_speed.py): the beam "
+             "tree-walk is ~42%% of runtime and scales with width; width=1 "
+             "trades a modest play-quality margin for throughput. Pass "
+             "--width 2 for maximum play quality.",
     )
     p.add_argument(
         "--leaf", choices=("planning", "fast"), default="planning",

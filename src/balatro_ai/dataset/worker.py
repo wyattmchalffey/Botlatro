@@ -63,7 +63,7 @@ class WorkerConfig:
     max_steps: int = 2000
     record_steps: bool = False
     play_depth: int = 3
-    play_width: int = 2
+    play_width: int = 1  # ~1.8x faster data-gen, keeps full depth-3 lookahead
     leaf_kind: str = "planning"
     timeout_seconds: float = 300.0
 

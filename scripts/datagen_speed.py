@@ -18,18 +18,32 @@ from concurrent.futures import ProcessPoolExecutor
 
 
 def run_task(seed: str) -> dict:
+    import os
     import time as _t
 
     import balatro_ai.search.hand_search as hs
+    import balatro_ai.search.state_value as sv
     from balatro_ai.solver.policy import SolverPolicy
     from balatro_ai.solver.seed_game import SeedGame
     from balatro_ai.solver.trajectory import _stable_seed_int
     from balatro_ai.sim.local_runner import LocalBalatroSimulator
 
     hs._NATIVE_BEAM_ENABLED = False  # production path
+    # A/B toggle (Python-only, no rebuild): drop a blind from the rollout
+    # set to measure its un-bail's speedup. Comma-separated blind names.
+    drop = os.environ.get("BALATRO_DROP_ROLLOUT_BLINDS", "")
+    if drop:
+        sv._RUST_ROLLOUT_BLIND_SAFE = sv._RUST_ROLLOUT_BLIND_SAFE - set(drop.split(","))
+    # Beam-param A/B: override play search depth/width to test the
+    # speed/quality tradeoff of a shallower or narrower beam.
+    pol_kw = {"seed": 0}
+    if os.environ.get("BALATRO_PLAY_DEPTH"):
+        pol_kw["play_depth"] = int(os.environ["BALATRO_PLAY_DEPTH"])
+    if os.environ.get("BALATRO_PLAY_WIDTH"):
+        pol_kw["play_width"] = int(os.environ["BALATRO_PLAY_WIDTH"])
     sim = LocalBalatroSimulator(seed=_stable_seed_int(seed), stake="white")
     sim.state = SeedGame(seed, stake="white").initial_state()
-    pol = SolverPolicy(seed=0)
+    pol = SolverPolicy(**pol_kw)
     # process_time = CPU time of THIS worker process. Between these two
     # calls the worker runs only this task (single-threaded Python + Rust),
     # so the delta is contention-immune per-run CPU — unlike wall-clock,
@@ -50,9 +64,15 @@ def run_task(seed: str) -> dict:
 
 
 def main() -> int:
+    import os as _os
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 24
     jobs = int(sys.argv[2]) if len(sys.argv) > 2 else 14
-    seeds = [f"BEAMQ{i}" for i in range(n)]  # same family as the quality gate
+    # BALATRO_SEED_SET=numeric -> standard winrate seeds (winnable, countable
+    # wins) for a quality gate; default BEAMQ family (hard, for speed timing).
+    if _os.environ.get("BALATRO_SEED_SET") == "numeric":
+        seeds = [f"{i:07d}" for i in range(1, n + 1)]
+    else:
+        seeds = [f"BEAMQ{i}" for i in range(n)]  # same family as the quality gate
     t0 = time.perf_counter()
     with ProcessPoolExecutor(max_workers=jobs) as ex:
         rows = list(ex.map(run_task, seeds))

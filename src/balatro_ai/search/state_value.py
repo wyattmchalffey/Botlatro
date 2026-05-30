@@ -149,6 +149,12 @@ _RUST_ROLLOUT_BLIND_SAFE: frozenset[str] = frozenset({
     "The Club", "The Goad", "The Head", "The Window",
     # Non-scoring bosses whose impact is small in rollout context.
     "The Manacle", "The Wheel", "The Psychic",
+    # NOTE: The Wall is deliberately NOT here. It is rollout-SAFE (parity
+    # clean, no bias), but a 24-seed process_time A/B showed un-bailing it
+    # gives ~0% speedup while perturbing trajectories (noisy-estimator
+    # decision flips: score 11650->10465). The earlier 3-seed profile
+    # over-sampled Wall states; on a representative seed population Wall
+    # rollouts are a tiny fraction of compute. Not worth the data drift.
 })
 
 
