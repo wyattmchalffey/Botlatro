@@ -65,5 +65,7 @@ fn balatro_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(search::scorer::py_discard_candidate_scores_batch, m)?)?;
     m.add_function(wrap_pyfunction!(search::rollout::py_clear_probability_native, m)?)?;
     m.add_function(wrap_pyfunction!(search::beam::py_beam_play_value_native, m)?)?;
+    m.add_function(wrap_pyfunction!(search::py_random::py_sample_indices, m)?)?;
+    m.add_function(wrap_pyfunction!(search::py_random::py_getrandbits32, m)?)?;
     Ok(())
 }
