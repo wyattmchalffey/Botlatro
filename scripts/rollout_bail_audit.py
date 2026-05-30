@@ -92,9 +92,12 @@ def main() -> int:
     print(f"clear_probability bridge calls: {total}")
     for reason, cnt in reasons.most_common():
         print(f"  {reason:24s} {cnt:7d} ({100*cnt/max(1,total):.1f}%)")
-    print("\nTop bail-causing jokers (? = inferred unsupported):")
+    print("\nTop bail-causing jokers:")
     for name, cnt in bail_jokers.most_common(20):
-        print(f"  {name:28s} {cnt}")
+        print(f"  {name:34s} {cnt}")
+    print("\nTop bail-causing blinds (blind-not-safe):")
+    for name, cnt in bail_blinds.most_common(20):
+        print(f"  {name:24s} {cnt}")
     return 0
 
 

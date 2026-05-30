@@ -42,14 +42,18 @@ use crate::state::card::{Card, Edition, Enhancement, Suit};
 pub const SIMPLE_BAIL_JOKERS: &[&str] = &[
     // Card mutation
     "Midas Mask", "Vampire", "Hiker", "DNA",
-    // Consumable creation / state events
-    "Sixth Sense", "Hallucination",
+    // Consumable creation / state events. (Hallucination removed: its
+    // only effect is creating a Tarot on BOOSTER-PACK open, which never
+    // fires during a play-rollout — it is score-neutral here, and its
+    // ability/scoring port already contributes 0.)
+    "Sixth Sense",
     // End-of-round / save effects
     "Gift Card", "Mr. Bones",
     // Held-pile / draw effects
     "Crimson Heart",
-    // Hook-discard effects (Trousers + Hook blind)
-    "Spare Trousers",  // not Trousers itself but if Hook discards a hook card
+    // (Spare Trousers removed: its +2-mult-on-two-pair-shape scaling is
+    // fully modeled in jokers_after_play, and its scoring reads
+    // current_plus_mult — both supported. The old bail was stale.)
     // Splash forces all-cards-scoring → mutated_played_cards changes
     "Splash",
     // Glass jokers — _played_cards_after_play with shattered glass
