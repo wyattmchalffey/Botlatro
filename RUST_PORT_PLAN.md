@@ -999,3 +999,50 @@ moved a 100-seed winrate 14→11. Decision: keep the canonical bot bit-for-bit
 pure-Python, expose the fast path as an opt-in for speed-tolerant bulk work
 (e.g. data-gen). Reinforces the standing note: Rust play-search speed is a
 throughput lever, not a winrate lever.
+
+### 2026-05-30 — Phase 4d native-beam: complete divergence spec + RNG enabler done
+
+Built `scripts/native_beam_divergence.py` (side-by-side: drives the Python-beam
+trajectory, asks BOTH beams per state). Result on AAAAAAA: the existing
+`beam.rs` is **~4× faster (11.5s vs 45s) but 72/91 = 79% of play decisions
+diverge**, dying at ante 1 — reproducing both prior attempts.
+
+**Root cause is a cascade of byte-sensitive transitions, NOT one bug.** The
+existing `beam.rs` is a *simplified, structurally-different* port. To reach
+byte-identical (the only thing that ever held parity — "quality-equivalent"
+xoshiro failed twice), match Python EXACTLY, in this order (each gated by the
+divergence harness; the leaf drives the argmax so #1-3 and #4-5 must land
+together):
+
+1. **Inter-node RNG** — Python: `Random(config.seed + seed_offset + action_index*1000003)`
+   then `random.sample(range(len(pool)), draw_count)`. ✅ **DONE+VERIFIED**:
+   `botlatro-core/src/search/py_random.rs` is a bit-exact MT19937 + `random.sample`
+   port (231 (seed,n,k) cases, both pool & set paths). The two prior attempts used
+   xoshiro → diverged at every branch.
+2. **Draw pool order** — Python samples from `DeckModel._expanded_pool()` which
+   is `sorted(counts, key=_key_sort)` then repeated representatives. The Rust beam
+   gets `state.known_deck` order. FIX: have `_try_rust_beam_plan_value` pass
+   `list(DeckModel.from_state(state)._expanded_pool())` as known_deck; the beam
+   maintains it (removing by sampled index keeps it sorted).
+3. **seed_offset threading** — plan→action uses `seed_offset + (i+1)*131071`;
+   action→plan (per draw) uses `seed_offset + (j+1)*65537`; leaf uses
+   `config.seed + seed_offset`. Thread `seed_offset:u64` + `base_seed:u64`
+   through `beam_plan_value`; add a `seed_offset` pyfunction param.
+4. **Hand order after draw** — Python `simulate_play/discard` does
+   `next_hand = _sort_hand_cards(held + drawn)`. `_sort_hand_cards` sorts by
+   (rank A..2, suit S,H,C,D, enhancement, seal, edition, debuffed). The beam does
+   unsorted `held.chain(drawn)`. FIX: sort with that exact key after each draw.
+5. **Leaf value** — Python `planning_value` =
+   `clear*(1+headroom*0.25) + (1-clear)*progress*0.15` (cleared: `1+min(0.75,
+   headroom*0.25)`). The beam returns `clear` only. FIX: port the full formula +
+   `headroom_value`/`progress`.
+6. **Leaf rollout** — the beam has its OWN play-only 16-sample rollout; Python's
+   `clear_probability` is the now-discard-aware 1-sample `rollout.rs`
+   `greedy_rollout_clears` (seed `config.seed + seed_offset`). FIX: refactor
+   `greedy_rollout_clears` to be callable from `beam.rs` and use it.
+7. **forward_sim parity** — `apply_play` must equal `simulate_play` and
+   `apply_discard` must apply `jokers_after_discard` (currently a no-op, line ~382).
+
+Workflow gotcha (cost me a cycle): `maturin develop` builds
+`target/release/balatro_core.dll` but does NOT copy it into
+`site-packages/balatro_core/balatro_core.pyd` here — `cp` manually after every build.
