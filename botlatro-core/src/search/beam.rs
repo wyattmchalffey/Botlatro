@@ -553,6 +553,186 @@ fn beam_plan_value(
     best
 }
 
+/// Owned inputs for a native beam call. Holds everything BeamCtx borrows
+/// plus the BeamState, so both pyfunctions share ONE construction path.
+struct BeamBuild {
+    bs: BeamState,
+    jokers: Vec<String>,
+    editions: Vec<Edition>,
+    vampire_gain: Vec<f64>,
+    obelisk_should_scale: Vec<bool>,
+    suits: Vec<Suit>,
+}
+
+/// Build the BeamState + owned ctx vectors from the flattened Python args.
+/// Returns None to bail (complex joker, Glass card, blue seal) — identical
+/// bail set to the old inline construction.
+#[allow(clippy::too_many_arguments)]
+fn build_beam_inputs(
+    hand: Vec<Card>,
+    known_deck: Vec<Card>,
+    debuffed_suits: Vec<String>,
+    joker_names: Option<Vec<String>>,
+    joker_editions: Option<Vec<Option<String>>>,
+    joker_current_plus_mult: Option<Vec<i32>>,
+    joker_current_plus_chips: Option<Vec<i32>>,
+    joker_current_xmult: Option<Vec<f64>>,
+    joker_current_remaining: Option<Vec<i32>>,
+    joker_loyalty_ready: Option<Vec<bool>>,
+    joker_drivers_active: Option<Vec<bool>>,
+    joker_leading_plus_mult: Option<Vec<i32>>,
+    joker_leading_plus_chips: Option<Vec<i32>>,
+    joker_sell_value: Option<Vec<i32>>,
+    joker_rarity: Option<Vec<u8>>,
+    joker_target_suit: Option<Vec<Option<String>>>,
+    joker_target_rank: Option<Vec<Option<String>>>,
+    joker_obelisk_gain: Option<Vec<f64>>,
+    joker_vampire_gain: Option<Vec<f64>>,
+    joker_obelisk_should_scale: Option<Vec<bool>>,
+    money: i32,
+    discards_remaining: u32,
+    hands_remaining: u32,
+    played_hand_types: Option<Vec<String>>,
+    played_count_this_hand_type: u32,
+    hand_type_played_before: bool,
+    deck_size: u32,
+    played_count_max_other_hand_type: u32,
+    current_score: i64,
+    required_score: i64,
+) -> Option<BeamBuild> {
+    let suits: Vec<Suit> = debuffed_suits.iter()
+        .filter_map(|s| Suit::from_str(s))
+        .collect();
+    let jokers = joker_names.unwrap_or_default();
+    for n in &jokers {
+        if SIMPLE_BAIL_JOKERS.contains(&n.as_str()) {
+            return None;
+        }
+        if !crate::hand_eval::effects::is_supported_joker(n) {
+            return None;
+        }
+    }
+    for c in hand.iter().chain(known_deck.iter()) {
+        if matches!(c.enhancement, Enhancement::Glass) { return None; }
+        if matches!(c.seal, Seal::Blue) { return None; }
+    }
+
+    let editions: Vec<Edition> = joker_editions
+        .map(|opts| opts.iter().map(|o| Edition::from_option_str(o.as_deref())).collect())
+        .unwrap_or_default();
+    let n_jokers = jokers.len();
+    let mut metadata = vec![JokerMetadata::default(); n_jokers];
+    if let Some(v) = joker_current_plus_mult.as_deref() {
+        for (i, m) in v.iter().take(n_jokers).enumerate() { metadata[i].current_plus_mult = *m; }
+    }
+    if let Some(v) = joker_current_plus_chips.as_deref() {
+        for (i, c) in v.iter().take(n_jokers).enumerate() { metadata[i].current_plus_chips = *c; }
+    }
+    if let Some(v) = joker_current_xmult.as_deref() {
+        for (i, x) in v.iter().take(n_jokers).enumerate() { metadata[i].current_xmult = *x; }
+    }
+    if let Some(v) = joker_loyalty_ready.as_deref() {
+        for (i, b) in v.iter().take(n_jokers).enumerate() { metadata[i].loyalty_ready = *b; }
+    }
+    if let Some(v) = joker_drivers_active.as_deref() {
+        for (i, b) in v.iter().take(n_jokers).enumerate() { metadata[i].drivers_active = *b; }
+    }
+    if let Some(v) = joker_leading_plus_mult.as_deref() {
+        for (i, m) in v.iter().take(n_jokers).enumerate() { metadata[i].leading_plus_mult = *m; }
+    }
+    if let Some(v) = joker_leading_plus_chips.as_deref() {
+        for (i, c) in v.iter().take(n_jokers).enumerate() { metadata[i].leading_plus_chips = *c; }
+    }
+    if let Some(v) = joker_sell_value.as_deref() {
+        for (i, s) in v.iter().take(n_jokers).enumerate() { metadata[i].sell_value = *s; }
+    }
+    if let Some(v) = joker_rarity.as_deref() {
+        for (i, r) in v.iter().take(n_jokers).enumerate() { metadata[i].rarity = *r; }
+    }
+    if let Some(v) = joker_target_suit.as_deref() {
+        for (i, s) in v.iter().take(n_jokers).enumerate() {
+            if let Some(s_str) = s.as_deref() {
+                if let Some(suit) = Suit::from_str(s_str) {
+                    metadata[i].has_target_suit = true;
+                    metadata[i].target_suit = suit as u8;
+                }
+            }
+        }
+    }
+    if let Some(v) = joker_target_rank.as_deref() {
+        for (i, r) in v.iter().take(n_jokers).enumerate() {
+            if let Some(r_str) = r.as_deref() {
+                if let Some(rank) = Rank::from_str(r_str) {
+                    metadata[i].has_target_rank = true;
+                    metadata[i].target_rank = rank as u8;
+                }
+            }
+        }
+    }
+    if let Some(v) = joker_obelisk_gain.as_deref() {
+        for (i, g) in v.iter().take(n_jokers).enumerate() { metadata[i].obelisk_gain = *g; }
+    }
+    let vampire_gain = joker_vampire_gain.unwrap_or_else(|| vec![0.0; n_jokers]);
+    let obelisk_should_scale = joker_obelisk_should_scale.unwrap_or_else(|| vec![false; n_jokers]);
+    let current_remaining = joker_current_remaining.unwrap_or_else(|| vec![0; n_jokers]);
+    let played_hand_types = played_hand_types.unwrap_or_default();
+
+    let bs = BeamState {
+        hand,
+        known_deck,
+        metadata,
+        current_remaining,
+        current_score,
+        required_score,
+        hands_remaining,
+        discards_remaining,
+        money,
+        deck_size,
+        played_count_this_hand_type,
+        played_count_max_other_hand_type,
+        hand_type_played_before,
+        played_hand_types,
+    };
+    Some(BeamBuild { bs, jokers, editions, vampire_gain, obelisk_should_scale, suits })
+}
+
+/// Score a single play (given card indices) exactly as `top_k_plays` does.
+/// Returns None if the played cards don't form a recognized hand.
+fn score_play(
+    bs: &BeamState,
+    ctx: BeamCtx<'_>,
+    hand_levels_lookup: &dyn Fn(&str) -> u32,
+    indices: &[usize],
+) -> Option<u64> {
+    let played: Vec<Card> = indices.iter().map(|&i| bs.hand[i]).collect();
+    let mut in_played = [false; 16];
+    for &i in indices { in_played[i] = true; }
+    let held: Vec<Card> = bs.hand.iter().enumerate()
+        .filter(|(i, _)| !in_played[*i])
+        .map(|(_, c)| *c)
+        .collect();
+    let ht = identify_hand_type_simple(&played)?;
+    let level = hand_levels_lookup(ht.to_str());
+    let hand_ctx = HandContext {
+        money: bs.money,
+        joker_count: ctx.joker_names.len() as u32,
+        joker_slot_limit: 5,
+        discards_remaining: bs.discards_remaining,
+        hands_remaining: bs.hands_remaining,
+        played_count_this_hand_type: bs.played_count_this_hand_type,
+        hand_type_played_before: bs.hand_type_played_before,
+        deck_size: bs.deck_size,
+        played_count_max_other_hand_type: bs.played_count_max_other_hand_type,
+        pareidolia_active: ctx.pareidolia_active,
+    };
+    let (_chips, _mult, score, _ht) = evaluate_simple(
+        &played, level, ctx.debuffed_suits,
+        ctx.joker_names, ctx.joker_editions, &bs.metadata,
+        &held, &bs.played_hand_types, hand_ctx,
+    )?;
+    Some(score)
+}
+
 /// PyO3 wrapper: native beam-play-action value.
 /// Returns the BEST plan value for the given state at the given depth.
 /// Python caller iterates root actions and calls this for each.
@@ -625,82 +805,17 @@ pub fn py_beam_play_value_native(
     seed: u64,
     seed_offset: u64,
 ) -> PyResult<Option<f64>> {
-    let suits: Vec<Suit> = debuffed_suits.iter()
-        .filter_map(|s| Suit::from_str(s))
-        .collect();
-    let jokers = joker_names.unwrap_or_default();
-    for n in &jokers {
-        if SIMPLE_BAIL_JOKERS.contains(&n.as_str()) {
-            return Ok(None);
-        }
-        if !crate::hand_eval::effects::is_supported_joker(n) {
-            return Ok(None);
-        }
-    }
-    for c in hand.iter().chain(known_deck.iter()) {
-        if matches!(c.enhancement, Enhancement::Glass) { return Ok(None); }
-        if matches!(c.seal, Seal::Blue) { return Ok(None); }
-    }
-
-    let editions: Vec<Edition> = joker_editions
-        .map(|opts| opts.iter().map(|o| Edition::from_option_str(o.as_deref())).collect())
-        .unwrap_or_default();
-    let n_jokers = jokers.len();
-    let mut metadata = vec![JokerMetadata::default(); n_jokers];
-    if let Some(v) = joker_current_plus_mult.as_deref() {
-        for (i, m) in v.iter().take(n_jokers).enumerate() { metadata[i].current_plus_mult = *m; }
-    }
-    if let Some(v) = joker_current_plus_chips.as_deref() {
-        for (i, c) in v.iter().take(n_jokers).enumerate() { metadata[i].current_plus_chips = *c; }
-    }
-    if let Some(v) = joker_current_xmult.as_deref() {
-        for (i, x) in v.iter().take(n_jokers).enumerate() { metadata[i].current_xmult = *x; }
-    }
-    if let Some(v) = joker_loyalty_ready.as_deref() {
-        for (i, b) in v.iter().take(n_jokers).enumerate() { metadata[i].loyalty_ready = *b; }
-    }
-    if let Some(v) = joker_drivers_active.as_deref() {
-        for (i, b) in v.iter().take(n_jokers).enumerate() { metadata[i].drivers_active = *b; }
-    }
-    if let Some(v) = joker_leading_plus_mult.as_deref() {
-        for (i, m) in v.iter().take(n_jokers).enumerate() { metadata[i].leading_plus_mult = *m; }
-    }
-    if let Some(v) = joker_leading_plus_chips.as_deref() {
-        for (i, c) in v.iter().take(n_jokers).enumerate() { metadata[i].leading_plus_chips = *c; }
-    }
-    if let Some(v) = joker_sell_value.as_deref() {
-        for (i, s) in v.iter().take(n_jokers).enumerate() { metadata[i].sell_value = *s; }
-    }
-    if let Some(v) = joker_rarity.as_deref() {
-        for (i, r) in v.iter().take(n_jokers).enumerate() { metadata[i].rarity = *r; }
-    }
-    if let Some(v) = joker_target_suit.as_deref() {
-        for (i, s) in v.iter().take(n_jokers).enumerate() {
-            if let Some(s_str) = s.as_deref() {
-                if let Some(suit) = Suit::from_str(s_str) {
-                    metadata[i].has_target_suit = true;
-                    metadata[i].target_suit = suit as u8;
-                }
-            }
-        }
-    }
-    if let Some(v) = joker_target_rank.as_deref() {
-        for (i, r) in v.iter().take(n_jokers).enumerate() {
-            if let Some(r_str) = r.as_deref() {
-                if let Some(rank) = Rank::from_str(r_str) {
-                    metadata[i].has_target_rank = true;
-                    metadata[i].target_rank = rank as u8;
-                }
-            }
-        }
-    }
-    if let Some(v) = joker_obelisk_gain.as_deref() {
-        for (i, g) in v.iter().take(n_jokers).enumerate() { metadata[i].obelisk_gain = *g; }
-    }
-    let vampire_gain = joker_vampire_gain.unwrap_or_else(|| vec![0.0; n_jokers]);
-    let obelisk_should_scale = joker_obelisk_should_scale.unwrap_or_else(|| vec![false; n_jokers]);
-    let current_remaining = joker_current_remaining.unwrap_or_else(|| vec![0; n_jokers]);
-    let played_hand_types = played_hand_types.unwrap_or_default();
+    let Some(b) = build_beam_inputs(
+        hand, known_deck, debuffed_suits, Some(joker_names.unwrap_or_default()),
+        joker_editions, joker_current_plus_mult, joker_current_plus_chips,
+        joker_current_xmult, joker_current_remaining, joker_loyalty_ready,
+        joker_drivers_active, joker_leading_plus_mult, joker_leading_plus_chips,
+        joker_sell_value, joker_rarity, joker_target_suit, joker_target_rank,
+        joker_obelisk_gain, joker_vampire_gain, joker_obelisk_should_scale,
+        money, discards_remaining, hands_remaining, played_hand_types,
+        played_count_this_hand_type, hand_type_played_before, deck_size,
+        played_count_max_other_hand_type, current_score, required_score,
+    ) else { return Ok(None) };
 
     let hand_levels_lookup = |ht_str: &str| -> u32 {
         hand_levels.get_item(ht_str)
@@ -708,29 +823,12 @@ pub fn py_beam_play_value_native(
             .and_then(|v| v.extract::<u32>().ok())
             .unwrap_or(1)
     };
-
-    let bs = BeamState {
-        hand,
-        known_deck,
-        metadata,
-        current_remaining,
-        current_score,
-        required_score,
-        hands_remaining,
-        discards_remaining,
-        money,
-        deck_size,
-        played_count_this_hand_type,
-        played_count_max_other_hand_type,
-        hand_type_played_before,
-        played_hand_types,
-    };
     let ctx = BeamCtx {
-        joker_names: &jokers,
-        joker_editions: &editions,
-        joker_vampire_gain: &vampire_gain,
-        joker_obelisk_should_scale: &obelisk_should_scale,
-        debuffed_suits: &suits,
+        joker_names: &b.jokers,
+        joker_editions: &b.editions,
+        joker_vampire_gain: &b.vampire_gain,
+        joker_obelisk_should_scale: &b.obelisk_should_scale,
+        debuffed_suits: &b.suits,
         pareidolia_active,
         width,
     };
@@ -739,5 +837,146 @@ pub fn py_beam_play_value_native(
     // matching Python `planning_value(.., seed=config.seed + seed_offset)`
     // -> `clear_probability_native(seed=config.seed + seed_offset)` sample 0.
     let mut rng = Xoshiro::new(seed.wrapping_add(seed_offset));
-    Ok(Some(beam_plan_value(&bs, ctx, depth, &hand_levels_lookup, &mut rng, seed_offset, seed)))
+    Ok(Some(beam_plan_value(&b.bs, ctx, depth, &hand_levels_lookup, &mut rng, seed_offset, seed)))
+}
+
+/// PyO3 wrapper: ROOT-LEVEL native beam action selection (single FFI call).
+/// The Python caller translates the root state ONCE, passes the pre-ranked
+/// root candidates (is_play + indices), and gets back the index of the best
+/// candidate. The whole depth-`depth` tree for every candidate is expanded
+/// natively, so there is no per-node Python<->Rust round-trip (the win that
+/// the per-subtree `beam_play_value_native` could not realize).
+///
+/// `depth` is the CHILD evaluation depth (= beam_depth - 1): each candidate is
+/// applied to the root, then its resulting child is scored by
+/// `beam_plan_value(child, depth)`. Returns None to bail (same constraints as
+/// `beam_play_value_native`); on bail the Python caller falls back to its own
+/// beam. Returns the best candidate index, or None if no candidate is valid.
+#[pyfunction]
+#[pyo3(name = "best_beam_action_native")]
+#[pyo3(signature = (hand, known_deck, hand_levels, debuffed_suits,
+                    candidate_is_play, candidate_indices,
+                    depth, width,
+                    joker_names=None, joker_editions=None,
+                    joker_current_plus_mult=None,
+                    joker_current_plus_chips=None,
+                    joker_current_xmult=None,
+                    joker_current_remaining=None,
+                    joker_loyalty_ready=None,
+                    joker_drivers_active=None,
+                    joker_leading_plus_mult=None,
+                    joker_leading_plus_chips=None,
+                    joker_sell_value=None,
+                    joker_rarity=None,
+                    joker_target_suit=None,
+                    joker_target_rank=None,
+                    joker_obelisk_gain=None,
+                    joker_vampire_gain=None,
+                    joker_obelisk_should_scale=None,
+                    money=0, discards_remaining=0,
+                    hands_remaining=0,
+                    played_hand_types=None,
+                    played_count_this_hand_type=0,
+                    hand_type_played_before=false,
+                    deck_size=0,
+                    played_count_max_other_hand_type=0,
+                    pareidolia_active=false,
+                    current_score=0, required_score=0,
+                    seed=0))]
+#[allow(clippy::too_many_arguments)]
+pub fn py_best_beam_action_native(
+    hand: Vec<Card>,
+    known_deck: Vec<Card>,
+    hand_levels: &Bound<'_, PyDict>,
+    debuffed_suits: Vec<String>,
+    candidate_is_play: Vec<bool>,
+    candidate_indices: Vec<Vec<usize>>,
+    depth: u32,
+    width: u32,
+    joker_names: Option<Vec<String>>,
+    joker_editions: Option<Vec<Option<String>>>,
+    joker_current_plus_mult: Option<Vec<i32>>,
+    joker_current_plus_chips: Option<Vec<i32>>,
+    joker_current_xmult: Option<Vec<f64>>,
+    joker_current_remaining: Option<Vec<i32>>,
+    joker_loyalty_ready: Option<Vec<bool>>,
+    joker_drivers_active: Option<Vec<bool>>,
+    joker_leading_plus_mult: Option<Vec<i32>>,
+    joker_leading_plus_chips: Option<Vec<i32>>,
+    joker_sell_value: Option<Vec<i32>>,
+    joker_rarity: Option<Vec<u8>>,
+    joker_target_suit: Option<Vec<Option<String>>>,
+    joker_target_rank: Option<Vec<Option<String>>>,
+    joker_obelisk_gain: Option<Vec<f64>>,
+    joker_vampire_gain: Option<Vec<f64>>,
+    joker_obelisk_should_scale: Option<Vec<bool>>,
+    money: i32,
+    discards_remaining: u32,
+    hands_remaining: u32,
+    played_hand_types: Option<Vec<String>>,
+    played_count_this_hand_type: u32,
+    hand_type_played_before: bool,
+    deck_size: u32,
+    played_count_max_other_hand_type: u32,
+    pareidolia_active: bool,
+    current_score: i64,
+    required_score: i64,
+    seed: u64,
+) -> PyResult<Option<usize>> {
+    if candidate_indices.len() != candidate_is_play.len() || candidate_indices.is_empty() {
+        return Ok(None);
+    }
+    let Some(b) = build_beam_inputs(
+        hand, known_deck, debuffed_suits, Some(joker_names.unwrap_or_default()),
+        joker_editions, joker_current_plus_mult, joker_current_plus_chips,
+        joker_current_xmult, joker_current_remaining, joker_loyalty_ready,
+        joker_drivers_active, joker_leading_plus_mult, joker_leading_plus_chips,
+        joker_sell_value, joker_rarity, joker_target_suit, joker_target_rank,
+        joker_obelisk_gain, joker_vampire_gain, joker_obelisk_should_scale,
+        money, discards_remaining, hands_remaining, played_hand_types,
+        played_count_this_hand_type, hand_type_played_before, deck_size,
+        played_count_max_other_hand_type, current_score, required_score,
+    ) else { return Ok(None) };
+
+    let hand_levels_lookup = |ht_str: &str| -> u32 {
+        hand_levels.get_item(ht_str)
+            .ok().flatten()
+            .and_then(|v| v.extract::<u32>().ok())
+            .unwrap_or(1)
+    };
+    let ctx = BeamCtx {
+        joker_names: &b.jokers,
+        joker_editions: &b.editions,
+        joker_vampire_gain: &b.vampire_gain,
+        joker_obelisk_should_scale: &b.obelisk_should_scale,
+        debuffed_suits: &b.suits,
+        pareidolia_active,
+        width,
+    };
+
+    let mut best_val = f64::NEG_INFINITY;
+    let mut best_idx: Option<usize> = None;
+    for (ci, indices) in candidate_indices.iter().enumerate() {
+        if indices.is_empty() || indices.iter().any(|&i| i >= b.bs.hand.len()) {
+            continue;
+        }
+        // Per-candidate sub-seed (mirrors Python best_blind_beam_action's
+        // action_index * 1_000_003 offset). Gives each candidate independent
+        // draws; quality-equivalent, not byte-identical to Python's MT19937.
+        let off = (ci as u64).wrapping_mul(1_000_003);
+        let mut rng = Xoshiro::new(seed.wrapping_add(off));
+        let mut child = b.bs.clone();
+        if candidate_is_play[ci] {
+            let Some(score) = score_play(&child, ctx, &hand_levels_lookup, indices) else { continue };
+            apply_play(&mut child, ctx, indices, score, &mut rng);
+        } else {
+            apply_discard(&mut child, ctx, indices, &mut rng);
+        }
+        let v = beam_plan_value(&child, ctx, depth, &hand_levels_lookup, &mut rng, off, seed);
+        if v > best_val {
+            best_val = v;
+            best_idx = Some(ci);
+        }
+    }
+    Ok(best_idx)
 }

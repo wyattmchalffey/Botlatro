@@ -27,6 +27,12 @@ ValueFn = Callable[[GameState], float]
 # the deterministic legacy beam (Phase 4d.2 re-validation).
 _NATIVE_BEAM_ENABLED = os.environ.get("BALATRO_NATIVE_BEAM") == "1"
 
+# ROOT-level native beam: one FFI call per play decision picks the best root
+# action (the whole depth-3 tree expands in Rust). This is the architecture
+# that can actually amortize FFI (vs the per-subtree _NATIVE_BEAM_ENABLED, which
+# re-translates per node and was speed-neutral). Set BALATRO_NATIVE_BEAM_ROOT=1.
+_NATIVE_BEAM_ROOT_ENABLED = os.environ.get("BALATRO_NATIVE_BEAM_ROOT") == "1"
+
 
 @dataclass(frozen=True, slots=True)
 class HandSearchConfig:
@@ -139,6 +145,18 @@ def best_blind_beam_action(
     actions = _beam_root_actions(state, search_config, blind_context)
     if not actions:
         return None
+
+    # ROOT-level native beam (opt-in): one FFI call expands the whole tree for
+    # every root candidate and returns the argmax index. Falls through to the
+    # Python beam on bail (unsafe blind / complex jokers / Rust unavailable).
+    if _NATIVE_BEAM_ROOT_ENABLED:
+        native_idx = _try_rust_best_beam_action(state, search_config, actions)
+        if native_idx is not None:
+            chosen = actions[native_idx]
+            return _annotated_action(
+                chosen, search_value=0.0,
+                reason=_beam_action_reason(chosen), search="hand_beam_native",
+            )
 
     memo: dict[tuple[object, ...], float] | None = None
     best_action: Action | None = None
@@ -373,6 +391,135 @@ def _try_rust_beam_plan_value(
         )
     except Exception:  # noqa: BLE001
         return None
+
+
+def _beam_rust_state_kwargs(state: GameState) -> dict | None:
+    """Translate a GameState into the shared kwargs both native-beam
+    pyfunctions take (hand/deck RustCards + joker arrays + scalars).
+    Returns None to bail (no Rust, unsafe blind, conversion failure)."""
+
+    try:
+        import balatro_core
+    except ImportError:
+        return None
+    from balatro_ai.search.state_value import (
+        _RUST_BLIND_SAFE, _cached_hand_as_rust_cards, _cached_joker_data,
+        _cached_played_hand_types_strs, _PLAYED_STATE_JOKERS,
+    )
+    try:
+        from balatro_ai.search.state_value import _RUST_ROLLOUT_BLIND_SAFE
+    except ImportError:
+        _RUST_ROLLOUT_BLIND_SAFE = _RUST_BLIND_SAFE
+    if state.blind not in _RUST_ROLLOUT_BLIND_SAFE:
+        return None
+    hand_rust = _cached_hand_as_rust_cards(state, balatro_core)
+    if hand_rust is None:
+        try:
+            hand_rust = [balatro_core.RustCard.from_python(c) for c in state.hand]
+        except (AttributeError, TypeError, ValueError):
+            return None
+    try:
+        known_deck_rust = [balatro_core.RustCard.from_python(c) for c in state.known_deck]
+    except (AttributeError, TypeError, ValueError):
+        return None
+    try:
+        (joker_names, joker_editions, joker_plus_mult,
+         joker_plus_chips, joker_xmult,
+         joker_loyalty_ready, joker_drivers_active,
+         joker_leading_plus_mult, joker_leading_plus_chips,
+         joker_sell_value, joker_rarity,
+         joker_target_suit, joker_target_rank,
+         joker_obelisk_gain) = _cached_joker_data(state)
+    except Exception:  # noqa: BLE001
+        return None
+    try:
+        from balatro_ai.rules.hand_evaluator import (
+            _metadata_loyalty_remaining, debuffed_suits_for_blind,
+        )
+    except ImportError:
+        return None
+    joker_current_remaining: list[int] = []
+    for j in state.jokers:
+        if j.name in {"Loyalty Card", "Seltzer", "Yorick"}:
+            v = _metadata_loyalty_remaining(j)
+            joker_current_remaining.append(int(v) if v is not None else 0)
+        else:
+            joker_current_remaining.append(0)
+    if any(j.name in _PLAYED_STATE_JOKERS for j in state.jokers) or any(
+        j.name == "Obelisk" for j in state.jokers
+    ):
+        played_types_strs = _cached_played_hand_types_strs(state)
+    else:
+        played_types_strs = []
+    debuffed = [s for s in debuffed_suits_for_blind(state.blind) if len(s) == 1]
+    n = len(joker_names)
+    return {
+        "hand_rust": hand_rust,
+        "known_deck_rust": known_deck_rust,
+        "hand_levels": state.hand_levels,
+        "debuffed": debuffed,
+        "joker_names": joker_names,
+        "joker_editions": joker_editions,
+        "joker_current_plus_mult": joker_plus_mult,
+        "joker_current_plus_chips": joker_plus_chips,
+        "joker_current_xmult": joker_xmult,
+        "joker_current_remaining": joker_current_remaining,
+        "joker_loyalty_ready": joker_loyalty_ready,
+        "joker_drivers_active": joker_drivers_active,
+        "joker_leading_plus_mult": joker_leading_plus_mult,
+        "joker_leading_plus_chips": joker_leading_plus_chips,
+        "joker_sell_value": joker_sell_value,
+        "joker_rarity": joker_rarity,
+        "joker_target_suit": joker_target_suit,
+        "joker_target_rank": joker_target_rank,
+        "joker_obelisk_gain": joker_obelisk_gain,
+        "joker_vampire_gain": [0.0] * n,
+        "joker_obelisk_should_scale": [False] * n,
+        "money": int(state.money),
+        "discards_remaining": int(max(0, state.discards_remaining)),
+        "hands_remaining": int(max(0, state.hands_remaining)),
+        "played_hand_types": played_types_strs,
+        "deck_size": int(max(0, state.deck_size)),
+        "pareidolia_active": any(j.name == "Pareidolia" for j in state.jokers),
+        "current_score": int(state.current_score),
+        "required_score": int(state.required_score),
+    }
+
+
+def _try_rust_best_beam_action(
+    state: GameState,
+    config: HandSearchConfig,
+    actions: tuple[Action, ...],
+) -> int | None:
+    """ROOT-level native beam: one FFI call returns the index (into
+    `actions`) of the best root action. Returns None to bail."""
+
+    try:
+        import balatro_core
+    except ImportError:
+        return None
+    kw = _beam_rust_state_kwargs(state)
+    if kw is None:
+        return None
+    cand_is_play = [a.action_type == ActionType.PLAY_HAND for a in actions]
+    cand_indices = [[int(i) for i in (a.card_indices or ())] for a in actions]
+    hand_rust = kw.pop("hand_rust")
+    known_deck_rust = kw.pop("known_deck_rust")
+    hand_levels = kw.pop("hand_levels")
+    debuffed = kw.pop("debuffed")
+    try:
+        idx = balatro_core.best_beam_action_native(
+            hand_rust, known_deck_rust, hand_levels, debuffed,
+            cand_is_play, cand_indices,
+            int(max(0, config.beam_depth - 1)), int(max(1, config.beam_width)),
+            seed=int(config.seed) & 0xFFFFFFFFFFFFFFFF,
+            **kw,
+        )
+    except Exception:  # noqa: BLE001
+        return None
+    if idx is None or idx < 0 or idx >= len(actions):
+        return None
+    return int(idx)
 
 
 def _beam_leaf_value(

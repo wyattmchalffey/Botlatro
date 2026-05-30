@@ -49,10 +49,13 @@ def run_task(seed: str) -> dict:
     # so the delta is contention-immune per-run CPU — unlike wall-clock,
     # which inflates under the other 13 workers' load.
     t0 = _t.process_time()
+    play_decisions = 0
     for _ in range(6000):
         st = sim.state
         if st.run_over:
             break
+        if str(st.phase.value) in ("selecting_hand", "playing_blind"):
+            play_decisions += 1
         a = pol.choose_action(st)
         if a.action_type.value == "no_op":
             break
@@ -60,7 +63,8 @@ def run_task(seed: str) -> dict:
     elapsed = _t.process_time() - t0
     s = sim.state
     return {"seed": seed, "ante": s.ante, "score": int(s.current_score),
-            "won": bool(getattr(s, "won", False)) or s.ante >= 9, "elapsed": elapsed}
+            "won": bool(getattr(s, "won", False)) or s.ante >= 9, "elapsed": elapsed,
+            "play_decisions": play_decisions}
 
 
 def main() -> int:
@@ -82,9 +86,12 @@ def main() -> int:
     antes = [r["ante"] for r in rows]
     scores = [r["score"] for r in rows]
     wins = sum(r["won"] for r in rows)
+    decisions = sum(r.get("play_decisions", 0) for r in rows)
     print(f"n={n} jobs={jobs}  wall={wall:.1f}s")
     print(f"  CPU/run (process_time): mean={statistics.mean(cpu):.2f}s "
           f"median={statistics.median(cpu):.2f}s total={sum(cpu):.1f}s")
+    print(f"  play decisions: {decisions}  CPU/play-decision: "
+          f"{1000*sum(cpu)/max(1,decisions):.1f}ms  (fair speed metric)")
     print(f"  ante  mean={statistics.mean(antes):.2f} median={statistics.median(antes)} max={max(antes)}")
     print(f"  score mean={statistics.mean(scores):.0f} median={statistics.median(scores):.0f}")
     print(f"  wins  {wins}/{n}")
