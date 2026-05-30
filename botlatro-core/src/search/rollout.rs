@@ -47,12 +47,12 @@ use crate::state::card::{Card, Edition, Enhancement, Rank, Seal, Suit};
 /// good distribution. Used to sample drawn cards inside rollouts
 /// without paying the cost of a more elaborate RNG.
 #[derive(Clone, Debug)]
-struct XoshiroRng {
+pub(crate) struct XoshiroRng {
     state: [u64; 4],
 }
 
 impl XoshiroRng {
-    fn new(seed: u64) -> Self {
+    pub(crate) fn new(seed: u64) -> Self {
         // SplitMix64 seeding (standard practice).
         let mut s = [0u64; 4];
         let mut x = seed;
@@ -91,25 +91,25 @@ impl XoshiroRng {
 /// before each rollout sample, so each sample starts from the same
 /// initial state.
 #[derive(Clone, Debug)]
-struct RolloutState {
-    hand: Vec<Card>,
-    known_deck: Vec<Card>,
-    metadata: Vec<JokerMetadata>,
-    current_remaining: Vec<i32>,
-    current_score: i64,
-    required_score: i64,
-    hands_remaining: u32,
-    discards_remaining: u32,
-    money: i32,
-    deck_size: u32,
-    played_count_this_hand_type: u32,
-    played_count_max_other_hand_type: u32,
-    hand_type_played_before: bool,
-    played_hand_types: Vec<String>,
+pub(crate) struct RolloutState {
+    pub(crate) hand: Vec<Card>,
+    pub(crate) known_deck: Vec<Card>,
+    pub(crate) metadata: Vec<JokerMetadata>,
+    pub(crate) current_remaining: Vec<i32>,
+    pub(crate) current_score: i64,
+    pub(crate) required_score: i64,
+    pub(crate) hands_remaining: u32,
+    pub(crate) discards_remaining: u32,
+    pub(crate) money: i32,
+    pub(crate) deck_size: u32,
+    pub(crate) played_count_this_hand_type: u32,
+    pub(crate) played_count_max_other_hand_type: u32,
+    pub(crate) hand_type_played_before: bool,
+    pub(crate) played_hand_types: Vec<String>,
 }
 
 #[allow(clippy::too_many_arguments)]
-fn greedy_rollout_clears(
+pub(crate) fn greedy_rollout_clears(
     rs: &mut RolloutState,
     joker_names: &[String],
     joker_editions: &[Edition],

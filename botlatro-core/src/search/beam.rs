@@ -28,6 +28,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
 use crate::forward_sim::jokers::{jokers_after_play, AfterPlayContext};
+use crate::search::rollout::{greedy_rollout_clears, RolloutState, XoshiroRng as RolloutRng};
 use crate::forward_sim::simulate::SIMPLE_BAIL_JOKERS;
 use crate::hand_eval::effects::{HandContext, JokerMetadata};
 use crate::hand_eval::evaluate::evaluate_simple;
@@ -393,47 +394,68 @@ fn apply_discard(
 ///   keep it cheap inside the beam — outer Python beam already
 ///   averaged across multiple draws)
 /// - progress contribution when no clear
+/// Leaf evaluator — mirrors Python `_planning_value_uncached` EXACTLY:
+///   cleared: `1.0 + min(0.75, headroom*0.25)`
+///   can't clear: `progress * 0.15`
+///   else: `clear*(1 + headroom*0.25) + (1-clear)*progress*0.15`
+/// `clear` uses the SHARED discard-aware rollout (rollout.rs), 1 sample with
+/// `XoshiroRng::new(base_seed + seed_offset)` — identical to
+/// `clear_probability_native(samples=1, seed=config.seed+seed_offset)`.
+/// `headroom` ports `_headroom_value_uncached` (best play score + money +
+/// jokers + hands). (won/run_over and ROUND_EVAL cash-out are not reached at a
+/// SELECTING_HAND root and are left to a later pass.)
 fn leaf_value(
     bs: &BeamState,
     ctx: BeamCtx<'_>,
     hand_levels_lookup: &dyn Fn(&str) -> u32,
-    rng: &mut Xoshiro,
+    seed_offset: u64,
+    base_seed: u64,
 ) -> f64 {
+    // headroom_value (_headroom_value_uncached): build-strength estimate.
+    let best_play_score = top_k_plays(bs, ctx, hand_levels_lookup, 1)
+        .first().map(|(_, s)| *s).unwrap_or(0);
+    let score_target = (bs.required_score - bs.current_score).max(1) as f64;
+    let score_component = (best_play_score as f64 / score_target).min(3.0);
+    let money_component = (bs.money.max(0) as f64 / 40.0).min(1.5);
+    let joker_component = (ctx.joker_names.len() as f64 / 5.0).min(1.25);
+    let hand_component = (bs.hands_remaining as f64 / 4.0).min(1.0);
+    let headroom = score_component * 0.60 + money_component * 0.20
+        + joker_component * 0.12 + hand_component * 0.08;
+
     if bs.current_score >= bs.required_score {
-        // Cleared; return a small headroom bonus over 1.0 to encourage
-        // bigger clears over bare clears.
-        let headroom = (bs.current_score as f64 / bs.required_score.max(1) as f64).min(3.0);
         return 1.0 + (headroom * 0.25).min(0.75);
     }
     if bs.hands_remaining == 0 || bs.hand.is_empty() {
-        // Cannot clear.
         let progress = (bs.current_score as f64 / bs.required_score.max(1) as f64).min(1.0);
         return progress * 0.15;
     }
-    // Run greedy rollouts to estimate clear probability. Python's
-    // planning_value default in solver path is samples=1; we use
-    // more here because the native rollout's xoshiro RNG gives
-    // different per-rollout outcomes than Python's random.Random,
-    // and averaging dampens the noise.
-    let samples = 16u32;
-    let mut clears = 0u32;
-    for _ in 0..samples {
-        let mut rs = bs.clone();
-        for _ in 0..15 {
-            if rs.current_score >= rs.required_score { clears += 1; break; }
-            if rs.hands_remaining == 0 || rs.hand.is_empty() { break; }
-            // Greedy pick: top_k_plays with limit=1.
-            let picks = top_k_plays(&rs, ctx, hand_levels_lookup, 1);
-            let Some((indices, score)) = picks.into_iter().next() else { break };
-            apply_play(&mut rs, ctx, &indices, score, rng);
-        }
-        if rs.current_score >= rs.required_score && rs.hands_remaining > 0 {
-            // already counted above
-        }
-    }
-    let clear = clears as f64 / samples as f64;
+
+    // clear via the shared discard-aware rollout, 1 sample.
+    let mut rs = RolloutState {
+        hand: bs.hand.clone(),
+        known_deck: bs.known_deck.clone(),
+        metadata: bs.metadata.clone(),
+        current_remaining: bs.current_remaining.clone(),
+        current_score: bs.current_score,
+        required_score: bs.required_score,
+        hands_remaining: bs.hands_remaining,
+        discards_remaining: bs.discards_remaining,
+        money: bs.money,
+        deck_size: bs.deck_size,
+        played_count_this_hand_type: bs.played_count_this_hand_type,
+        played_count_max_other_hand_type: bs.played_count_max_other_hand_type,
+        hand_type_played_before: bs.hand_type_played_before,
+        played_hand_types: bs.played_hand_types.clone(),
+    };
+    let mut rng = RolloutRng::new(base_seed.wrapping_add(seed_offset));
+    let cleared = greedy_rollout_clears(
+        &mut rs, ctx.joker_names, ctx.joker_editions, ctx.joker_vampire_gain,
+        ctx.joker_obelisk_should_scale, hand_levels_lookup, ctx.debuffed_suits,
+        false, ctx.pareidolia_active, &mut rng,
+    );
+    let clear = if cleared { 1.0 } else { 0.0 };
     let progress = (bs.current_score as f64 / bs.required_score.max(1) as f64).min(1.0);
-    (clear * 1.0) + ((1.0 - clear) * progress * 0.15)
+    clear * (1.0 + headroom * 0.25) + (1.0 - clear) * progress * 0.15
 }
 
 fn beam_plan_value(
@@ -442,9 +464,11 @@ fn beam_plan_value(
     depth: u32,
     hand_levels_lookup: &dyn Fn(&str) -> u32,
     rng: &mut Xoshiro,
+    seed_offset: u64,
+    base_seed: u64,
 ) -> f64 {
     if depth == 0 || is_terminal(bs) {
-        return leaf_value(bs, ctx, hand_levels_lookup, rng);
+        return leaf_value(bs, ctx, hand_levels_lookup, seed_offset, base_seed);
     }
     // Build mixed top-K candidate list. Mirrors Python
     // `_beam_future_actions` which:
@@ -455,7 +479,7 @@ fn beam_plan_value(
     let limit = ((ctx.width + 1) as usize).max(1).min(4);
     let plays = top_k_plays(bs, ctx, hand_levels_lookup, limit);
     if plays.is_empty() {
-        return leaf_value(bs, ctx, hand_levels_lookup, rng);
+        return leaf_value(bs, ctx, hand_levels_lookup, seed_offset, base_seed);
     }
     let best_play_score = plays.iter().map(|(_, s)| *s).max().unwrap_or(0);
 
@@ -519,7 +543,11 @@ fn beam_plan_value(
                 apply_discard(&mut child, ctx, &indices, rng);
             }
         }
-        let v = beam_plan_value(&child, ctx, depth - 1, hand_levels_lookup, rng);
+        // NOTE: per-action seed_offset threading (Python adds
+        // `(action_index+1)*131_071`) is component #3 of the Phase 4d spec
+        // (draws). Depth-0 leaf verification never recurses, so passing
+        // seed_offset unchanged here is correct for the current milestone.
+        let v = beam_plan_value(&child, ctx, depth - 1, hand_levels_lookup, rng, seed_offset, base_seed);
         if v > best { best = v; }
     }
     best
@@ -557,7 +585,7 @@ fn beam_plan_value(
                     played_count_max_other_hand_type=0,
                     pareidolia_active=false,
                     current_score=0, required_score=0,
-                    seed=0))]
+                    seed=0, seed_offset=0))]
 #[allow(clippy::too_many_arguments)]
 pub fn py_beam_play_value_native(
     hand: Vec<Card>,
@@ -595,6 +623,7 @@ pub fn py_beam_play_value_native(
     current_score: i64,
     required_score: i64,
     seed: u64,
+    seed_offset: u64,
 ) -> PyResult<Option<f64>> {
     let suits: Vec<Suit> = debuffed_suits.iter()
         .filter_map(|s| Suit::from_str(s))
@@ -705,6 +734,10 @@ pub fn py_beam_play_value_native(
         pareidolia_active,
         width,
     };
-    let mut rng = Xoshiro::new(seed);
-    Ok(Some(beam_plan_value(&bs, ctx, depth, &hand_levels_lookup, &mut rng)))
+    // `seed` is the base (config.seed); `seed_offset` is the per-action
+    // offset. The leaf's rollout seeds `XoshiroRng::new(seed + seed_offset)`,
+    // matching Python `planning_value(.., seed=config.seed + seed_offset)`
+    // -> `clear_probability_native(seed=config.seed + seed_offset)` sample 0.
+    let mut rng = Xoshiro::new(seed.wrapping_add(seed_offset));
+    Ok(Some(beam_plan_value(&bs, ctx, depth, &hand_levels_lookup, &mut rng, seed_offset, seed)))
 }

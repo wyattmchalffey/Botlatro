@@ -365,7 +365,11 @@ def _try_rust_beam_plan_value(
             pareidolia_active=pareidolia_active,
             current_score=int(state.current_score),
             required_score=int(state.required_score),
-            seed=int(seed_offset) & 0xFFFFFFFFFFFFFFFF,
+            # base seed + per-action offset are added INSIDE Rust so the
+            # leaf's rollout seeds XoshiroRng::new(config.seed + seed_offset),
+            # matching Python `planning_value(.., seed=config.seed + seed_offset)`.
+            seed=int(config.seed) & 0xFFFFFFFFFFFFFFFF,
+            seed_offset=int(seed_offset) & 0xFFFFFFFFFFFFFFFF,
         )
     except Exception:  # noqa: BLE001
         return None
