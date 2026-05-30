@@ -35,7 +35,7 @@
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
-use crate::forward_sim::jokers::{jokers_after_play, AfterPlayContext};
+use crate::forward_sim::jokers::{jokers_after_discard, jokers_after_play, AfterPlayContext};
 use crate::forward_sim::levels::hand_level_after_play;
 use crate::forward_sim::simulate::SIMPLE_BAIL_JOKERS;
 use crate::hand_eval::effects::{HandContext, JokerMetadata};
@@ -189,6 +189,80 @@ fn greedy_rollout_clears(
         }
 
         let Some(play_indices) = best_indices else { return false };
+
+        // ── Discard step ── mirrors Python `_greedy_rollout_clears` /
+        // `_should_rollout_discard` / `_rollout_discard_action`. Without this
+        // the rollout NEVER discards, so it returns ~0 on blinds that are only
+        // clearable by discarding dead cards and redrawing. If the best play
+        // can't clear and a discard could still rescue the round, discard the
+        // lowest straight-rank non-protected cards and redraw, then re-loop
+        // (a discard does NOT consume a hand).
+        {
+            let remaining: i64 = (rs.required_score - rs.current_score).max(0);
+            let deck_n = rs.known_deck.len();
+            if rs.discards_remaining > 0 && deck_n > 0 && (best_score as i64) < remaining {
+                let pace = remaining as f64 / (rs.hands_remaining.max(1) as f64);
+                if rs.hands_remaining <= 1 || (best_score as f64) < pace {
+                    let mut protected = [false; 16];
+                    for &i in &play_indices {
+                        if i < 16 { protected[i] = true; }
+                    }
+                    let hand_n = rs.hand.len();
+                    let mut candidates: Vec<usize> =
+                        (0..hand_n).filter(|&i| !(i < 16 && protected[i])).collect();
+                    let discard_limit = candidates.len().min(5).min(deck_n);
+                    if discard_limit > 0 {
+                        // Lowest straight-rank first (ties by index) == Python's
+                        // _rollout_discard_rank_value ordering.
+                        candidates.sort_by_key(|&i| (rs.hand[i].rank.straight_value(), i));
+                        let mut is_discarded = [false; 16];
+                        let discarded_cards: Vec<Card> = candidates[..discard_limit]
+                            .iter()
+                            .map(|&i| {
+                                if i < 16 { is_discarded[i] = true; }
+                                rs.hand[i]
+                            })
+                            .collect();
+
+                        // Discard-triggered joker scaling (Green Joker, Hit the
+                        // Road, Ramen, Yorick, …). target_suit=None for now: the
+                        // rollout's play-scoring already runs without it, so
+                        // Castle's discard chips are the only approximation.
+                        let cur_chips: Vec<i32> = rs.metadata.iter().map(|m| m.current_plus_chips).collect();
+                        let cur_mult: Vec<i32> = rs.metadata.iter().map(|m| m.current_plus_mult).collect();
+                        let cur_xmult: Vec<f64> = rs.metadata.iter().map(|m| m.current_xmult).collect();
+                        let target_suit_none: Vec<Option<u8>> = vec![None; joker_names.len()];
+                        let updates = jokers_after_discard(
+                            joker_names, &cur_chips, &cur_mult, &cur_xmult,
+                            &rs.current_remaining, &target_suit_none, &discarded_cards,
+                        );
+                        for (i, u) in updates.iter().enumerate() {
+                            if let Some(v) = u.new_plus_chips { rs.metadata[i].current_plus_chips = v; }
+                            if let Some(v) = u.new_plus_mult { rs.metadata[i].current_plus_mult = v; }
+                            if let Some(v) = u.new_xmult { rs.metadata[i].current_xmult = v; }
+                            if let Some(v) = u.new_remaining { rs.current_remaining[i] = v; }
+                        }
+
+                        // Remove discarded cards from hand, draw replacements.
+                        let mut new_hand: Vec<Card> = (0..hand_n)
+                            .filter(|&i| !(i < 16 && is_discarded[i]))
+                            .map(|i| rs.hand[i])
+                            .collect();
+                        let draw_count = discard_limit.min(rs.known_deck.len());
+                        for _ in 0..draw_count {
+                            if rs.known_deck.is_empty() { break; }
+                            let di = rng.gen_range(rs.known_deck.len());
+                            new_hand.push(rs.known_deck.remove(di));
+                        }
+                        rs.deck_size = rs.deck_size.saturating_sub(draw_count as u32);
+                        rs.discards_remaining -= 1;
+                        rs.hand = new_hand;
+                        continue;
+                    }
+                }
+            }
+        }
+
         // Identify the played hand type (we have it from the loop
         // but re-derive for clarity; cheap call).
         let played_cards: Vec<Card> = play_indices.iter().map(|&i| rs.hand[i]).collect();

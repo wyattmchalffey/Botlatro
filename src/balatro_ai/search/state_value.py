@@ -114,6 +114,13 @@ def _clear_probability_uncached(state: GameState, *, samples: int, seed: int) ->
     # different clear-probability estimate than Python (internal RNG
     # differs from random.Random) — that's acceptable because this is
     # an estimator and decisions remain quality-equivalent.
+    #
+    # The Rust rollout NOW models discards (botlatro-core search/rollout.rs:
+    # _should_rollout_discard / _rollout_discard_action ports), so the earlier
+    # discard-blindness (returning ~0 on discard-clearable blinds) is fixed and
+    # the discard-aware Python fallback that used to live here is no longer
+    # needed. Verified: noise-averaged Rust vs Python discard-aware rollout has
+    # 0 systematic underestimates; remaining gap is xoshiro-vs-random.Random noise.
     rust_result = _try_rust_clear_probability(state, samples, seed)
     if rust_result is not None:
         return rust_result
