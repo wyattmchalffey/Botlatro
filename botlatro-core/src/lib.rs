@@ -35,12 +35,29 @@ fn is_native_available() -> bool {
     true
 }
 
+/// Diagnostic: why the native scorer/rollout bails on a joker.
+/// Returns "simple-bail" (complex state transition the fast path
+/// refuses), "unsupported" (no scoring port), or None (fully
+/// supported). Used by bail-audit tooling to attribute Python
+/// fallbacks to the exact culprit joker.
+#[pyfunction]
+fn joker_bail_reason(name: &str) -> Option<String> {
+    if forward_sim::simulate::SIMPLE_BAIL_JOKERS.contains(&name) {
+        return Some("simple-bail".to_string());
+    }
+    if !hand_eval::effects::is_supported_joker(name) {
+        return Some("unsupported".to_string());
+    }
+    None
+}
+
 /// PyO3 module definition. Phase 1 surface: RustCard + the
 /// is_stone_card PoC (still exported so existing parity tests pass).
 #[pymodule]
 fn balatro_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(version, m)?)?;
     m.add_function(wrap_pyfunction!(is_native_available, m)?)?;
+    m.add_function(wrap_pyfunction!(joker_bail_reason, m)?)?;
     m.add_function(wrap_pyfunction!(card::is_stone_card, m)?)?;
     m.add_class::<state::Card>()?;
     m.add_class::<state::Joker>()?;
