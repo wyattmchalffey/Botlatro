@@ -14,6 +14,7 @@
 //! - `beam` (Phase 4d — pending) — full `solver_beam_play_action_native`.
 
 pub mod beam;
+pub mod best_play;
 pub mod py_random;
 pub mod rollout;
 pub mod scorer;
