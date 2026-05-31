@@ -70,6 +70,20 @@ Verified building blocks for the new path:
   ~1.5% of decisions; the canonical bot stays bit-for-bit pure-Python. Parity
   tool: `scripts/bestplay_parity_check.py` (`BALATRO_BESTPLAY_PARITY=1`).
 
+- **The offline solver (`solver/policy.py`) is built and generating data.**
+  `SolverPolicy` runs a whole-blind beam play search plus a shop beam over a
+  build-aware value function. Its data-gen winrate was ~1%; it is now **~8%**
+  after two systematic value-function bug fixes — a play-value bug (a cleared
+  blind was valued *below* an almost-cleared state, ec9d0b7) and a shop
+  joker-churn bug (the beam sold a good joker then re-bought into the freed
+  slot, gaming a state-relative buy heuristic, f2944d8) — plus a first-shop
+  Buffoon-pack fix (every data-gen game had been denied its guaranteed early
+  joker). Raising it toward the ~23% `basic_strategy_bot` is the active
+  priority; method and findings in [`PROGRESS.md`](PROGRESS.md). NOTE: the
+  data-gen harness runs the sim with the shop *sampler* (approximate shops),
+  not the seed-faithful path (that activates only when a `balatro_seed` string
+  is passed).
+
 Live-bot historical context (no longer the target metric — the offline
 solver is the data generator now):
 
@@ -302,10 +316,15 @@ python -m balatro_ai.eval.scenario_score --cards "AS" --jokers "Bull,Bootstraps"
 
 ## Next Target
 
-Per [`PHASE7_OFFLINE_SOLVER_PLAN.md`](PHASE7_OFFLINE_SOLVER_PLAN.md), the
-near-term track is **turning the validated RNG layer into the offline solver**.
-The remaining RNG edge is narrow: Illusion shop playing-card generation also
-perturbs the global `math.random` state used by the first Buffoon pack. The
-offline solver itself (archetype-branching whole-blind beam search) is the
-next build, with a target dataset of 10k-50k trajectories for Phase 8
-imitation training.
+The near-term track is **raising the offline solver's data-gen winrate** so its
+generated trajectories are strong enough to train on. The `SolverPolicy` is
+built (see [`SOLVER_PLAN.md`](SOLVER_PLAN.md)) and generating data at ~8%
+winrate; the gap to the ~23% `basic_strategy_bot` is build *scaling*. The method
+that has produced the wins is tracing systematic shop/play value-function
+mis-valuations with `scripts/shop_decision_trace.py` and validating fixes with
+paired same-seed A/Bs (`scripts/shop_paired_ab.py`, ≥80 seeds). Leveling-term
+tuning and deeper shop search were both measured inert/negative — do not chase
+them. Once the winrate is acceptable, generate a 10k-50k trajectory dataset for
+Phase 8 imitation training. (One narrow seed-faithful RNG edge remains —
+Illusion shop playing-card generation perturbs the global `math.random` used by
+the first Buffoon pack — but it does not block the sampler-based data-gen path.)

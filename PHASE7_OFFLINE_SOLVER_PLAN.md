@@ -1,7 +1,7 @@
 # Phase 7: Offline Solver for Phase 8 Training Data
 
-**Status:** Active. Core RNG surface validation done; Rust core (Phases 1-4a) accelerates the solver inner loop. Solver design / dataset generation is the next gate.
-**Last updated:** 2026-05-27.
+**Status:** Active. Core RNG surface validation done; Rust core (Phases 1-4a) accelerates the solver inner loop. The solver itself is BUILT (`solver/policy.py`, milestones in [`SOLVER_PLAN.md`](SOLVER_PLAN.md)) and generating data — section 5 below ("Solver design") is no longer "not started". The active gate is now **raising the solver's data-gen winrate** (~1% → ~8% so far via value-function bug fixes) before a large dataset run; see `PROGRESS.md` (2026-05-30/31) and memory `project_datagen_speed.md`.
+**Last updated:** 2026-05-31.
 
 > **Cross-reference:** the Rust port — which speeds up forward_sim and
 > evaluate by 1-2 orders of magnitude — lives in
@@ -306,10 +306,15 @@ Both bring `forward_sim` from 99.9% to 100% exact on the audited surface.
 
 ---
 
-## 5. Solver design (NOT STARTED)
+## 5. Solver design (BUILT — see SOLVER_PLAN.md)
 
-Once RNG matching covers the major surfaces (shop, boss, packs), the solver
-itself can be built. Design sketch:
+The solver is implemented as `solver/policy.py::SolverPolicy` and is generating
+data; milestone-by-milestone status is in [`SOLVER_PLAN.md`](SOLVER_PLAN.md)
+(M1–M5.5 done). It runs a whole-blind beam play search + a shop beam over a
+build-aware value function (the archetype-root-branching idea below was
+deprioritized — see SOLVER_PLAN.md M6). The active work is raising its data-gen
+winrate (`PROGRESS.md`). The original design sketch is retained below for
+context.
 
 ### 5.1 Per-seed solver structure
 

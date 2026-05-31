@@ -1,8 +1,15 @@
 # Offline Solver: Implementation Plan
 
-**Status:** M1–M5.5 done. Starting M6 (archetype branching).
+**Status:** M1–M5.5 done; `SolverPolicy` is built and generating data. The
+active work is no longer M6 archetype branching — it pivoted to **raising the
+data-gen winrate by fixing systematic value-function bugs** (see `PROGRESS.md`
+2026-05-30/31 and memory `project_datagen_speed.md`). M6 archetype branching was
+measured low-value (only ~35% of bought jokers fall in any archetype; Full House,
+the #1 leveled hand, is in none) and is deprioritized; the wins came instead from
+a play-value bug fix (ec9d0b7) and a shop joker-churn fix (f2944d8, ~0%→8%), plus
+a first-shop Buffoon-pack fix.
 **Parent:** [`PHASE7_OFFLINE_SOLVER_PLAN.md`](PHASE7_OFFLINE_SOLVER_PLAN.md) section 5.
-**Last updated:** 2026-05-25.
+**Last updated:** 2026-05-31.
 
 This document tracks the offline solver build itself — milestone status,
 decisions made, things that surprised us, throughput numbers. Updated as
@@ -350,7 +357,15 @@ with M3/M4 behavior (i.e. we didn't lobotomize the policy).
 
 ### M6 — Archetype root branching
 
-**Status:** **in progress.** M6a partial, M6b scaffolded.
+**Status:** **DEPRIORITIZED (2026-05-31).** M6a partial, M6b scaffolded, but a
+build audit (`scripts/solver_build_audit.py`) showed the archetype model is a
+poor fit for what the solver actually builds — only ~35% of bought jokers are in
+any `BUILT_IN_ARCHETYPE` key list, and Full House (the #1 leveled hand) is in
+none — so archetype-coherence terms barely engage. The winrate work moved to
+fixing systematic value-function bugs instead (play-value ec9d0b7, shop-churn
+f2944d8 ~0%→8%, first-shop Buffoon pack). The archetype machinery remains in the
+codebase, default-off. See `PROGRESS.md` and memory `project_datagen_speed.md`.
+Original M6 notes below kept for context.
 
 **M6a (single archetype, soft-bias shop leaf scoring) — built but regressed quality.**
 
