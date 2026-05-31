@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from random import Random
@@ -23,6 +24,11 @@ LeafValueFn = Callable[[GameState], float]
 ActionValueFn = Callable[[GameState, Action], float]
 LeafTermsFn = Callable[[GameState], "ShopLeafTerms"]
 _DEFAULT_ACTION_POTENTIAL_WEIGHT = 0.65
+# How much of a sold joker's owned value to charge against the sell action's
+# search value (anti-churn). Old behavior was 0.15 with a >=0 floor; see the
+# SELL branch of shop_action_search_value for why that caused sell->rebuy churn.
+# Env-tunable for winrate A/B.
+_SELL_OWNED_VALUE_COEFF: float = float(os.environ.get("BALATRO_SELL_OWNED_COEFF", "0.45"))
 
 _CONDITIONAL_CHIP_JOKERS = frozenset(
     {
@@ -89,6 +95,7 @@ class ShopLeafTerms:
     slot_value: float
     consumable_value: float
     leveling_value: float
+    coherence_value: float
     missing_penalty: float
     money_floor_penalty: float
     clear_gate_penalty: float
@@ -111,6 +118,7 @@ class ShopLeafTerms:
             + self.slot_value
             + self.consumable_value
             + self.leveling_value
+            + self.coherence_value
             - self.missing_penalty
             - self.money_floor_penalty
             - self.clear_gate_penalty
@@ -128,6 +136,8 @@ class ShopLeafTerms:
             "money": round(self.money_value, 3),
             "slots": round(self.slot_value, 3),
             "consumables": round(self.consumable_value, 3),
+            "leveling": round(self.leveling_value, 3),
+            "coherence": round(self.coherence_value, 3),
             "missing_penalty": round(self.missing_penalty, 3),
             "money_floor_penalty": round(self.money_floor_penalty, 3),
             "clear_gate_penalty": round(self.clear_gate_penalty, 3),
@@ -296,7 +306,20 @@ def shop_action_search_value(
         from balatro_ai.bots.basic_strategy.shop_jokers import _owned_joker_value
 
         sold = state.jokers[index]
-        return max(0.0, float(sold.sell_value or 0) - (_owned_joker_value(state, sold, remove_index=index) * 0.15))
+        # Selling a joker DESTROYS its owned value. The old formula floored at 0
+        # and only subtracted 15% of owned value, so selling a useful joker was
+        # scored as a free (>=0) money gain. Combined with `_basic_shop_action_value`
+        # for BUY being state-relative (a freed slot inflates the next buy's
+        # heuristic value), the beam learned to SELL a good joker then RE-BUY into
+        # the slot it freed — netting positive action-score despite a strictly
+        # worse build (confirmed via scripts/shop_decision_trace.py beam dump:
+        # "sell Scary -> buy Blue" beat "buy Blue -> end" 383 vs 361 with a LOWER
+        # leaf). That churn caps the build and destroys scaling jokers' progress.
+        # Fix: charge the sale the value it destroys (no >=0 floor), so selling a
+        # HIGH-value joker is net-negative (blocks churn) while dumping a LOW-value
+        # / dead joker still nets ~ its sell price (legitimate upgrades survive).
+        # Coefficient env-tunable for winrate A/B (scripts/shop_paired_ab.py).
+        return float(sold.sell_value or 0) - (_owned_joker_value(state, sold, remove_index=index) * _SELL_OWNED_VALUE_COEFF)
     if action.action_type in {ActionType.BUY, ActionType.OPEN_PACK}:
         value = _basic_shop_action_value(state, action, shop_context or ShopSearchContext())
         if action.action_type == ActionType.BUY:
@@ -398,6 +421,7 @@ def shop_leaf_terms(
     slot_value = _normal_joker_open_slots(state) * 2.5
     consumable_value = _shop_consumable_inventory_value(state)
     leveling_value = _shop_leveling_value(state)
+    coherence_value = _shop_archetype_coherence_value(state)
     money_floor_penalty = _shop_money_floor_penalty(state)
     pressure_ratio, raw_pressure_ratio, capacity_ratio = _shop_pressure_metrics(state)
     clear_gate_penalty = _shop_clear_gate_penalty(
@@ -433,6 +457,7 @@ def shop_leaf_terms(
         slot_value=slot_value,
         consumable_value=consumable_value,
         leveling_value=leveling_value,
+        coherence_value=coherence_value,
         missing_penalty=missing_penalty,
         money_floor_penalty=money_floor_penalty,
         clear_gate_penalty=clear_gate_penalty,
@@ -695,6 +720,50 @@ def _shop_leveling_value(state: GameState) -> float:
         except (TypeError, ValueError):
             continue
     return total * _LEVELING_VALUE_PER_LEVEL
+
+
+# --- Build coherence: focused (concentrated) hand leveling ---------------
+# Codifies researched Balatro principle #2 (memory/reference_balatro_strategy):
+# "CONCENTRATE planet cards on ONE committed hand; do NOT spread — it compounds
+# across the run." A build audit (scripts/solver_build_audit.py) showed the
+# solver's BEST runs reach ante 8 by pushing a single hand very high (e.g. Pair
+# lvl 8) while early deaths spread a few levels thin. The generic `leveling_value`
+# rewards every level equally, so it does NOT distinguish a concentrated build
+# from a scattered one. This term adds an EXTRA reward for the single most-leveled
+# hand, on top of uniform leveling, so the depth-2 shop beam prefers buying/using
+# planets that compound the hand it has already committed to.
+#
+# Deliberately hand-AGNOSTIC rather than joker-archetype based: the audit found
+# only ~35% of owned jokers fall in any archetype key list, and the #1 leveled
+# hand (Full House, 26/60 games) plus Straight (17) are in NO archetype — so a
+# joker-archetype coherence term barely engages and mis-steers away from the
+# hands the solver actually builds. Concentration is coverage-independent: it
+# rewards committing to whichever hand the deck/jokers favor. Weight via winrate.
+#
+# DEFAULT 0.0 (INERT / disabled): a 40-seed PAIRED A/B (scripts/shop_paired_ab.py,
+# weight 0->4) left 38/40 games byte-identical (2 worse, 0 better). Root cause:
+# this term depends only on owned `hand_levels`, which is CONSTANT across nearly
+# every shop action (buying a joker / rerolling / ending shop don't change hand
+# levels), so it never moves the search argmax — it only matters for the rare
+# planet decision. Leveling-based shop-leaf terms are structurally inert. Kept
+# env-toggleable for experiments, but OFF in production. To steer BUILDS, change
+# how JOKER PURCHASES are valued (owned/role/build terms), not leveling.
+_COHERENCE_LEVEL_WEIGHT: float = float(os.environ.get("BALATRO_COHERENCE_LEVEL_W", "0.0"))
+
+
+def _shop_archetype_coherence_value(state: GameState) -> float:
+    if _COHERENCE_LEVEL_WEIGHT == 0.0:
+        return 0.0
+    levels = getattr(state, "hand_levels", None) or {}
+    peak = 0.0
+    for lvl in levels.values():
+        try:
+            extra = max(0.0, float(lvl) - 1.0)
+        except (TypeError, ValueError):
+            continue
+        if extra > peak:
+            peak = extra
+    return peak * _COHERENCE_LEVEL_WEIGHT
 
 
 def _shop_build_score(state: GameState) -> float:
