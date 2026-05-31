@@ -29,6 +29,22 @@ _DEFAULT_ACTION_POTENTIAL_WEIGHT = 0.65
 # SELL branch of shop_action_search_value for why that caused sell->rebuy churn.
 # Env-tunable for winrate A/B.
 _SELL_OWNED_VALUE_COEFF: float = float(os.environ.get("BALATRO_SELL_OWNED_COEFF", "0.45"))
+# --- Build-aggression / boss-aware shop knobs (DEFAULT-OFF, env-toggleable) ---
+# These implement the "buy/keep score jokers early" + "apply the upcoming boss
+# effect when valuing jokers" directives. They WORK, but a bundled 80-seed paired
+# A/B measured them winrate-NEUTRAL-to-slightly-negative (wins 6->4), and they
+# have not been re-validated since the first-shop Buffoon fix (which changes the
+# early game). Kept OFF by default so production winrate isn't risked; flip via
+# env to re-test (ideally on top of the Buffoon fix), e.g. with
+# scripts/shop_buildaggr_ab.py.
+#
+# Flat-minimum sell penalty (anti-churn for low-owned early jokers). 0.0 = off.
+_SELL_FLAT_MIN: float = float(os.environ.get("BALATRO_SELL_FLAT_MIN", "0.0"))
+# Base scale for the shop build-capacity (score-increase) reward. 0.018 = old;
+# raise (e.g. 0.030) to reward a meaningful score-joker buy more in early shops.
+_BUILD_CAP_BASE: float = float(os.environ.get("BALATRO_BUILD_CAP_BASE", "0.018"))
+# Evaluate build score against the upcoming boss (Directive 2). Off by default.
+_BOSS_AWARE_EVAL: bool = os.environ.get("BALATRO_BOSS_AWARE_EVAL", "0") != "0"
 
 _CONDITIONAL_CHIP_JOKERS = frozenset(
     {
@@ -319,7 +335,13 @@ def shop_action_search_value(
         # HIGH-value joker is net-negative (blocks churn) while dumping a LOW-value
         # / dead joker still nets ~ its sell price (legitimate upgrades survive).
         # Coefficient env-tunable for winrate A/B (scripts/shop_paired_ab.py).
-        return float(sold.sell_value or 0) - (_owned_joker_value(state, sold, remove_index=index) * _SELL_OWNED_VALUE_COEFF)
+        # FLAT-MIN: low-owned early jokers (Smeared/Bull/Gluttonous score ~0 early)
+        # slipped past the proportional penalty and were still churned (audit of
+        # ante-1 deaths). A flat floor charges a minimum to sell ANY non-trivial
+        # joker, so a bought score-joker is kept rather than sold-then-rebought.
+        owned = _owned_joker_value(state, sold, remove_index=index)
+        penalty = max(owned * _SELL_OWNED_VALUE_COEFF, _SELL_FLAT_MIN if owned > 1.0 else 0.0)
+        return float(sold.sell_value or 0) - penalty
     if action.action_type in {ActionType.BUY, ActionType.OPEN_PACK}:
         value = _basic_shop_action_value(state, action, shop_context or ShopSearchContext())
         if action.action_type == ActionType.BUY:
@@ -490,7 +512,11 @@ def shop_build_capacity_delta_value(
     leaf_score = _shop_build_score(state) if leaf_build_score is None else leaf_build_score
     delta = leaf_score - float(baseline)
     ante = max(1, state.ante)
-    scale = 0.018 + min(0.024, max(0, ante - 1) * 0.004)
+    # Base scale raised (0.018 -> _BUILD_CAP_BASE) so a meaningful SCORE INCREASE
+    # from a joker is strongly rewarded EARLY (the old curve was lowest at ante 1,
+    # backwards from "pick up the best score joker in shop 1-2"). The +per-ante
+    # ramp is preserved. Env-tunable for A/B.
+    scale = _BUILD_CAP_BASE + min(0.024, max(0, ante - 1) * 0.004)
     weighted = delta * scale
     return max(-75.0, min(95.0, weighted))
 
@@ -766,11 +792,39 @@ def _shop_archetype_coherence_value(state: GameState) -> float:
     return peak * _COHERENCE_LEVEL_WEIGHT
 
 
+def _boss_aware_eval_state(state: GameState) -> GameState:
+    """Evaluate the build against the UPCOMING BOSS, not the cleared blind.
+
+    During the shop, ``state.blind`` is the just-cleared blind, so build scoring
+    applies no boss effect. The seed-faithful sim exposes the ante's boss in
+    ``state.modifiers['upcoming_boss']``; pointing the build evaluation at it lets
+    the boss's effect (suit debuffs via debuffed_suits_for_blind, etc.) shape
+    joker valuation -- e.g. a flush build is correctly devalued before a
+    suit-debuff boss. Applied to BOTH baseline and leaf build scores so the
+    capacity DELTA reflects each joker's help UNDER the boss. Env-toggleable.
+    """
+    if not _BOSS_AWARE_EVAL:
+        return state
+    try:
+        boss = (state.modifiers or {}).get("upcoming_boss")
+    except (AttributeError, TypeError):
+        return state
+    # `upcoming_boss` is a dict: {'key':'bl_psychic','name':'The Psychic',...}
+    boss_name = boss.get("name") if isinstance(boss, dict) else (boss if isinstance(boss, str) else None)
+    if isinstance(boss_name, str) and boss_name and boss_name != getattr(state, "blind", None):
+        try:
+            return replace(state, blind=boss_name)
+        except (TypeError, ValueError):
+            return state
+    return state
+
+
 def _shop_build_score(state: GameState) -> float:
     try:
         from balatro_ai.bots.basic_strategy.build_scoring import _sample_build_score
 
-        return max(0.0, float(_sample_build_score(state, state.jokers)))
+        eval_state = _boss_aware_eval_state(state)
+        return max(0.0, float(_sample_build_score(eval_state, eval_state.jokers)))
     except (ImportError, TypeError, ValueError, AttributeError):
         return 0.0
 
