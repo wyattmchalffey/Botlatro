@@ -344,7 +344,17 @@ def _planning_value_uncached(state: GameState, *, samples: int, seed: int) -> fl
     clear = clear_probability(state, samples=samples, seed=seed)
     headroom = headroom_value(state)
     if state.phase == GamePhase.ROUND_EVAL or state.current_score >= state.required_score:
-        return 1.0 + min(0.75, headroom * 0.25)
+        # CLEARED the blind — must value strictly ABOVE every non-cleared state.
+        # The non-cleared branch below maxes at ~1.58 (headroom <= 2.33), and a
+        # near-cleared state has an INFLATED headroom score-component
+        # (best_play / tiny_remaining -> capped 3.0). With the old base of 1.0
+        # here, "almost cleared with a strong hand in hand" (~1.39) outscored
+        # "actually cleared" (~1.03), so the solver deferred its good hands,
+        # played junk to keep the strong hand "available", and ran out of hands
+        # — the ~1% data-gen winrate / ante-1 collapse (fixed 2026-05-30).
+        # Base 1.75 (> 1.58 non-cleared max) makes clearing dominate; headroom
+        # still tie-breaks bigger/better clears. (won-run stays 2.0.)
+        return 1.75 + min(0.25, headroom * 0.25)
 
     progress = min(1.0, max(0.0, state.current_score / max(1, state.required_score)))
     return (clear * 1.0) + (clear * headroom * 0.25) + ((1.0 - clear) * progress * 0.15)
