@@ -71,8 +71,14 @@ def replay_on_bridge(seed: str, records, endpoint: str = "http://127.0.0.1:12346
     bridge_final = state
     for i, (action, sim_pre) in enumerate(records):
         bridge_pre = _summary(state)
-        # Compare PRE-action state (ante/score/money/hand) before applying.
-        for key in ("ante", "score", "money", "hand"):
+        # Compare PRE-action state before applying. `ante` is a counter that
+        # increments at slightly different points (bridge at boss-defeat /
+        # round_eval, sim at cash_out), so only compare it OUTSIDE round_eval
+        # where both have settled; score/money/hand are the substantive state.
+        compare_keys = ("score", "money", "hand")
+        if sim_pre["phase"] != "round_eval" and bridge_pre["phase"] != "round_eval":
+            compare_keys = ("ante",) + compare_keys
+        for key in compare_keys:
             if bridge_pre[key] != sim_pre[key]:
                 if first_diff is None:
                     first_diff = (i, key, sim_pre, bridge_pre, action.action_type.value, tuple(action.card_indices))
