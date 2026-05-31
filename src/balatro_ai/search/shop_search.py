@@ -88,6 +88,7 @@ class ShopLeafTerms:
     money_value: float
     slot_value: float
     consumable_value: float
+    leveling_value: float
     missing_penalty: float
     money_floor_penalty: float
     clear_gate_penalty: float
@@ -109,6 +110,7 @@ class ShopLeafTerms:
             + self.money_value
             + self.slot_value
             + self.consumable_value
+            + self.leveling_value
             - self.missing_penalty
             - self.money_floor_penalty
             - self.clear_gate_penalty
@@ -395,6 +397,7 @@ def shop_leaf_terms(
     headroom_value = shop_capacity_headroom_value(state)
     slot_value = _normal_joker_open_slots(state) * 2.5
     consumable_value = _shop_consumable_inventory_value(state)
+    leveling_value = _shop_leveling_value(state)
     money_floor_penalty = _shop_money_floor_penalty(state)
     pressure_ratio, raw_pressure_ratio, capacity_ratio = _shop_pressure_metrics(state)
     clear_gate_penalty = _shop_clear_gate_penalty(
@@ -429,6 +432,7 @@ def shop_leaf_terms(
         money_value=money_value,
         slot_value=slot_value,
         consumable_value=consumable_value,
+        leveling_value=leveling_value,
         missing_penalty=missing_penalty,
         money_floor_penalty=money_floor_penalty,
         clear_gate_penalty=clear_gate_penalty,
@@ -671,6 +675,26 @@ def _upcoming_shop_boss_name(state: GameState) -> str | None:
         return _upcoming_boss_blind_name(state)
     except (ImportError, TypeError, ValueError, AttributeError):
         return None
+
+
+# Per-hand-level reward in the shop leaf value. Hand leveling (planet cards /
+# Celestial packs) is the dominant scaling mechanic, but the depth-2 shop search
+# is MYOPIC about its compounding payoff over future antes, so it under-invests
+# vs a leveling-aware build (basic_strategy_bot levels aggressively and wins ~23%
+# while the solver caps ~ante 5). This term biases the search toward buying/using
+# planet cards and opening Celestial packs. Tuned via winrate.
+_LEVELING_VALUE_PER_LEVEL: float = 3.0
+
+
+def _shop_leveling_value(state: GameState) -> float:
+    levels = getattr(state, "hand_levels", None) or {}
+    total = 0.0
+    for lvl in levels.values():
+        try:
+            total += max(0.0, float(lvl) - 1.0)
+        except (TypeError, ValueError):
+            continue
+    return total * _LEVELING_VALUE_PER_LEVEL
 
 
 def _shop_build_score(state: GameState) -> float:
