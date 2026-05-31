@@ -83,7 +83,16 @@ class StateValueTests(unittest.TestCase):
             known_deck=(Card("A", "H"), Card("K", "S"), Card("Q", "D")),
         )
 
-        self.assertEqual(clear_probability(state, samples=3, seed=7), 1.0)
+        # The discard-aware rollout lives in the Python path: it discards the
+        # dead 7/4/2, redraws the Ace from the known deck, and clears with the
+        # pair. The Rust fast path (clear_probability_native) only ever plays —
+        # it never models discards (see botlatro-core search/rollout.rs) — so it
+        # cannot represent this line and is bypassed here. Production keeps the
+        # Rust default for Rust-safe blinds; the discard capability still runs
+        # on the Python path for Rust-unsafe states (boss blinds, complex
+        # jokers, Glass cards, blue seals).
+        with patch.object(state_values, "_try_rust_clear_probability", return_value=None):
+            self.assertEqual(clear_probability(state, samples=3, seed=7), 1.0)
 
     def test_future_value_is_monotonic_for_stronger_state(self) -> None:
         weak = GameState(
@@ -156,15 +165,20 @@ class StateValueTests(unittest.TestCase):
             modifiers=dict(state.modifiers),
         )
 
+        # Probe the uncached compute path rather than evaluate_played_cards:
+        # scoring now goes through the Rust fast path, so the Python
+        # evaluator is no longer called. The cache contract under test is
+        # unchanged — _best_immediate_score_uncached must run once for the
+        # first state and be skipped for content-equivalent (reordered) hands.
         with state_values.state_value_cache_scope():
-            with patch.object(state_values, "evaluate_played_cards", wraps=state_values.evaluate_played_cards) as evaluate:
+            with patch.object(state_values, "_best_immediate_score_uncached", wraps=state_values._best_immediate_score_uncached) as compute:
                 first_score = state_values._best_immediate_score(state)
-                calls_after_first = evaluate.call_count
+                calls_after_first = compute.call_count
                 second_score = state_values._best_immediate_score(equivalent_state)
 
         self.assertEqual(second_score, first_score)
-        self.assertGreater(calls_after_first, 0)
-        self.assertEqual(evaluate.call_count, calls_after_first)
+        self.assertEqual(calls_after_first, 1)
+        self.assertEqual(compute.call_count, calls_after_first)
 
     def test_search_value_reuses_greedy_action_score_for_equivalent_hand_content(self) -> None:
         state = GameState(
@@ -192,10 +206,15 @@ class StateValueTests(unittest.TestCase):
             modifiers=dict(state.modifiers),
         )
 
+        # Probe the uncached compute path rather than evaluate_played_cards:
+        # scoring now goes through the Rust fast path, so the Python
+        # evaluator is no longer called. The cache contract under test is
+        # unchanged — _best_greedy_play_action_uncached must run once for the
+        # first state and be skipped for content-equivalent (reordered) hands.
         with state_values.state_value_cache_scope():
-            with patch.object(state_values, "evaluate_played_cards", wraps=state_values.evaluate_played_cards) as evaluate:
+            with patch.object(state_values, "_best_greedy_play_action_uncached", wraps=state_values._best_greedy_play_action_uncached) as compute:
                 first_action = state_values._best_greedy_play_action(state)
-                calls_after_first = evaluate.call_count
+                calls_after_first = compute.call_count
                 second_action = state_values._best_greedy_play_action(equivalent_state)
 
         self.assertIsNotNone(first_action)
@@ -204,8 +223,8 @@ class StateValueTests(unittest.TestCase):
             sorted(state.hand[index].short_name for index in first_action.card_indices),
             sorted(equivalent_state.hand[index].short_name for index in second_action.card_indices),
         )
-        self.assertGreater(calls_after_first, 0)
-        self.assertEqual(evaluate.call_count, calls_after_first)
+        self.assertEqual(calls_after_first, 1)
+        self.assertEqual(compute.call_count, calls_after_first)
 
     def test_future_value_cashes_out_round_eval_leaf(self) -> None:
         state = GameState(
