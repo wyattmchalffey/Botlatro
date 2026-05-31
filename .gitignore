@@ -1,11 +1,17 @@
-# Runtime output
-.logs/
+# Data and logs
 .data/
+.logs/
+logs/
+logs*.txt
+*.log
+notes/
 
-# Python caches
+# Python
+*.pyc
 __pycache__/
-*.py[cod]
-*$py.class
+*.egg-info/
+build/
+dist/
 
 # Test and tool caches
 .pytest_cache/
@@ -14,16 +20,21 @@ __pycache__/
 .coverage
 htmlcov/
 
-# Virtual environments and packaging
+# Virtual environments
 .venv/
 venv/
 env/
-build/
-dist/
-*.egg-info/
+
+# Cython build artifacts (generated from .pyx by setup.py cythonize)
+src/balatro_ai/rules/hand_evaluator_native.c
+*.so
+*.pyd
 
 # Local editor and OS files
 .idea/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Machine-local Claude settings
+.claude/settings.local.json
