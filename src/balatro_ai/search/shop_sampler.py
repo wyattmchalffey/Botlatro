@@ -12,11 +12,16 @@ from copy import deepcopy
 from dataclasses import dataclass
 from functools import lru_cache
 import json
+import os
 from pathlib import Path
 from random import Random
 from typing import Any, Callable, TypeVar
 
 from balatro_ai.api.state import Card, GameState
+
+# First-shop Buffoon-pack guarantee (vanilla Balatro). Default ON; env-toggle
+# off only to A/B the fix's winrate impact.
+_FORCE_FIRST_BUFFOON: bool = os.environ.get("BALATRO_FORCE_FIRST_BUFFOON", "1") != "0"
 
 SHOP_POOL_DATA_PATH = Path(__file__).resolve().parents[1] / "data" / "shop_pools.json"
 
@@ -279,18 +284,32 @@ class ShopSampler:
         record = _weighted_choice(tuple((record, float(record.get("weight", 1))) for record in records), rng, default=(records[0], 1))[0]
         return _payload_from_record(record, state)
 
-    def sample_boosters(self, state: GameState, n_slots: int | None = None, rng: Random | None = None) -> tuple[dict[str, Any], ...]:
-        """Sample booster packs for a fresh shop."""
+    def sample_boosters(self, state: GameState, n_slots: int | None = None, rng: Random | None = None, *, first_shop: bool = False) -> tuple[dict[str, Any], ...]:
+        """Sample booster packs for a fresh shop.
+
+        When ``first_shop`` is True and the game mode guarantees it
+        (``modifiers['first_shop_buffoon']`` truthy — vanilla default), pack
+        slot 0 is FORCED to a Buffoon pack, matching real Balatro (the very
+        first shop always offers a Buffoon pack for a free starting joker).
+        The seed-faithful path (predict_shop_boosters) already does this; this
+        is the sampler fallback used when the per-run RNG is unavailable, where
+        a previously-inverted check left the first shop with no Buffoon — so
+        every sampled run was denied its guaranteed early joker.
+        """
 
         rng = rng or Random()
         slots = _booster_slot_count(self.data) if n_slots is None else max(0, n_slots)
         records = self._pool_records("Booster", state)
         if not records:
             return ()
-        forced_first_buffoon = state.modifiers.get("first_shop_buffoon") is False
+        force_first_buffoon = (
+            _FORCE_FIRST_BUFFOON
+            and bool(first_shop)
+            and bool(state.modifiers.get("first_shop_buffoon"))
+        )
         packs: list[dict[str, Any]] = []
         for index in range(slots):
-            if index == 0 and forced_first_buffoon:
+            if index == 0 and force_first_buffoon:
                 candidates = [record for record in records if str(record.get("key", "")).startswith("p_buffoon_normal")]
                 record = rng.choice(candidates or records)
             else:

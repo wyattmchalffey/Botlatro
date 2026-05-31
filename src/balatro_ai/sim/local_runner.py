@@ -1033,7 +1033,7 @@ class LocalBalatroSimulator:
         else:
             shop_cards = self.sampler.sample_shop(state, rng=self._rng)
             next_voucher_cards = _optional_tuple(self.sampler.sample_voucher(state, self._rng))
-            booster_packs = self.sampler.sample_boosters(state, rng=self._rng)
+            booster_packs = self.sampler.sample_boosters(state, rng=self._rng, first_shop=self._shop_index == 0)
         self._shop_index += 1
         next_state = simulate_cash_out(
             state,
