@@ -112,6 +112,7 @@ class ShopLeafTerms:
     consumable_value: float
     leveling_value: float
     coherence_value: float
+    scaling_investment_value: float
     missing_penalty: float
     money_floor_penalty: float
     clear_gate_penalty: float
@@ -135,6 +136,7 @@ class ShopLeafTerms:
             + self.consumable_value
             + self.leveling_value
             + self.coherence_value
+            + self.scaling_investment_value
             - self.missing_penalty
             - self.money_floor_penalty
             - self.clear_gate_penalty
@@ -154,6 +156,7 @@ class ShopLeafTerms:
             "consumables": round(self.consumable_value, 3),
             "leveling": round(self.leveling_value, 3),
             "coherence": round(self.coherence_value, 3),
+            "scaling_invest": round(self.scaling_investment_value, 3),
             "missing_penalty": round(self.missing_penalty, 3),
             "money_floor_penalty": round(self.money_floor_penalty, 3),
             "clear_gate_penalty": round(self.clear_gate_penalty, 3),
@@ -426,6 +429,7 @@ def shop_leaf_terms(
     for role in ("chips", "mult", "xmult", "scaling", "economy"):
         requirement = max(1.0, profile.role_requirement(role))
         role_value += min(1.0, profile.role_score(role) / requirement) * 10.0
+    scaling_investment_value = _shop_scaling_investment_value(state, profile)
     missing_penalty = len(profile.missing_roles) * (8.0 + min(8.0, max(0, state.ante - 2) * 1.5))
     money_value = _shop_money_value(state)
     leaf_build_score = _shop_build_score(state)
@@ -480,6 +484,7 @@ def shop_leaf_terms(
         consumable_value=consumable_value,
         leveling_value=leveling_value,
         coherence_value=coherence_value,
+        scaling_investment_value=scaling_investment_value,
         missing_penalty=missing_penalty,
         money_floor_penalty=money_floor_penalty,
         clear_gate_penalty=clear_gate_penalty,
@@ -775,6 +780,48 @@ def _shop_leveling_value(state: GameState) -> float:
 # env-toggleable for experiments, but OFF in production. To steer BUILDS, change
 # how JOKER PURCHASES are valued (owned/role/build terms), not leveling.
 _COHERENCE_LEVEL_WEIGHT: float = float(os.environ.get("BALATRO_COHERENCE_LEVEL_W", "0.0"))
+
+
+# --- Scaling investment (the win-CEILING lever) --------------------------
+# The single biggest winrate gap (memory project_datagen_speed.md): the solver
+# STOPS AT 1 JOKER early and never builds a late-game engine, because every
+# downstream valuation is immediate-score-myopic:
+#   - `_shop_build_score` samples hands at CURRENT levels, so a scaling joker
+#     (Egg/Ride the Bus/Square: weak now, compounds over the run) reads ~0 delta.
+#   - `role_value` SATURATES at min(1, score/req)*10 per role, so once the FIRST
+#     scaling joker meets the ante-1 requirement (10), a 2nd adds +0 (proven:
+#     Egg gives scaling role-score 24 >> req 10, so role_value is already maxed).
+# A human grabs Egg/Ride the Bus/economy/xmult precisely for their GROWTH. This
+# term rewards owning scaling+xmult role-score UNCAPPED (beyond the satisficing
+# cap), so each additional growth joker keeps adding value -> the intent was to
+# stack a real engine instead of stopping at one immediate-value joker.
+#
+# RESULT: MEASURED NEGATIVE, kept DEFAULT-OFF (0.0). Paired A/Bs (60 seeds,
+# width=1, scripts/shop_paired_ab.py): weight 1.5 -> d_ante -0.067 (wins 3->3),
+# weight 3.0 -> d_ante -0.267 (wins 3->3) — monotonic with weight, so the
+# DIRECTION is wrong, not the magnitude. Diagnosis: only ~10/60 trajectories
+# even changed, and the changes were net-negative — the term trades an immediate
+# chips/mult joker (needed to CLEAR the next blind) for a growth joker that
+# doesn't pay off before the game ends. The de-saturation insight is real but
+# role-score weighting is the wrong knob; the actual gap is the beam not valuing
+# a 2nd/3rd joker SLOT at all (see memory project_datagen_speed.md). Env-gated
+# scaffolding so the next attempt doesn't re-tread this; tune scripts/shop_paired_ab.py.
+_SCALING_INVEST_WEIGHT: float = float(os.environ.get("BALATRO_SCALING_INVEST_W", "0.0"))
+
+
+def _shop_scaling_investment_value(state: GameState, profile) -> float:
+    if _SCALING_INVEST_WEIGHT == 0.0:
+        return 0.0
+    try:
+        scaling = max(0.0, float(profile.role_score("scaling")))
+        xmult = max(0.0, float(profile.role_score("xmult")))
+    except (AttributeError, TypeError, ValueError):
+        return 0.0
+    # xmult is the multiplicative ceiling -> weight it above flat scaling.
+    raw = scaling + xmult * 1.5
+    # sqrt: rewards the first several growth jokers strongly, then tapers so a
+    # single editioned xmult joker can't swamp the whole leaf score.
+    return (raw ** 0.5) * _SCALING_INVEST_WEIGHT
 
 
 def _shop_archetype_coherence_value(state: GameState) -> float:

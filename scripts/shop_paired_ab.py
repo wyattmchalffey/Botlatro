@@ -29,10 +29,10 @@ def _run_one(seed: str, weight: float) -> dict:
     from balatro_ai.sim.local_runner import LocalBalatroSimulator
 
     hs._NATIVE_BEAM_ENABLED = False
-    ss._SELL_OWNED_VALUE_COEFF = float(weight)  # toggle the anti-churn sell penalty
+    ss._SCALING_INVEST_WEIGHT = float(weight)  # sweep the scaling-investment term
     sim = LocalBalatroSimulator(seed=_stable_seed_int(seed), stake="white")
     sim.state = SeedGame(seed, stake="white").initial_state()
-    pol = SolverPolicy(seed=0)
+    pol = SolverPolicy(seed=0, play_width=1)  # match data-gen config
     for _ in range(6000):
         st = sim.state
         if st.run_over:
