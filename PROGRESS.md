@@ -330,6 +330,23 @@
   (enumerate + score candidates) for a real play prior; then (b) wire value + priors
   into a neural-guided search + self-play loop. Per `PHASE8_NEURAL_PLAN.md`.
 
+### 2026-06-01 — Stage 2.2: candidate-subset play policy WORKS (first play-side win)
+
+- **`ml/play_policy.py` + `ValueNet.play_candidate_scores`**: score each *enumerated*
+  candidate play (pooled subset card-embeddings + hand-type + size + global context),
+  trained by negative-sampling CE to rank the teacher's chosen play above random
+  subsets — the corrected model that sidesteps the pooled-state problem.
+- **Held-out: top-1 0.388 vs random baseline 0.031 (~12.5×), train≈val (0.398/0.388 —
+  generalizes cleanly).** The FIRST play-side head to learn: scoring enumerated
+  candidates cracked the combinatorial play decision the pooled-state heads couldn't.
+  (top-1 0.39 = a strong PRUNING prior — top-k recall is high — not a perfect #1
+  ranker.) 33 ml tests green; checkpoint `phase8_playpolicy_v0.pt`.
+- **All three neural-guided-search components now exist:** value leaf (distilled
+  clear-prob, ~2.2× faster), action-type prior (0.75 vs 0.23), play-candidate prior
+  (0.39 top-1 / 12.5× random). Next: wire them into a **pruned neural-guided beam**
+  (policy → top-k candidates, value leaf → eval) and A/B vs the heuristic beam; then
+  the self-play loop. Per `PHASE8_NEURAL_PLAN.md`.
+
 ## Next Steps
 
 > **Top priority (2026-05-31): the Phase 8 neural build** — `PHASE8_NEURAL_PLAN.md`.
