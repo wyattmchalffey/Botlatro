@@ -447,6 +447,15 @@
   retrain the value head, confirm joker-removal Δ goes 0.01 → clearly positive + corr beats
   0.47. The averaged-rollout labeler then *is* the AlphaZero value-data generator. 34 ml
   tests green.
+- **Quality (not just count) probe** (`scripts/phase8_joker_quality_probe.py`): the +0.38
+  removal signal could be the trivial "more jokers > fewer" (count). To isolate QUALITY,
+  measured the split-half reliability of the *demeaned* per-joker Δ (subtract each state's
+  mean → removes count, leaving relative joker quality). **14 DIVERSE builds (1 state/seed),
+  68 jokers, K=10: demeaned split-half corr = 0.66**, with build-specific carries (Stuntman
+  +1.39 in one build, Abstract Joker +0.42 in another, Spare Trousers +0.73 in a third). (A
+  one-build sample inflated this to 0.95 — fixed by capping states/seed.) ⇒ averaged rollouts
+  carry BOTH count AND real build-quality signal → Part 2 can plausibly *beat* the heuristic,
+  not just stop the joker-selling. GREEN LIGHT for Part 2.
 
 ## Next Steps
 
