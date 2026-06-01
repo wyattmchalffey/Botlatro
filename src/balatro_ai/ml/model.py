@@ -22,6 +22,7 @@ from dataclasses import dataclass
 
 import torch
 from torch import nn
+from torch.nn import functional as F
 
 from balatro_ai.api.actions import ActionType
 from balatro_ai.ml.encoding import EncodedState, encoding_spec
@@ -206,6 +207,11 @@ class ValueNet(nn.Module):
         self.card_policy = nn.Sequential(
             nn.Linear(d_token + d_trunk, d_token), nn.ReLU(),
             nn.Linear(d_token, 1))
+        # Candidate-subset play policy: score each enumerated candidate play from
+        # its pooled subset card-embeddings + global context + hand-type + size.
+        self.play_candidate_mlp = nn.Sequential(
+            nn.Linear(d_token + d_trunk + 12 + 1, d_trunk), nn.ReLU(),
+            nn.Linear(d_trunk, 1))
 
     def _features(self, batch: Batch) -> torch.Tensor:
         joker_tok = torch.cat(
@@ -289,6 +295,27 @@ class ValueNet(nn.Module):
     def hand_type_logits(self, batch: Batch) -> torch.Tensor:
         """Logits over the 12 poker hands the teacher plays (play steps)."""
         return self.hand_type_head(self._trunk(batch))
+
+    def play_candidate_scores(
+        self,
+        batch: Batch,
+        cand_masks: torch.Tensor,   # [B, C, H] hand positions each candidate plays
+        cand_htypes: torch.Tensor,  # [B, C] long poker hand-type index
+        cand_sizes: torch.Tensor,   # [B, C] subset size
+    ) -> torch.Tensor:
+        """Score each candidate play subset; logits [B, C] (softmax over C)."""
+        ctx = self._trunk(batch)                          # [B, d_trunk]
+        card_emb = self._card_embeddings(batch)           # [B, H, d_token]
+        _, c, _ = cand_masks.shape
+        m = cand_masks.unsqueeze(-1)                      # [B, C, H, 1]
+        pooled = (card_emb.unsqueeze(1) * m).sum(dim=2) / m.sum(dim=2).clamp(min=1.0)
+        feat = torch.cat([
+            pooled,                                        # [B, C, d_token]
+            ctx.unsqueeze(1).expand(-1, c, -1),           # [B, C, d_trunk]
+            F.one_hot(cand_htypes, 12).float(),           # [B, C, 12]
+            (cand_sizes / 5.0).unsqueeze(-1),             # [B, C, 1]
+        ], dim=-1)
+        return self.play_candidate_mlp(feat).squeeze(-1)  # [B, C]
 
     def heads(self, batch: Batch) -> tuple[torch.Tensor, torch.Tensor]:
         """(win_logit, ante_value) from a single shared trunk pass."""
