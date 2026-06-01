@@ -202,6 +202,7 @@ class ValueNet(nn.Module):
         # for play/discard (scores each hand card, since the trunk pools away
         # positional identity).
         self.type_head = nn.Linear(d_trunk, len(POLICY_ACTION_TYPES))
+        self.hand_type_head = nn.Linear(d_trunk, 12)  # poker hand played (play steps)
         self.card_policy = nn.Sequential(
             nn.Linear(d_token + d_trunk, d_token), nn.ReLU(),
             nn.Linear(d_token, 1))
@@ -284,6 +285,10 @@ class ValueNet(nn.Module):
             [card_emb, ctx.unsqueeze(1).expand(-1, h, -1)], dim=-1)
         card_logits = self.card_policy(per_card).squeeze(-1)  # [B, H]
         return type_logits, card_logits
+
+    def hand_type_logits(self, batch: Batch) -> torch.Tensor:
+        """Logits over the 12 poker hands the teacher plays (play steps)."""
+        return self.hand_type_head(self._trunk(batch))
 
     def heads(self, batch: Batch) -> tuple[torch.Tensor, torch.Tensor]:
         """(win_logit, ante_value) from a single shared trunk pass."""

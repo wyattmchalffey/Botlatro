@@ -314,9 +314,21 @@
 - Pattern across Stage 1–2: **coarse targets learn** (ante 0.43, type 0.75, clear-prob
   0.87); **hard/combinatorial/discriminative targets need better modeling** (win,
   exact cards, low-clear states). The forward model + learning pipeline are solid;
-  each head needs its right architecture. Next options: (a) candidate-subset play
-  policy; (b) wire the working pieces (type prior + value) into a first neural-guided
-  search + self-play loop. Per `PHASE8_NEURAL_PLAN.md`.
+  each head needs its right architecture.
+- **Hand-type play policy ALSO failed** (`hand_type_head` predicting which of 12 poker
+  hands the teacher plays): held-out hand-type acc 0.519 vs base 0.479 (+0.04, ≈ base).
+  **ROOT CAUSE (now clear): the play decision is dominated by the SPECIFIC dealt hand**
+  ("what's the best hand I can form?"), but the set-encoder **pools the hand away** — so
+  neither the pooled trunk (hand-type head) nor position-independent per-card scoring
+  can capture it. The action-TYPE policy works precisely because type is phase/coarse-
+  state-driven, NOT hand-specific. A real play policy must score **enumerated candidate
+  plays** with explicit per-candidate (hand-type + cards) features — a candidate-subset
+  pointer, not a state-only head. Documented negative; `phase8_policy_v1.pt`.
+- **Map after Stage 1–2** — WORKS: ante value (0.43), distilled clear-leaf (corr 0.87,
+  ~2.2× faster), action-type policy (0.75 vs 0.23). FAILS via the pooled rep: win head,
+  per-card / hand-type play policy. Clear next: (a) **candidate-subset play policy**
+  (enumerate + score candidates) for a real play prior; then (b) wire value + priors
+  into a neural-guided search + self-play loop. Per `PHASE8_NEURAL_PLAN.md`.
 
 ## Next Steps
 
