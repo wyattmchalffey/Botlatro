@@ -23,7 +23,13 @@ from dataclasses import dataclass
 import torch
 from torch import nn
 
+from balatro_ai.api.actions import ActionType
 from balatro_ai.ml.encoding import EncodedState, encoding_spec
+
+# Action-type vocabulary for the policy head.
+POLICY_ACTION_TYPES = tuple(a.value for a in ActionType)
+ACTION_TYPE_INDEX = {t: i for i, t in enumerate(POLICY_ACTION_TYPES)}
+PLAY_ACTION_TYPES = frozenset({ActionType.PLAY_HAND.value, ActionType.DISCARD.value})
 
 # Per-token feature layout (must match the column order built in `collate_states`).
 _JOKER_NCAT, _JOKER_NNUM = 2, 6   # cat: key, edition | num: eternal,perishable,rental,debuffed,counter,sell
@@ -192,6 +198,13 @@ class ValueNet(nn.Module):
         self.win_head = nn.Linear(d_trunk, 1)
         self.ante_head = nn.Linear(d_trunk, 1)   # predicts final ante / 8 in [0,1]
         self.clear_head = nn.Linear(d_trunk, 1)  # distilled rollout leaf value in [0,2]
+        # Policy heads (Stage 2): action-type distribution + a per-card pointer
+        # for play/discard (scores each hand card, since the trunk pools away
+        # positional identity).
+        self.type_head = nn.Linear(d_trunk, len(POLICY_ACTION_TYPES))
+        self.card_policy = nn.Sequential(
+            nn.Linear(d_token + d_trunk, d_token), nn.ReLU(),
+            nn.Linear(d_token, 1))
 
     def _features(self, batch: Batch) -> torch.Tensor:
         joker_tok = torch.cat(
@@ -244,6 +257,33 @@ class ValueNet(nn.Module):
     def clear_value(self, batch: Batch) -> torch.Tensor:
         """Distilled rollout-leaf value in [0, 2] (matches the leaf convention)."""
         return (2.0 * torch.sigmoid(self.clear_head(self._trunk(batch)))).squeeze(-1)
+
+    def _card_embeddings(self, batch: Batch) -> torch.Tensor:
+        """Per-card token embeddings [B, H, d_token] (pre-pool)."""
+        card_tok = torch.cat(
+            [self.card_rank(batch.card_cat[..., 0]),
+             self.card_suit(batch.card_cat[..., 1]),
+             self.card_enh(batch.card_cat[..., 2]),
+             self.card_edition(batch.card_cat[..., 3]),
+             self.card_seal(batch.card_cat[..., 4]),
+             batch.card_num], dim=-1)
+        return self.card_mlp(card_tok)
+
+    def policy(self, batch: Batch) -> tuple[torch.Tensor, torch.Tensor]:
+        """Imitation policy: (action_type_logits [B, T], per-card play logits [B, H]).
+
+        `card_logits` scores each hand position for inclusion in a play/discard;
+        mask by `batch.card_mask` before use. The trunk supplies global context to
+        each per-card score.
+        """
+        ctx = self._trunk(batch)                       # [B, d_trunk]
+        type_logits = self.type_head(ctx)              # [B, T]
+        card_emb = self._card_embeddings(batch)        # [B, H, d_token]
+        h = card_emb.shape[1]
+        per_card = torch.cat(
+            [card_emb, ctx.unsqueeze(1).expand(-1, h, -1)], dim=-1)
+        card_logits = self.card_policy(per_card).squeeze(-1)  # [B, H]
+        return type_logits, card_logits
 
     def heads(self, batch: Batch) -> tuple[torch.Tensor, torch.Tensor]:
         """(win_logit, ante_value) from a single shared trunk pass."""

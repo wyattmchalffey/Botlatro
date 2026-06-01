@@ -287,9 +287,36 @@
   almost-equal*, not yet a clean "faster AND ≥quality" pass; the gap is small and
   data-closeable. 31 ml tests green; `ml/leaf.py::ValueNetLeaf(head="clear")`,
   checkpoint `phase8_clear_v0.pt`. No production solver code touched.
-- Next: scale the distillation collection (more seeds → higher fidelity → close the
-  ~0.5-ante gap to a clean pass); then Stage 2 (policy head) + self-play for actual
-  strength. Per `PHASE8_NEURAL_PLAN.md`.
+- **Scaling distillation BACKFIRED (16→48 seeds): beam ante 4.67→3.67.** MSE
+  distillation of the mean-heavy rollout labels (clear-prob mean ~0.92) regresses to
+  the mean — `pred_mean` 0.904→0.945, under-fitting the RARE low-clear leaves that
+  actually drive play choices. More data amplified the collapse. Lesson: the distilled
+  leaf needs a **loss fix** (reweight/rank the low-clear states, or cleaner labels),
+  NOT more data; `phase8_clear_v0.pt` (16-seed, ante 4.67, ~2.2× faster) stays the best
+  distilled leaf.
+- Decision point: Option A is validated-but-finicky and is a **SPEED-only** win (capped
+  at rollout quality). The strength path to superhuman is **Stage 2 (policy head)** —
+  imitate teacher actions (the bootstrap captures already hold `(state, action)` pairs)
+  to prune/guide search AlphaZero-style, then self-play. **Recommended next: Stage 2.**
+  (The Option-A reweight fix is a known fallback if a fast leaf becomes the bottleneck.)
+
+### 2026-05-31 — Stage 2: policy head (type policy strong; per-card policy failed)
+
+- **Policy head built + imitation-trained** (`ml/policy.py`, `ValueNet.policy`): a
+  14-way action-TYPE head + a per-card play POINTER (per hand position, since the
+  trunk pools the hand). Trained on the existing 512-run captures (no new data-gen).
+  Held-out (by-run): **action-type acc 0.753 vs base rate 0.233** — a strong,
+  generalizing signal (train 0.768, minimal gap). But the **per-card pointer FAILED**:
+  card_pos_acc 0.564 (≈ chance), subset-exact 0.8%. Card selection is combinatorial
+  (which SUBSET forms the best hand), so position-independent BCE is the wrong model;
+  it needs a candidate-SUBSET scorer (a pointer over the enumerated candidate plays).
+  32 ml tests green; checkpoint `phase8_policy_v0.pt`.
+- Pattern across Stage 1–2: **coarse targets learn** (ante 0.43, type 0.75, clear-prob
+  0.87); **hard/combinatorial/discriminative targets need better modeling** (win,
+  exact cards, low-clear states). The forward model + learning pipeline are solid;
+  each head needs its right architecture. Next options: (a) candidate-subset play
+  policy; (b) wire the working pieces (type prior + value) into a first neural-guided
+  search + self-play loop. Per `PHASE8_NEURAL_PLAN.md`.
 
 ## Next Steps
 
