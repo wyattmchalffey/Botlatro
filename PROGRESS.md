@@ -347,6 +347,39 @@
   (policy → top-k candidates, value leaf → eval) and A/B vs the heuristic beam; then
   the self-play loop. Per `PHASE8_NEURAL_PLAN.md`.
 
+### 2026-06-01 — Stage 2.3: neural-guided beam wired + A/B → play-policy pruning is a DEAD END
+
+- **Wired with NO production solver edits** (`ml/neural_search.py`): the v2 beam already
+  abstracts `candidate_provider` + `leaf_evaluator`, so `PolicyCandidateProvider`
+  (ranks legal plays by `play_candidate_scores`, returns top-k) + `ValueNetLeaf(clear)`
+  inject straight into `SearchV2PlayPolicy` via `SolverPolicy(play_policy=...)`.
+- **10-seed A/B (`scripts/phase8_neural_search_ab.py`), depth 3 width 2** — clean
+  decomposition of the two neural changes:
+  | condition | mean ante | ms/decision |
+  |---|---|---|
+  | heuristic (TopK + rollout) | **5.1** | 494 |
+  | leaf_only (TopK + distilled clear leaf) | **4.5** | **220 (2.2× faster)** |
+  | neural_full (policy-prune + clear leaf) | **3.1** | 301 |
+  - **Distilled leaf: −0.6 antes for 2.2× speed** — a real, usable data-gen accelerator.
+  - **Policy candidate-pruning: −1.4 antes AND slower than leaf_only** → strictly
+    dominated. The learned play-policy is a WORSE candidate ranker than the cheap
+    immediate-score heuristic.
+- **WHY (118-state probe, `scripts/phase8_policy_provider_probe.py`):** the policy is
+  **anti-correlated** with immediate-score (mean rank-corr **−0.68**, agree@1 = 0.00) —
+  NOT a wiring bug (rankings are structured/consistent: it always tops a full 5-card
+  hand). The set-encoder pools the hand away, so the policy learned a *coarse* "prefer
+  complete hands" prior, while immediate-score encodes resource-aware efficiency
+  (clear the blind with minimal cards, conserve hands/discards). Hard-pruning to the
+  policy's top-k discards the specific good plays the heuristic surfaces → runs derail.
+- **Root structural reason it can't win:** the play policy was *distilled from the
+  heuristic-fed beam*, so its whole training signal lives INSIDE the immediate-score
+  candidate set — it's a lossy compression of the ranker it's trying to beat. The
+  heuristic play ranker is already near-optimal AND cheap; there is almost no headroom
+  on the play side. **Conclusion: play-selection is the wrong place for the neural net.**
+  The bot dies ~ante 5–6 with strong early play → the lost winrate is a BUILD/economy
+  problem (jokers too weak late), i.e. the SHOP, where heuristics are crude and a
+  learned value fn has real headroom. 34 ml tests green. Leaf is bankable for speed.
+
 ## Next Steps
 
 > **Top priority (2026-05-31): the Phase 8 neural build** — `PHASE8_NEURAL_PLAN.md`.
