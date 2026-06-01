@@ -190,7 +190,8 @@ class ValueNet(nn.Module):
             nn.Linear(d_trunk, d_trunk), nn.ReLU(), nn.Dropout(dropout),
         )
         self.win_head = nn.Linear(d_trunk, 1)
-        self.ante_head = nn.Linear(d_trunk, 1)  # predicts final ante / 8 in [0,1]
+        self.ante_head = nn.Linear(d_trunk, 1)   # predicts final ante / 8 in [0,1]
+        self.clear_head = nn.Linear(d_trunk, 1)  # distilled rollout leaf value in [0,2]
 
     def _features(self, batch: Batch) -> torch.Tensor:
         joker_tok = torch.cat(
@@ -239,6 +240,10 @@ class ValueNet(nn.Module):
     def ante_value(self, batch: Batch) -> torch.Tensor:
         """Predicted final ante as a fraction of ante 8, in [0, 1]."""
         return torch.sigmoid(self.ante_head(self._trunk(batch))).squeeze(-1)
+
+    def clear_value(self, batch: Batch) -> torch.Tensor:
+        """Distilled rollout-leaf value in [0, 2] (matches the leaf convention)."""
+        return (2.0 * torch.sigmoid(self.clear_head(self._trunk(batch)))).squeeze(-1)
 
     def heads(self, batch: Batch) -> tuple[torch.Tensor, torch.Tensor]:
         """(win_logit, ante_value) from a single shared trunk pass."""

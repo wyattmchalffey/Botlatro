@@ -38,8 +38,8 @@ class ValueNetLeaf:
         else:
             self.model = load_checkpoint(checkpoint)
         self.model.eval()
-        if head not in ("ante", "win"):
-            raise ValueError(f"head must be 'ante' or 'win', got {head!r}")
+        if head not in ("ante", "win", "clear"):
+            raise ValueError(f"head must be 'ante', 'win', or 'clear', got {head!r}")
         self.head = head
         # Single-thread the per-leaf forward pass: batch-size-1 inference has
         # no parallelism to exploit and thread dispatch is pure overhead.
@@ -52,8 +52,10 @@ class ValueNetLeaf:
             return 0.0
         batch = collate_states([encode_state(state)])
         with torch.no_grad():
-            value = (
-                self.model.ante_value(batch) if self.head == "ante"
-                else self.model.win_prob(batch)
-            )
+            if self.head == "ante":
+                value = self.model.ante_value(batch)
+            elif self.head == "clear":
+                value = self.model.clear_value(batch)
+            else:
+                value = self.model.win_prob(batch)
         return float(value[0])

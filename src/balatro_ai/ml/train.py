@@ -222,6 +222,8 @@ def load_checkpoint(path: str | Path, *, strict_version: bool = True) -> ValueNe
             f"!= current ENCODING_VERSION={ENCODING_VERSION}"
         )
     model = ValueNet(ckpt["spec"], **ckpt.get("hparams", {}))
-    model.load_state_dict(ckpt["state_dict"])
+    # strict=False so checkpoints predating a newly-added head (e.g. clear_head)
+    # still load — the missing head keeps its init weights and just isn't used.
+    model.load_state_dict(ckpt["state_dict"], strict=False)
     model.eval()
     return model

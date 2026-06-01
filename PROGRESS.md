@@ -275,10 +275,21 @@
   where `clear_probability` directly measures blind-clear — plus distribution shift
   (trained on teacher states, queried on beam lines). No production code touched
   (injected via `SolverPolicy(play_policy=...)`; A/B in `scripts/phase8_leaf_ab.py`).
-- Next: **distill the rollout** — train a net to predict `clear_probability` (the
-  within-blind signal the play leaf needs) for rollout quality at net speed; OR
-  apply the ante value to shop/build decisions; OR self-play to fix distribution
-  shift. Per `PHASE8_NEURAL_PLAN.md`.
+- **Stage 1.3 Option A (rollout distillation) — works, nearly closes the gap.**
+  `ml/distill.py`: `CollectingClearLeaf` records `(state → clear_probability)` from
+  the v2 beam's own leaf states (fixes distribution shift) labeled with the rollout
+  output (fixes granularity); `train_distill` regresses `ValueNet.clear_head`. On 16
+  collection seeds (~16.5k pairs) the net reproduces the rollout at **val corr 0.87**
+  (held-out seeds; corr 0.48@2 seeds → 0.87@16, so data-scalable). A/B (12 seeds, v2
+  beam): the distilled clear-leaf is **~2.2× faster** per play-decision (224ms vs
+  489–505ms) and recovered quality from the ante-head's 3.67 to **mean ante 4.67** —
+  but still ~0.5–0.75 antes short of the rollouts (5.17–5.42). So *faster and
+  almost-equal*, not yet a clean "faster AND ≥quality" pass; the gap is small and
+  data-closeable. 31 ml tests green; `ml/leaf.py::ValueNetLeaf(head="clear")`,
+  checkpoint `phase8_clear_v0.pt`. No production solver code touched.
+- Next: scale the distillation collection (more seeds → higher fidelity → close the
+  ~0.5-ante gap to a clean pass); then Stage 2 (policy head) + self-play for actual
+  strength. Per `PHASE8_NEURAL_PLAN.md`.
 
 ## Next Steps
 
