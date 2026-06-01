@@ -94,6 +94,11 @@ class SolverPolicy:
     fallback: object | None = None
     seed: int = 0
     archetype: Archetype | None = None
+    # Optional injected shop-leaf value factory: (root_state) -> (leaf_state -> float).
+    # When set it replaces the heuristic shop leaf for the SHOP beam — the economy-side
+    # analog of `play_policy=` for plays — so a learned value head can be A/B'd as the
+    # shop evaluator with no other change. Takes precedence over the archetype leaf.
+    shop_leaf_value_fn: object | None = None
     _sampler: ShopSampler = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -131,7 +136,12 @@ class SolverPolicy:
 
             if state.phase == GamePhase.SHOP and _has_shop_action(state):
                 try:
-                    leaf_value_fn = self._archetype_leaf_value_fn(state) if self.archetype is not None else None
+                    if self.shop_leaf_value_fn is not None:
+                        leaf_value_fn = self.shop_leaf_value_fn(state)
+                    elif self.archetype is not None:
+                        leaf_value_fn = self._archetype_leaf_value_fn(state)
+                    else:
+                        leaf_value_fn = None
                     action = best_shop_action(
                         state,
                         config=self.shop_config,

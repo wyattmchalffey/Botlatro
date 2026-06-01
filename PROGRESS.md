@@ -380,6 +380,40 @@
   problem (jokers too weak late), i.e. the SHOP, where heuristics are crude and a
   learned value fn has real headroom. 34 ml tests green. Leaf is bankable for speed.
 
+### 2026-06-01 — Stage 2.4: value-guided shop FAILS → the ENCODER is the shared bottleneck
+
+- **Added a clean injection seam** (`SolverPolicy.shop_leaf_value_fn`, the economy-side
+  analog of `play_policy=`): a factory `(root_state) -> (leaf_state -> float)` passed to
+  `best_shop_action`'s existing `leaf_value_fn`, taking precedence over the archetype
+  leaf. `ml/shop_value.py`: the value head (`ante`) as the shop leaf, z-score calibrated
+  to the heuristic leaf's scale (so `leaf_weight=0.35` stays balanced — a fair swap).
+- **16-seed A/B (`scripts/phase8_shop_value_ab.py`), v2 d3 w2:**
+  | condition | mean ante | winrate |
+  |---|---|---|
+  | heuristic shop | **5.6** | **18.8%** (3/16) |
+  | neural-value shop | **1.9** | **0%** (0/16) |
+  Catastrophic. **Calibration exposed the cause: the value head's output std is ~0.05
+  on [0,1] — it predicts ~0.8 for nearly EVERY shop state** (near-constant; can't
+  discriminate).
+- **Decision-mix probe (`scripts/phase8_shop_value_probe.py`, identical states):** the
+  neural leaf picks **SELL 17/30** vs the heuristic's 3 — it **liquidates its own
+  jokers**. Mechanism: selling = −joker (pooled away → invisible to the head) +money
+  (a scalar feature the head DOES see) → the post-sell state scores ≥ → it sells the
+  build → dies ante 2. agreement with heuristic 0.30.
+- **THE CONVERGENT FINDING (3 independent failures, 1 root cause):** play-candidate
+  policy (coarse, anti-correlated −0.68), win head (never learned), and now the shop
+  value head (near-constant, sells jokers) ALL fail because the **DeepSets mean-pool
+  set-encoder averages jokers/cards/shop into a blur**, destroying the per-item
+  information that play discrimination AND economy valuation both need. The ONE head
+  that worked (candidate-subset play policy, 0.39) worked precisely because it fed the
+  model EXPLICIT per-candidate features instead of the pooled rep — the proof that
+  per-item info is the fix. **The bottleneck is the trunk/encoder, not which head.**
+- **NEXT (proposed): rebuild the encoder with ATTENTION over the joker/card/shop sets**
+  (transformer-style, no mean-pool) so per-joker identity/value is visible, then retrain
+  the value head and re-test the shop leaf + play side. This is the foundational unlock
+  (the AlphaZero analog: a too-weak encoder caps every downstream head). 34 ml tests
+  green. The `shop_leaf_value_fn` seam + calibration harness are reusable for the retest.
+
 ## Next Steps
 
 > **Top priority (2026-05-31): the Phase 8 neural build** — `PHASE8_NEURAL_PLAN.md`.
