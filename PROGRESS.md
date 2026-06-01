@@ -414,6 +414,40 @@
   (the AlphaZero analog: a too-weak encoder caps every downstream head). 34 ml tests
   green. The `shop_leaf_value_fn` seam + calibration harness are reusable for the retest.
 
+### 2026-06-01 — Stage 2.5–2.6 + Option A: encoder ruled out, rollout shop fails, but the value ceiling is LABEL NOISE (fixable)
+
+- **Stage 2.5 — attention encoder RULED OUT.** Built `ValueNet(encoder="attention")`
+  (self-attention over joker/card/shop tokens + CLS + n_query attention-pool, replacing
+  mean-pool; default-off, rebuildable via hparams) + `scripts/phase8_encoder_validate.py`.
+  A 2-epoch smoke looked great (attention joker-removal 0.92 vs 0.58) but was an
+  **under-trained fluke**. Decisive 512-run (8× data): attention ante-corr **0.448 vs
+  mean 0.498** (attention *worse*), val-loss identical, and BOTH fail joker-removal in the
+  *wrong* direction. Both architectures hit a ~0.47–0.50 corr ceiling at both data
+  sizes → **the encoder is not the lever; the data/target is.**
+- **Stage 2.6 — rollout shop FAILS (live).** `search/rollout_shop.py` `RolloutShopPolicy`
+  (forward-model rollout per candidate). 2-seed A/B: ante 1.5 vs heuristic 5, **12s/shop
+  decision**. Diagnostic (not a bug): at an ante-1 shop ALL candidates roll out to the
+  same value (horizon cap) — early antes are trivial → zero discrimination. **Play-rollout
+  works because play value is SHORT-horizon (clear this blind); shop value is LONG-horizon
+  (win the run)** — a short rollout saturates, a full one is too slow. That's why the
+  heuristic's hand-crafted scaling-value is hard to beat.
+- **Option A — the value ceiling is LABEL NOISE, not bias (first POSITIVE result).**
+  `scripts/phase8_rollout_value_diagnostic.py` tests whether the joker-value signal is in
+  the TARGET via PAIRED rollout joker-removal (same seeds with/without each joker, +3-ante
+  bounded, re-derived legal_actions, parallel). **16 ante≥4 states / 78 jokers / 6 samples:
+  rollout-target joker-removal Δ = +0.383 antes, 70.5% positive** vs the **net (single-traj
+  labels) Δ = +0.012 / 56% (flat).** The signal *exists* in the data; the value head was
+  flat only because single-trajectory final-ante labels are too high-variance to extract it.
+  ⇒ the ~0.47 ceiling is a LABEL-NOISE ceiling.
+- **Meta + pivot:** four neural attempts lost to the heuristics+forward-model (play-policy,
+  shop-value-net, encoder, rollout-shop) — the net is premature as a value SOURCE; its
+  proven role is distilling rollouts (accelerator). Per the AlphaZero-from-no-data analysis,
+  the engine (forward-model search) is the prerequisite that generates self-play data. **NEXT
+  = Option A Part 2:** relabel states with MULTI-ROLLOUT-AVERAGED values (low variance),
+  retrain the value head, confirm joker-removal Δ goes 0.01 → clearly positive + corr beats
+  0.47. The averaged-rollout labeler then *is* the AlphaZero value-data generator. 34 ml
+  tests green.
+
 ## Next Steps
 
 > **Top priority (2026-05-31): the Phase 8 neural build** — `PHASE8_NEURAL_PLAN.md`.

@@ -154,15 +154,21 @@ class ValueNet(nn.Module):
         d_token: int = 32,
         d_trunk: int = 64,
         dropout: float = 0.0,
+        encoder: str = "mean",
+        nhead: int = 4,
+        n_attn_layers: int = 1,
+        n_query: int = 3,
     ) -> None:
         super().__init__()
         spec = spec or encoding_spec()
         self.encoding_version = spec["version"]
         self.spec = spec
+        self.encoder = encoder
         # Recorded so a checkpoint can rebuild the exact architecture.
         self.hparams = {
             "d_id": d_id, "d_small": d_small, "d_token": d_token, "d_trunk": d_trunk,
-            "dropout": dropout,
+            "dropout": dropout, "encoder": encoder, "nhead": nhead,
+            "n_attn_layers": n_attn_layers, "n_query": n_query,
         }
 
         # Identity / categorical embeddings.
@@ -188,9 +194,26 @@ class ValueNet(nn.Module):
         self.shop_mlp = nn.Sequential(
             nn.Linear(d_small * 2 + d_id + _SHOP_NNUM, d_token), nn.ReLU())
 
+        if encoder == "attention":
+            # Self-attention over the combined joker+card+shop token sequence so
+            # items see EACH OTHER (synergy), then attention-pool via n_query learned
+            # queries. Replaces mean-pool, which blurred per-item identity away.
+            self.seg_emb = nn.Embedding(3, d_token)        # 0=joker 1=card 2=shop
+            self.cls_token = nn.Parameter(torch.zeros(1, 1, d_token))
+            self.pool_queries = nn.Parameter(torch.zeros(1, n_query, d_token))
+            nn.init.normal_(self.cls_token, std=0.02)
+            nn.init.normal_(self.pool_queries, std=0.02)
+            enc_layer = nn.TransformerEncoderLayer(
+                d_model=d_token, nhead=nhead, dim_feedforward=d_token * 2,
+                dropout=dropout, batch_first=True, activation="relu")
+            self.attn_encoder = nn.TransformerEncoder(enc_layer, num_layers=n_attn_layers)
+            self.pool_attn = nn.MultiheadAttention(
+                d_token, nhead, dropout=dropout, batch_first=True)
+
         fixed = (spec["scalar_dim"] + spec["phase_dim"] + spec["blind_type_dim"]
                  + spec["hand_levels_dim"] + spec["deck_counts_dim"])
-        pooled = d_token * 3 + d_small * 3  # jokers, cards, shop + consumable, voucher, boss
+        item_pooled = d_token * (n_query if encoder == "attention" else 3)
+        pooled = item_pooled + d_small * 3  # jokers/cards/shop + consumable, voucher, boss
         trunk_in = fixed + pooled
         self.trunk = nn.Sequential(
             nn.Linear(trunk_in, d_trunk), nn.ReLU(), nn.Dropout(dropout),
@@ -213,39 +236,69 @@ class ValueNet(nn.Module):
             nn.Linear(d_token + d_trunk + 12 + 1, d_trunk), nn.ReLU(),
             nn.Linear(d_trunk, 1))
 
-    def _features(self, batch: Batch) -> torch.Tensor:
+    def _joker_tokens(self, batch: Batch) -> torch.Tensor:
+        """Per-joker token embeddings [B, J, d_token] (pre-pool)."""
         joker_tok = torch.cat(
             [self.joker_key(batch.joker_cat[..., 0]),
              self.joker_edition(batch.joker_cat[..., 1]),
              batch.joker_num], dim=-1)
-        joker_pool = _masked_mean(self.joker_mlp(joker_tok), batch.joker_mask)
+        return self.joker_mlp(joker_tok)
 
-        card_tok = torch.cat(
-            [self.card_rank(batch.card_cat[..., 0]),
-             self.card_suit(batch.card_cat[..., 1]),
-             self.card_enh(batch.card_cat[..., 2]),
-             self.card_edition(batch.card_cat[..., 3]),
-             self.card_seal(batch.card_cat[..., 4]),
-             batch.card_num], dim=-1)
-        card_pool = _masked_mean(self.card_mlp(card_tok), batch.card_mask)
-
+    def _shop_tokens(self, batch: Batch) -> torch.Tensor:
+        """Per-shop-item token embeddings [B, S, d_token] (pre-pool)."""
         shop_tok = torch.cat(
             [self.shop_type(batch.shop_cat[..., 0]),
              self.shop_key(batch.shop_cat[..., 1]),
              self.shop_edition(batch.shop_cat[..., 2]),
              batch.shop_num], dim=-1)
-        shop_pool = _masked_mean(self.shop_mlp(shop_tok), batch.shop_mask)
+        return self.shop_mlp(shop_tok)
 
+    def _small_pools(self, batch: Batch) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         consumable_pool = _masked_mean(
             self.consumable_emb(batch.consumable_idx), batch.consumable_mask)
         voucher_pool = _masked_mean(
             self.voucher_emb(batch.voucher_idx), batch.voucher_mask)
         boss_vec = self.boss_emb(batch.boss)
+        return consumable_pool, voucher_pool, boss_vec
 
+    def _fixed(self, batch: Batch) -> list[torch.Tensor]:
+        return [batch.scalars, batch.phase, batch.blind, batch.hand_levels, batch.deck_counts]
+
+    def _features_mean(self, batch: Batch) -> torch.Tensor:
+        joker_pool = _masked_mean(self._joker_tokens(batch), batch.joker_mask)
+        card_pool = _masked_mean(self._card_embeddings(batch), batch.card_mask)
+        shop_pool = _masked_mean(self._shop_tokens(batch), batch.shop_mask)
+        consumable_pool, voucher_pool, boss_vec = self._small_pools(batch)
         return torch.cat(
-            [batch.scalars, batch.phase, batch.blind, batch.hand_levels,
-             batch.deck_counts, joker_pool, card_pool, shop_pool,
+            [*self._fixed(batch), joker_pool, card_pool, shop_pool,
              consumable_pool, voucher_pool, boss_vec], dim=-1)
+
+    def _features_attention(self, batch: Batch) -> torch.Tensor:
+        # Combine the three item sets into one sequence with segment tags so
+        # the attention knows joker-vs-card-vs-shop; a CLS token keeps every row
+        # non-empty (prevents all-padding NaN); attention-pool via learned queries.
+        jt = self._joker_tokens(batch) + self.seg_emb.weight[0]
+        ct = self._card_embeddings(batch) + self.seg_emb.weight[1]
+        st = self._shop_tokens(batch) + self.seg_emb.weight[2]
+        tokens = torch.cat([jt, ct, st], dim=1)                       # [B, L, d]
+        mask = torch.cat([batch.joker_mask, batch.card_mask, batch.shop_mask], dim=1)
+        b = tokens.shape[0]
+        seq = torch.cat([self.cls_token.expand(b, -1, -1), tokens], dim=1)  # [B, 1+L, d]
+        valid = torch.cat(
+            [torch.ones(b, 1, dtype=mask.dtype, device=mask.device), mask], dim=1)
+        kpm = ~valid.bool()                                           # True = ignore
+        enc = self.attn_encoder(seq, src_key_padding_mask=kpm)        # [B, 1+L, d]
+        q = self.pool_queries.expand(b, -1, -1)                       # [B, n_query, d]
+        pooled, _ = self.pool_attn(q, enc, enc, key_padding_mask=kpm, need_weights=False)
+        pooled = pooled.reshape(b, -1)                               # [B, n_query*d]
+        consumable_pool, voucher_pool, boss_vec = self._small_pools(batch)
+        return torch.cat(
+            [*self._fixed(batch), pooled, consumable_pool, voucher_pool, boss_vec], dim=-1)
+
+    def _features(self, batch: Batch) -> torch.Tensor:
+        if self.encoder == "attention":
+            return self._features_attention(batch)
+        return self._features_mean(batch)
 
     def _trunk(self, batch: Batch) -> torch.Tensor:
         return self.trunk(self._features(batch))

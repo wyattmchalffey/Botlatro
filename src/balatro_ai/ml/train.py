@@ -36,6 +36,7 @@ class TrainConfig:
     ante_loss_weight: float = 1.0
     dropout: float = 0.0
     seed: int = 0
+    encoder: str = "mean"
 
 
 @dataclass
@@ -109,7 +110,7 @@ def train(
         raise ValueError("train() needs at least one example")
     torch.manual_seed(config.seed)
 
-    model = ValueNet(dropout=config.dropout)
+    model = ValueNet(dropout=config.dropout, encoder=config.encoder)
     opt = torch.optim.Adam(model.parameters(), lr=config.lr, weight_decay=config.weight_decay)
     bce = nn.BCEWithLogitsLoss()
     mse = nn.MSELoss()
