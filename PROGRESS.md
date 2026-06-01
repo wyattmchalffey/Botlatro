@@ -200,7 +200,93 @@
 - **Validating expanded seed-faithful RNG coverage** against fresh bridge fixtures: the major pack/shop voucher paths now pass; remaining RNG work is the narrower Illusion playing-card/global-PRNG carry and optional Overstock slot-count fixtures. See section 4.1 of `PHASE7_OFFLINE_SOLVER_PLAN.md`.
 - **Keeping `forward_sim` validated.** The divergence audit is the regression gate for any new sim work. Currently 99.9% exact; the two deferred minor bugs (Drunkard mid-shop sell, Credit Card negative-money reroll) are ~30 minutes each but not blocking the solver path.
 
+### 2026-05-31 — Phase 8 neural architecture: plan + Step 0.1 (state encoder)
+
+- Committed the end-goal architecture: a neural-guided, self-improving planner
+  (AlphaZero/NNUE-style) on top of the exact forward model. Reframed the problem
+  as a **deterministic single-agent puzzle** (seed-faithful RNG → perfect
+  information) → best-first/A*/PUCT with a learned heuristic, not minimax. Key
+  insight: a cheap learned eval replacing the rollout leaf is **faster and
+  stronger at once** (the rollout is ~28% of data-gen runtime AND the source of
+  the ante-8 ceiling). Full plan in `PHASE8_NEURAL_PLAN.md`; the solver and
+  `basic_strategy_bot` are now bootstraps, not the destination.
+- Data-gen speed audit (memory `project_datagen_speed.md`): box is 8 physical /
+  16 logical cores; solver data-gen ~74–83s CPU/run at ante ~5.5 (the old 35.9s
+  headline was at ante 3.44 — per-run rose because survival deepened, not a
+  regression). ~345–420 seeds/hr; renting ~32 cores makes a 10k–50k dataset a
+  ~$3–50 job; the project ports cleanly to Linux (pure-Python pkg + one
+  dependency-free PyO3 crate; no GPU/game/bridge for data-gen), gated by a
+  cross-platform determinism check.
+- **Step 0.1 DONE — learnable state encoder** (`src/balatro_ai/ml/encoding.py`,
+  `ENCODING_VERSION=1`). Structured, versioned, UNK-safe encoding of the RAW
+  inputs the heuristic (and `observations.py` / the deprecated `ml/features.py`
+  probe) throw away: joker identities (by display name) + editions + counters +
+  flags, per-card rank/suit/enhancement/edition/seal, shop-item identities, hand
+  levels, deck composition, boss id, and global scalars. Vocab from canonical
+  data (joker=152 incl. legendaries, consumable=54, voucher=34, item-key=236,
+  boss=30). Dependency-free (stdlib) so it tests without torch. 13 tests in
+  `tests/test_ml_encoding.py` cover identity capture, index-bounds safety,
+  UNK-safety, padding/empty states, hand-level mapping, and determinism — green.
+  (Hard-won lesson: the real `GameState` API differs from a naive guess —
+  `GamePhase` not `Phase`, jokers carry `name` not a key, no `ShopItem` (shop
+  items are dicts in `modifiers["shop_cards"]`), `hand_levels` is a direct field.
+  Verify state field shapes before extending the encoder.)
+- **Step 0.2 DONE — training-data pipeline** (`src/balatro_ai/ml/dataset.py`).
+  `capture_run` records a thin but **replay-complete** action log
+  (`Action.to_json()` per step) + outcome; `replay_states` re-simulates that log
+  on a fresh deterministic sim to reconstruct per-step states (no policy/search);
+  `examples_from_capture` encodes them (Step 0.1) and attaches Monte-Carlo outcome
+  value targets (`won`/`final_ante`/`final_score` + `steps_to_end`). The existing
+  `StepRecord` is lossy (drops `target_id`/`amount`/`metadata`), so storing the
+  full action JSON is what makes cheap offline re-expansion possible.
+  `verify_capture_roundtrip` is the gate: re-simulating the log reproduces the
+  captured per-step (score, ante, money) exactly, and that survives JSON
+  persistence. 8 tests in `tests/test_ml_dataset.py` green (round-trip exactness,
+  JSON-persisted round-trip, multi-phase coverage incl. shop/pack actions,
+  faithfulness to `generate_trajectory`, determinism); encoder's 13 tests still green.
+- **Step 0.3 DONE — value net + training harness** (`src/balatro_ai/ml/model.py`,
+  `ml/train.py`). `ValueNet` is a set-encoder: embeddings for joker/card/shop/boss/
+  consumable/voucher identities → masked mean-pool over the variable-length sets →
+  concat with the fixed scalar/level/deck blocks → MLP trunk → win-prob logit,
+  sized from `encoding_spec()`. `collate_states` pads `EncodedState` sets into
+  tensors with masks; `train.py` is a deterministic BCE trainer with an eval split,
+  versioned checkpoint save/load, and `overfit_check`. Gate passes: the net fits a
+  tiny synthetic set (label = joker set contains "Blueprint", money uninformative)
+  to **loss 0.000 / 100% accuracy**, and checkpoints round-trip. 6 torch-gated tests
+  in `tests/test_ml_train.py`; torch 2.12.0+cpu installed (already in the `ml`
+  extra). Full ml suite **27 tests green** (13 encoder + 8 dataset + 6 train).
+  **Stage 0 (foundations) is COMPLETE.**
+### 2026-05-31 — Stage 1: learned value head works; first play-leaf A/B faster-but-worse
+
+- **Stage 1.1 + 1.2 DONE — bootstrap dataset + learned value head.**
+  `src/balatro_ai/ml/bootstrap.py` generates teacher captures in parallel
+  (resumable JSONL) and re-expands them to examples (2 tests green). Generated a
+  **512-run `basic_strategy_bot` dataset** (61 wins, 11.9%, 76k examples). After a
+  64-run cut overfit hard (val win-AUC 0.37), `ValueNet` gained an **expected-ante
+  head** (dense target) + dropout/weight-decay. On a held-out-**by-run** split the
+  **ante head generalizes (val corr 0.43)**; the binary-win head barely does (val
+  AUC 0.58) — the dense ante target is the learnable signal. 29 ml tests green;
+  checkpoint `phase8_value_v0.pt`.
+- **Stage 1.3 first A/B (12 seeds, v2 beam) — learned leaf faster but worse; gate
+  NOT met.** `ml/leaf.py::ValueNetLeaf` (ante head) ran **~2× faster** per
+  play-decision (242ms vs 476–488ms for the rollout leaves) but at **lower
+  quality** (mean ante 3.67 vs 5.2–5.4; median 2.5 vs 5.5–6). Diagnosis: the ante
+  value is a coarse *whole-run* signal — wrong granularity for *within-blind* play,
+  where `clear_probability` directly measures blind-clear — plus distribution shift
+  (trained on teacher states, queried on beam lines). No production code touched
+  (injected via `SolverPolicy(play_policy=...)`; A/B in `scripts/phase8_leaf_ab.py`).
+- Next: **distill the rollout** — train a net to predict `clear_probability` (the
+  within-blind signal the play leaf needs) for rollout quality at net speed; OR
+  apply the ante value to shop/build decisions; OR self-play to fix distribution
+  shift. Per `PHASE8_NEURAL_PLAN.md`.
+
 ## Next Steps
+
+> **Top priority (2026-05-31): the Phase 8 neural build** — `PHASE8_NEURAL_PLAN.md`.
+> Next concrete work is Stage 0.2 (data pipeline: extract `(encoded_state, action,
+> outcome)` per step by re-simulating action logs) → Stage 0.3 (minimal torch
+> trainer) → Stage 1 (learned value leaf, bootstrapped from `basic_strategy_bot`).
+> The numbered items below are now secondary solver/RNG threads.
 
 1. Continue Phase 4 toward the native solver. Target: `solver_beam_play_action_native(state, depth, width) -> Action` that runs the whole beam in Rust. See `RUST_PORT_PLAN.md` §6 (Phase 4 spec).
 2. Close the remaining narrow RNG edge if needed: Illusion-generated shop playing cards carry global `math.random` into first Buffoon pack selection; optional Overstock slot-count fixtures can be added afterward. Current validation commands are `python -m balatro_ai.rng.validate_surfaces --all`, `python -m balatro_ai.rng.validate_shop_sequence --all`, `python -m balatro_ai.rng.validate_spectral_helpers --all`, and `python -m unittest discover -s tests -p "test_rng*.py"`.
