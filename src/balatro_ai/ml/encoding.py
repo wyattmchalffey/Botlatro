@@ -64,6 +64,21 @@ SUITS = ("Spades", "Hearts", "Diamonds", "Clubs")
 _SUIT_INDEX = {s: i for i, s in enumerate(SUITS)}
 SUIT_NONE = len(SUITS)  # stone cards / unknown
 
+# Real sim/deck cards use single-letter suits (H/S/D/C) and "T" for ten, while the
+# vocab above uses full suit names and "10". Normalize so BOTH forms map to the same
+# index — without this every real card encodes as SUIT_NONE and tens as rank 0 (a "2").
+_SUIT_BY_LETTER = {"S": "Spades", "H": "Hearts", "D": "Diamonds", "C": "Clubs"}
+
+
+def _canon_suit(suit: str) -> str:
+    if suit in _SUIT_INDEX:
+        return suit
+    return _SUIT_BY_LETTER.get((suit or "")[:1].upper(), suit)
+
+
+def _canon_rank(rank: str) -> str:
+    return "10" if rank in ("T", "t", "10") else rank
+
 # index 0 = none, then the editions (after stripping the "e_" prefix).
 EDITIONS = ("foil", "holographic", "polychrome", "negative")
 _EDITION_INDEX = {e: i + 1 for i, e in enumerate(EDITIONS)}
@@ -291,8 +306,8 @@ class EncodedState:
 
 def _encode_card(card: Card) -> CardToken:
     return CardToken(
-        rank_index=_RANK_INDEX.get(card.rank, 0),
-        suit_index=_SUIT_INDEX.get(card.suit, SUIT_NONE),
+        rank_index=_RANK_INDEX.get(_canon_rank(card.rank), 0),
+        suit_index=_SUIT_INDEX.get(_canon_suit(card.suit), SUIT_NONE),
         enhancement_index=_enhancement_index(card.enhancement),
         edition_index=_edition_index(card.edition),
         seal_index=_seal_index(card.seal),
@@ -360,10 +375,10 @@ def _encode_deck_counts(state: GameState) -> tuple[float, ...]:
     n = len(deck)
     if n:
         for c in deck:
-            ri = _RANK_INDEX.get(c.rank)
+            ri = _RANK_INDEX.get(_canon_rank(c.rank))
             if ri is not None:
                 counts[ri] += 1.0
-            si = _SUIT_INDEX.get(c.suit)
+            si = _SUIT_INDEX.get(_canon_suit(c.suit))
             if si is not None:
                 counts[len(RANKS) + si] += 1.0
             if c.enhancement:

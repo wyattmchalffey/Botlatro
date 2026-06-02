@@ -166,5 +166,42 @@ class TestRobustness(unittest.TestCase):
         self.assertLess(e.boss_index, spec["boss_vocab_size"])
 
 
+class TestRealCardFormat(unittest.TestCase):
+    """Real seed/local-sim decks use single-letter suits (H/S/D/C) and "T" for ten,
+    not the full "Hearts"/"10" forms the other tests use. The encoder MUST normalize
+    both to the same index — the prior bug sent every real card to SUIT_NONE and every
+    ten to rank 0, silently corrupting value/policy inputs on live data."""
+
+    def test_short_suit_and_ten_map_to_real_indices(self) -> None:
+        s = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            hand=(Card("T", "H"), Card("A", "S"), Card("Q", "C"), Card("9", "D")),
+        )
+        e = enc.encode_state(s)
+        self.assertEqual(e.hand[0].rank_index, enc._RANK_INDEX["10"])   # T -> 10, not 0
+        self.assertEqual(e.hand[0].suit_index, enc._SUIT_INDEX["Hearts"])
+        self.assertEqual(e.hand[1].suit_index, enc._SUIT_INDEX["Spades"])
+        self.assertEqual(e.hand[2].suit_index, enc._SUIT_INDEX["Clubs"])
+        self.assertEqual(e.hand[3].suit_index, enc._SUIT_INDEX["Diamonds"])
+        # None fell through to the stone/unknown bucket.
+        self.assertFalse(any(c.suit_index == enc.SUIT_NONE for c in e.hand))
+
+    def test_short_form_equals_full_form(self) -> None:
+        short = enc.encode_state(GameState(phase=GamePhase.SELECTING_HAND, hand=(Card("T", "H"),)))
+        full = enc.encode_state(GameState(phase=GamePhase.SELECTING_HAND, hand=(Card("10", "Hearts"),)))
+        self.assertEqual(short.hand[0], full.hand[0])
+
+    def test_deck_counts_capture_short_suits(self) -> None:
+        s = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            known_deck=(Card("T", "H"), Card("9", "S"), Card("2", "D"), Card("K", "C")),
+        )
+        e = enc.encode_state(s)
+        suit_counts = e.deck_counts[len(enc.RANKS): len(enc.RANKS) + len(enc.SUITS)]
+        self.assertGreater(sum(suit_counts), 0.0)        # not all zero anymore
+        # The ten is counted in the "10" rank slot, not the "2" slot.
+        self.assertGreater(e.deck_counts[enc._RANK_INDEX["10"]], 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()
