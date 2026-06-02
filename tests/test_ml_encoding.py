@@ -244,5 +244,32 @@ class TestShopOfferFields(unittest.TestCase):
         self.assertIn("p_arcana_normal_1", vocab)
 
 
+class TestJokerScalingCounter(unittest.TestCase):
+    """Scaling jokers store accumulated progress in metadata (current_mult /
+    current_xmult / current_chips), which the local sim populates but the effect-text
+    regex does not. The encoder must read metadata or the counter is pinned at 0 and the
+    net can't tell a ramped scaling joker from a fresh one."""
+
+    def _counter(self, **meta) -> float:
+        s = GameState(phase=GamePhase.SELECTING_HAND,
+                      jokers=(Joker(name="Ride the Bus", metadata=meta),))
+        return enc.encode_state(s).jokers[0].counter
+
+    def test_current_mult_metadata_drives_counter(self) -> None:
+        self.assertGreater(self._counter(current_mult=30), 0.0)
+
+    def test_current_xmult_metadata_drives_counter(self) -> None:
+        self.assertGreater(self._counter(current_xmult=4.0), 0.0)
+
+    def test_nested_metadata_source(self) -> None:
+        self.assertGreater(self._counter(ability={"current_mult": 12}), 0.0)
+
+    def test_ramped_counter_exceeds_fresh(self) -> None:
+        self.assertGreater(self._counter(current_mult=50), self._counter(current_mult=2))
+
+    def test_no_scaling_metadata_is_zero(self) -> None:
+        self.assertEqual(self._counter(), 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()

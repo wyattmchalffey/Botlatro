@@ -46,7 +46,9 @@ from balatro_ai.api.state import (
 
 # v2: real-card suit/rank normalization (T->10, H->Hearts) + booster packs and the
 # voucher offer are now encoded as shop tokens (item-key vocab grew by the boosters).
-ENCODING_VERSION = 2
+# v3: joker scaling counter now reads metadata (current_mult/current_xmult/current_chips),
+# not just the (unpopulated) effect text -> the net finally sees scaling-joker progress.
+ENCODING_VERSION = 3
 
 _DATA = Path(__file__).resolve().parent.parent / "data"
 
@@ -227,7 +229,44 @@ def _meta_flag(joker: Joker, *keys: str) -> float:
     return 0.0
 
 
+# Scaling jokers carry their accumulated progress in metadata (current_mult /
+# current_xmult / current_chips), NOT in effect.* — the local sim doesn't populate the
+# effect-text regex, so reading effect alone pins the counter at 0 and the net can't
+# tell a ramped scaling joker (a +50-Mult Ride the Bus, an X15 Hologram) from a fresh
+# one. Mirror the bot's metadata key sets + nested-source traversal.
+_COUNTER_XMULT_KEYS = ("current_xmult", "xmult", "current_x_mult", "x_mult")
+_COUNTER_PLUS_KEYS = ("current_mult", "current_chips", "mult", "chips")
+
+
+def _joker_metadata_number(joker: Joker, keys: tuple[str, ...]) -> float | None:
+    meta = joker.metadata or {}
+    sources = [meta]
+    for k in ("ability", "config", "extra", "value", "state"):
+        v = meta.get(k)
+        if isinstance(v, dict):
+            sources.append(v)
+            nested = v.get("extra")
+            if isinstance(nested, dict):
+                sources.append(nested)
+    for src in sources:
+        for key in keys:
+            if key in src:
+                try:
+                    return float(src[key])
+                except (TypeError, ValueError):
+                    pass
+    return None
+
+
 def _joker_counter(joker: Joker) -> float:
+    # Prefer the live metadata counter (xmult, then +mult/+chips); fall back to the
+    # parsed effect text when metadata is absent (e.g. bridge-sourced states).
+    xm = _joker_metadata_number(joker, _COUNTER_XMULT_KEYS)
+    if xm is not None:
+        return _signed_log(xm)
+    pv = _joker_metadata_number(joker, _COUNTER_PLUS_KEYS)
+    if pv is not None:
+        return _signed_log(pv)
     eff = joker.effect
     if eff.current_xmult_visible is not None:
         return _signed_log(eff.current_xmult_visible)
