@@ -457,6 +457,48 @@
   carry BOTH count AND real build-quality signal → Part 2 can plausibly *beat* the heuristic,
   not just stop the joker-selling. GREEN LIGHT for Part 2.
 
+### 2026-06-02 — basic_strategy audit + A/Bs: heuristic polishing is CONCLUSIVELY tapped; the wall is build power
+
+- **4-agent fresh-eyes audit** of `basic_strategy_bot` (play, shop, build-valuation,
+  orchestration). Implemented the top findings, each **env-gated (default off) + A/B'd**:
+  - **#1 Blueprint valuation bug** (`build_scoring._best_order_sample_score`,
+    `BALATRO_COPY_JOKER_SCORING`): `_jokers_after_buy_for_scoring` appended candidates
+    last, so Blueprint/Brainstorm (copy the joker to their RIGHT) copied NOTHING → valued
+    at flat base. Fix searches the copy-joker's best position. **A/B 100 seeds: 13 vs 14
+    baseline — neutral.**
+  - **#4 planets aren't credited as scaling** (`build_profile._hand_level_scaling_score`,
+    `BALATRO_PLANET_SCALING`): a leveled hand read as "no scaling." **A/B: 9 vs 12 —
+    neutral/slightly negative** (over-credits planets → under-buys scaling jokers).
+  - **#2 `safe_margin` builds-less-when-safe** (`profile.safe_margin`,
+    `BALATRO_NO_SAFE_MARGIN`): raised buy/cost/reroll/interest thresholds when ahead.
+    **A/B: 12 vs 12 winrate — neutral, but +4 to ante 8.**
+  - **Campfire mis-classified as a scaler** (`BALATRO_RESET_JOKER_DISCOUNT`): it's in
+    SCALING_JOKERS+XMULT_JOKERS but RESETS each boss + needs a sell-economy (only viable
+    ante 6+). Discount its scaling/xmult role credit ×0.15 before ante 6 (verified: ante-1
+    Campfire scaling 32→4.8, xmult 30→4.5). Correct fix; expected-neutral (rare).
+  - **#7 shop-audit perf gate** (`config.shop_audit_enabled`, default **on** =
+    behavior-preserving): the per-option planner re-run (~2× late-shop cost) is skipped
+    when off; turned **off in the rollout pilot** (`phase8_value_relabel_retrain`) for
+    faster label-gen. Pure perf, no winrate effect.
+- **NEW play-logic feature — dig-via-play** (`blind_solver._dig_via_play_action` +
+  `draw_evaluation._best_flush_dig`, `BALATRO_DIG_VIA_PLAY`): when greedy can't clear (a
+  guaranteed loss) and discards are gone, **use spare HANDS as discards** — play
+  throwaways to dig for a clearing flush over multiple hands (deck-order-aware: known →
+  cumulative `known_deck[:budget]` window, unknown → hypergeometric). Found via early-loss
+  audit (`scripts/phase8_early_loss_audit.py`): seed 2 died ante 1 (254/600) playing Two
+  Pair greedily when a multi-hand flush dig clears (5th heart at draw position 11; even a
+  fully-debuffed flush scores 490 with Droll). Fires only in guaranteed-loss spots so it
+  can't regress. **Verified: seed 2 ante 1→3 with dig on. A/B 100 seeds: 13 vs 14 —
+  winrate-neutral, but ante-1 deaths 1→0, ante-8 reached 21→23, loss-frac 0.81→0.78.**
+- **THE CONCLUSIVE FINDING:** all four fixes + the dig reshape the ante distribution
+  (further, fewer early deaths) but are **winrate-neutral**. The bot **reaches ante 8
+  ~21–23% but wins ~12–14%** — that ~8–10% gap is runs that reach the final boss and
+  **lose to it**. The wall is *clearing ante 8* = pure end-game **build power**. Heuristic
+  play/shop polishing is definitively tapped (now proven 4 ways + the dig). **The only
+  lever is making builds genuinely stronger by late game → the value-function/search
+  direction**, not heuristics. (Also confirmed ~1-win baseline wobble from Python hash
+  randomization → pin `PYTHONHASHSEED=0` for exact A/B baselines.)
+
 ## Next Steps
 
 > **Top priority (2026-05-31): the Phase 8 neural build** — `PHASE8_NEURAL_PLAN.md`.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 from balatro_ai.rules.hand_evaluator import HandType
@@ -28,6 +29,12 @@ class _ShopPressure:
 
     @property
     def safe_margin(self) -> float:
+        # A/B (#2): safe_margin makes the bot spend LESS the safer it feels — it raises
+        # buy thresholds and interest/cost/reroll penalties across ~8 shop call sites,
+        # flagged by the audit as a cause of early under-building. Neutralizing it here
+        # zeroes all of them at once. Env-gated, default OFF (current behavior).
+        if os.environ.get("BALATRO_NO_SAFE_MARGIN", "0") == "1":
+            return 0.0
         return max(0.0, min(1.0, 1.0 - self.ratio))
 
 

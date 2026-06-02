@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import replace
 
 from balatro_ai.api.state import Card, GameState, Joker
@@ -33,9 +34,42 @@ def _sample_score_gain_for_joker(state: GameState, joker: Joker) -> float:
     return max(0.0, _sample_score_delta_for_joker(state, joker))
 
 
+def _best_order_sample_score(state: GameState, jokers: tuple[Joker, ...]) -> float:
+    """Sample-build score at the copy-joker's BEST position.
+
+    `_sample_build_score` does NOT reorder jokers, and Blueprint/Brainstorm copy the
+    joker to their RIGHT. Since `_jokers_after_buy_for_scoring` appends the candidate
+    last, a Blueprint evaluated there sits rightmost and copies NOTHING — collapsing
+    its value (and any build pairing it with a strong joker) to its flat base. A pure
+    role-order heuristic is unreliable (many strong jokers — Photograph, conditional
+    xmults — aren't tagged "xmult", so Blueprint still lands last). Instead, when a
+    copy joker is present, SEARCH its placement: try each copy joker immediately left
+    of each non-copy joker and keep the best score — mirroring the bot's play-time
+    joker rearrange. Only fires when a copy joker is present, so non-copy valuations
+    (and the rollout pilot's common case) are unchanged.
+    """
+    score = _sample_build_score(state, jokers)
+    # A/B-measured winrate-neutral (13->11/100), so OFF by default — env-gated for reuse.
+    if os.environ.get("BALATRO_COPY_JOKER_SCORING", "0") != "1":
+        return score  # old append-only behavior (copy joker copies nothing)
+    n = len(jokers)
+    copy_indices = [i for i in range(n) if jokers[i].name in ("Blueprint", "Brainstorm")]
+    if n < 2 or not copy_indices:
+        return score
+    base = list(range(n))
+    for ci in copy_indices:
+        for ti in range(n):
+            if ti == ci or jokers[ti].name in ("Blueprint", "Brainstorm"):
+                continue
+            rest = [x for x in base if x != ci]
+            rest.insert(rest.index(ti), ci)  # place copy joker immediately left of ti
+            score = max(score, _sample_build_score(state, tuple(jokers[i] for i in rest)))
+    return score
+
+
 def _sample_score_delta_for_joker(state: GameState, joker: Joker) -> float:
-    current = _sample_build_score(state, state.jokers)
-    with_candidate = _sample_build_score(state, _jokers_after_buy_for_scoring(state, joker))
+    current = _best_order_sample_score(state, state.jokers)
+    with_candidate = _best_order_sample_score(state, _jokers_after_buy_for_scoring(state, joker))
     return with_candidate - current
 
 

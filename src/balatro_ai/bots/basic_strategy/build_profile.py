@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from balatro_ai.api.state import GameState, Joker
 from balatro_ai.bots.basic_strategy.cache import _identity_cached_value
 from balatro_ai.bots.basic_strategy.cards import (
@@ -71,12 +73,35 @@ def _build_profile_uncached(state: GameState) -> _BuildProfile:
     )
 
 
+def _hand_level_scaling_score(state: GameState) -> float:
+    """Planet / hand-leveling IS scaling investment — permanent per-round growth on
+    the hand you play. The joker-only scaling score ignored it, so a leveled build read
+    as 'no scaling': the bot hunted scaling jokers it didn't need and its capacity
+    penalties inflated pressure. Credit levels above 1 (full weight on the preferred
+    hand, partial on others), calibrated so a level ~4-5 preferred hand registers as
+    scaling (requirement is 22-30). A/B-measured winrate-negative (12->9/100), so OFF
+    by default — env-gated for reuse."""
+    if os.environ.get("BALATRO_PLANET_SCALING", "0") != "1":
+        return 0.0
+    levels = state.hand_levels or {}
+    preferred = _preferred_hand_type(state)
+    preferred_key = preferred.value if preferred is not None else None
+    total = 0.0
+    for hand_key, level in levels.items():
+        above = max(0, int(level) - 1)
+        if above <= 0:
+            continue
+        total += above * (1.0 if hand_key == preferred_key else 0.35)
+    return min(30.0, total * 7.0)
+
+
 def _build_role_scores(state: GameState) -> dict[str, float]:
     scores = {"chips": 0.0, "mult": 0.0, "xmult": 0.0, "scaling": 0.0, "economy": 0.0}
     for joker in state.jokers:
         joker_scores = _joker_role_scores(state, joker)
         for role, value in joker_scores.items():
             scores[role] += value
+    scores["scaling"] += _hand_level_scaling_score(state)
     scores["economy"] += min(18.0, max(0.0, state.money - 5) * 0.6)
     if state.money >= _interest_cap_money(state):
         scores["economy"] += 18.0
@@ -119,6 +144,15 @@ def _joker_role_scores(state: GameState, joker: Joker) -> dict[str, float]:
             scores["scaling"] += max(0.0, _joker_current_plus_value(joker, suffix="chips") * 0.25)
         if current_xmult > 1.0 and name in {"Hologram", "Constellation", "Lucky Cat", "Glass Joker", "Campfire"}:
             scores["scaling"] += min(24.0, (current_xmult - 1.0) * 22.0)
+
+    if (os.environ.get("BALATRO_RESET_JOKER_DISCOUNT", "0") == "1"
+            and name in ROUND_RESET_SCORE_JOKERS and state.ante < 6):
+        # Campfire-class jokers RESET their gain every boss and need a sell-economy to
+        # ramp, so they are NOT real scalers/xmult until late game — don't let them fill
+        # the scaling/xmult role early (the over-valuation that bought a 0-scoring
+        # Campfire under pressure). Env-gated for A/B.
+        scores["scaling"] *= 0.15
+        scores["xmult"] *= 0.15
 
     return _durable_joker_role_scores(state, joker, scores)
 

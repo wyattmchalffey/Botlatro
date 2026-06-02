@@ -26,6 +26,7 @@ from balatro_ai.bots.basic_strategy.blind_solver import (
     _ClearLine,
     _best_clear_line,
     _best_discard_for_solution,
+    _dig_via_play_action,
     _solve_blind,
 )
 from balatro_ai.bots.basic_strategy.discard_policy import (
@@ -102,6 +103,17 @@ def _tactical_blind_action(
         if banner_play is not None:
             return banner_play
         return _annotated_action(clear_line.action, reason=_clear_line_reason(state, clear_line, score))
+
+    # When the greedy line can't clear (a guaranteed loss), dig for a clearing hand by
+    # playing throwaways to draw — using spare HANDS as discards. Env-gated; only fires
+    # when greedy can't win, so it can't regress a winnable blind.
+    dig_play = _dig_via_play_action(state, score, remaining_score, context)
+    if dig_play is not None:
+        return _annotated_action(
+            dig_play,
+            reason=(f"dig_via_play hands_left={state.hands_remaining} "
+                    f"remaining={remaining_score} best_play_score={score}"),
+        )
 
     if (
         remaining_score == 0

@@ -703,6 +703,61 @@ def _remaining_cards_after_selection(cards: tuple[Card, ...], selected_cards: tu
     return tuple(remaining)
 
 
+def _best_flush_dig(
+    state: GameState,
+    remaining_score: int,
+    hands_remaining: int,
+    context: _BlindContext,
+) -> tuple[int, ...] | None:
+    """Off-suit card indices to PLAY as a throwaway to dig for a clearing flush across
+    MULTIPLE hands (using hands as discards), or None.
+
+    Unlike the single-redraw completion in `_flush_target_draw_evaluations`, this models
+    the CUMULATIVE dig: across `hands_remaining - 1` throwaway plays you draw deep into
+    the deck (reserving the last hand to play the flush). With a known deck this is
+    deterministic — does a suit-out appear within `known_deck[:budget]`; with an unknown
+    deck, a multi-draw hypergeometric. Only proposes a dig whose completed flush would
+    actually clear. Debuffed cards count toward the flush type, so they're included.
+    """
+    hand = state.hand
+    n = len(hand)
+    best_indices: tuple[int, ...] | None = None
+    best_score = -1.0
+    counts = Counter(_normalize_suit(card.suit) for card in hand)
+    for suit, present in counts.items():
+        if present < 3 or present >= 5:
+            continue
+        missing = 5 - present
+        keep_idx = [i for i, card in enumerate(hand) if _normalize_suit(card.suit) == suit]
+        off_idx = [i for i in range(n) if i not in keep_idx]
+        if not off_idx:
+            continue
+        per_play = min(5, len(off_idx))
+        budget = (hands_remaining - 1) * per_play  # reserve a hand to play the flush
+        if budget <= 0:
+            continue
+        outs = _flush_suit_out_count(state, suit)
+        if outs < missing:
+            continue
+        if state.known_deck:
+            window_outs = sum(1 for card in state.known_deck[:budget] if _normalize_suit(card.suit) == suit)
+            if window_outs < missing:
+                continue
+        elif _draw_at_least_k_probability(max(1, state.deck_size), budget, outs, missing) < 0.5:
+            continue
+        kept_cards = tuple(hand[i] for i in keep_idx)
+        completion = _flush_completion_cards_for_suit(kept_cards, suit, budget)
+        if not completion:
+            continue
+        completion_score = _score_completion_selection(state, completion, kept_cards, context)
+        if completion_score < remaining_score:
+            continue
+        if completion_score > best_score:
+            best_score = completion_score
+            best_indices = tuple(off_idx[:per_play])
+    return best_indices
+
+
 def _neutral_fill_card_for_rank(
     state: GameState,
     rank: str,

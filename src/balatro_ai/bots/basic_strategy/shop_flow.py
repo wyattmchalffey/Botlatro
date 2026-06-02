@@ -428,6 +428,28 @@ def _shop_decision_audit(
     context = context or _ShopContext()
     profile = profile or _build_profile(state)
     run_plan = run_plan or _run_plan(state, profile, pressure)
+    audit: dict[str, object] = {
+        "decision": decision,
+        "build_profile": _build_profile_payload(profile),
+        "run_plan": _run_plan_payload(run_plan),
+        "money_plan": _money_plan_payload(state, pressure),
+        "pressure": _pressure_payload(pressure),
+        "threshold": round(threshold, 2),
+        "chosen_value": round(chosen_value, 2),
+        "chosen_action": _action_payload(chosen_action),
+        "chosen_item": _item_payload_for_action(state, chosen_action),
+        "money": state.money,
+        "jokers": [joker.name for joker in state.jokers],
+        "shop_context": {
+            "rerolls_in_shop": context.rerolls_in_shop,
+            "packs_opened_in_shop": context.packs_opened_in_shop,
+        },
+    }
+    # The per-option planner re-run below roughly doubles the (heavy, ante>=5) shop
+    # decision cost and is only consumed by offline eval tools. Skip it when audit is
+    # disabled (rollout pilots / high-throughput label generation never read it).
+    if not active_config().shop_audit_enabled:
+        return audit
     option_actions = [
         action
         for action in state.legal_actions
@@ -443,25 +465,9 @@ def _shop_decision_audit(
         for action in option_actions
     ]
     chosen_terms = _shop_planner_terms(state, chosen_action, pressure, context, run_plan, profile=profile)
-    return {
-        "decision": decision,
-        "build_profile": _build_profile_payload(profile),
-        "run_plan": _run_plan_payload(run_plan),
-        "money_plan": _money_plan_payload(state, pressure),
-        "pressure": _pressure_payload(pressure),
-        "threshold": round(threshold, 2),
-        "chosen_value": round(chosen_value, 2),
-        "chosen_action": _action_payload(chosen_action),
-        "chosen_item": _item_payload_for_action(state, chosen_action),
-        "planner_terms": _shop_planner_terms_payload(chosen_terms),
-        "money": state.money,
-        "jokers": [joker.name for joker in state.jokers],
-        "shop_context": {
-            "rerolls_in_shop": context.rerolls_in_shop,
-            "packs_opened_in_shop": context.packs_opened_in_shop,
-        },
-        "options": sorted(options, key=lambda item: item["value"], reverse=True),
-    }
+    audit["planner_terms"] = _shop_planner_terms_payload(chosen_terms)
+    audit["options"] = sorted(options, key=lambda item: item["value"], reverse=True)
+    return audit
 
 
 def _shop_option_payload_with_planner(

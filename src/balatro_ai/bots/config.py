@@ -23,6 +23,12 @@ class BotConfig:
     # Shop buy / reroll decision tolerance.
     shop_value_tolerance: float = 0.25
 
+    # When True (default), shop decisions attach a full audit payload (re-runs the
+    # planner for every option — ~2x the late-shop cost) for the offline eval tools
+    # (decision_flip_audit / loss_audit / replay_analyzer). Set False in rollout
+    # pilots / high-throughput label generation, which never read it.
+    shop_audit_enabled: bool = True
+
     # Calibrated shop/build planner. The default keeps the legacy shop value as
     # the anchor and adds bounded, auditable adjustments around it.
     calibrated_shop_planner_enabled: bool = True

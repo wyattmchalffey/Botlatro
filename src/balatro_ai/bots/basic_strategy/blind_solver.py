@@ -21,6 +21,7 @@ from balatro_ai.bots.basic_strategy.discard_policy import (
 )
 from balatro_ai.bots.basic_strategy.discard_state import _discard_draw_count
 from balatro_ai.bots.basic_strategy.draw_evaluation import (
+    _best_flush_dig,
     _preferred_target_draw_evaluation,
     _straight_draw_evaluation,
     _straight_draw_reason_detail,
@@ -240,6 +241,36 @@ def _best_clear_line(
     if cache is not None:
         cache[cache_key] = line
     return line
+
+
+def _dig_via_play_action(
+    state: GameState,
+    current_score: int,
+    remaining_score: int,
+    context: _BlindContext,
+) -> Action | None:
+    """Dig for a clearing hand using spare HANDS as draws (play throwaways to draw).
+
+    Fires ONLY when the best play can't clear even repeated every remaining hand (a
+    guaranteed loss) and a spare hand remains to play the completed draw, so it can never
+    worsen a blind that was winnable greedily. The (multi-hand, deck-order-aware) flush
+    completion search lives in `_best_flush_dig`. Env-gated for A/B.
+    """
+    import os
+
+    if os.environ.get("BALATRO_DIG_VIA_PLAY", "0") != "1":
+        return None
+    if remaining_score <= 0 or current_score >= remaining_score:
+        return None
+    if state.hands_remaining < 2:
+        return None  # keep a hand to play the completed draw
+    if current_score * state.hands_remaining >= remaining_score:
+        return None  # the greedy line can still clear -> don't gamble
+
+    play_indices = _best_flush_dig(state, remaining_score, state.hands_remaining, context)
+    if play_indices is None:
+        return None
+    return Action(ActionType.PLAY_HAND, card_indices=play_indices)
 
 
 def _clear_lines_for_action(
