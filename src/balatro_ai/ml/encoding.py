@@ -44,7 +44,9 @@ from balatro_ai.api.state import (
     Joker,
 )
 
-ENCODING_VERSION = 1
+# v2: real-card suit/rank normalization (T->10, H->Hearts) + booster packs and the
+# voucher offer are now encoded as shop tokens (item-key vocab grew by the boosters).
+ENCODING_VERSION = 2
 
 _DATA = Path(__file__).resolve().parent.parent / "data"
 
@@ -156,10 +158,13 @@ def _voucher_name_vocab() -> dict[str, int]:
 
 @functools.lru_cache(maxsize=1)
 def _item_key_vocab() -> dict[str, int]:
-    """Shop-item identity by canonical key (j_/c_/v_), from `shop_cards` dicts."""
+    """Shop-item identity by canonical key (j_/c_/v_/p_), from `shop_cards`,
+    `booster_packs`, and `voucher_cards` dicts. `boosters` MUST be included or every
+    pack (Buffoon/Celestial/Arcana/...) collapses to UNK — the net then can't tell a
+    joker pack from a planet pack beyond type+cost."""
     d = _shop_pools()
     keys: set[str] = set()
-    for group in ("jokers", "tarots", "planets", "spectrals", "vouchers"):
+    for group in ("jokers", "tarots", "planets", "spectrals", "vouchers", "boosters"):
         keys.update(item["key"] for item in d.get(group, []) if item.get("key"))
     return {k: i + _RESERVED for i, k in enumerate(sorted(keys))}
 
@@ -406,8 +411,16 @@ def _boss_index(state: GameState) -> int:
 
 
 def _shop_card_dicts(state: GameState) -> tuple[dict, ...]:
-    raw = state.modifiers.get("shop_cards", ())
-    return tuple(c for c in raw if isinstance(c, dict))
+    """Every shop offer the net should see. Booster packs and the voucher offer live
+    in SEPARATE modifiers fields (`booster_packs` / `voucher_cards`), NOT `shop_cards`
+    — so without merging them here the net never sees packs at all (no type, cost, or
+    identity) and can't see which voucher is on sale. `_shop_item_type` already routes
+    p_/v_ keys to the right type, and the item-key vocab now covers boosters."""
+    mods = state.modifiers
+    out: list[dict] = []
+    for field in ("shop_cards", "booster_packs", "voucher_cards"):
+        out.extend(c for c in mods.get(field, ()) if isinstance(c, dict))
+    return tuple(out)
 
 
 def encode_state(state: GameState) -> EncodedState:

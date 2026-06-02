@@ -212,7 +212,15 @@ def main() -> int:
     eval_seeds = [f"{650000 + i:07d}" for i in range(1, 120)]
     eval_states = _collect_states(eval_seeds, cap=40, per_seed=2, min_ante=4, min_jokers=2)
     new_delta, new_frac = _net_joker_delta(model, eval_states)
-    old_delta, old_frac = _net_joker_delta(load_checkpoint(args.old_ckpt), eval_states)
+    try:
+        old_delta, old_frac = _net_joker_delta(load_checkpoint(args.old_ckpt), eval_states)
+        old_delta, old_frac = round(old_delta, 4), round(old_frac, 3)
+    except Exception as e:
+        # Pre-fix checkpoints (ENCODING_VERSION 1) have a different item-vocab size and
+        # were trained on the buggy encoder anyway, so load_checkpoint rejects them and
+        # the comparison is moot. Skip cleanly rather than abort the whole run.
+        print(f"[relabel] old-net comparison skipped ({type(e).__name__}: {e})", flush=True)
+        old_delta, old_frac = None, None
     save_checkpoint(model, args.ckpt_out)
 
     out = {
@@ -221,7 +229,7 @@ def main() -> int:
         "val_corr_to_avg_label": round(new_corr, 4),
         "joker_eval_states": len(eval_states),
         "new_net_joker_delta": round(new_delta, 4), "new_net_joker_frac_pos": round(new_frac, 3),
-        "old_net_joker_delta": round(old_delta, 4), "old_net_joker_frac_pos": round(old_frac, 3),
+        "old_net_joker_delta": old_delta, "old_net_joker_frac_pos": old_frac,
         "ckpt": args.ckpt_out,
     }
     print("[relabel] RESULT:", json.dumps(out, indent=2), flush=True)

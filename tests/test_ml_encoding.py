@@ -203,5 +203,46 @@ class TestRealCardFormat(unittest.TestCase):
         self.assertGreater(e.deck_counts[enc._RANK_INDEX["10"]], 0.0)
 
 
+class TestShopOfferFields(unittest.TestCase):
+    """Booster packs and the voucher offer live in SEPARATE modifiers fields
+    (`booster_packs` / `voucher_cards`), not `shop_cards`. The encoder must pull them
+    into the shop tokens with real identity — the prior bug left packs entirely
+    unencoded, so the net couldn't see a Buffoon vs Arcana pack at all."""
+
+    def _shop_state(self) -> GameState:
+        return GameState(
+            phase=GamePhase.SHOP,
+            modifiers={
+                "shop_cards": ({"key": "j_joker", "name": "Joker", "set": "Joker", "cost": {"buy": 4}},),
+                "booster_packs": (
+                    {"key": "p_buffoon_normal_2", "name": "Buffoon Pack", "set": "BOOSTER", "cost": {"buy": 4}},
+                    {"key": "p_arcana_normal_1", "name": "Arcana Pack", "set": "BOOSTER", "cost": {"buy": 4}},
+                ),
+                "voucher_cards": ({"key": "v_wasteful", "name": "Wasteful", "set": "VOUCHER", "cost": {"buy": 10}},),
+            },
+        )
+
+    def test_packs_and_voucher_offer_are_encoded(self) -> None:
+        e = enc.encode_state(self._shop_state())
+        # 1 card + 2 packs + 1 voucher offer = 4 shop tokens.
+        self.assertEqual(len(e.shop), 4)
+        kinds = [t.item_type_index for t in e.shop]
+        self.assertIn(enc._ITEM_TYPE_INDEX["pack"], kinds)
+        self.assertIn(enc._ITEM_TYPE_INDEX["voucher"], kinds)
+
+    def test_pack_identity_is_not_unk(self) -> None:
+        e = enc.encode_state(self._shop_state())
+        packs = [t for t in e.shop if t.item_type_index == enc._ITEM_TYPE_INDEX["pack"]]
+        self.assertEqual(len(packs), 2)
+        for p in packs:
+            self.assertGreater(p.key_index, enc.UNK)            # real identity, not UNK
+        self.assertNotEqual(packs[0].key_index, packs[1].key_index)  # distinct packs distinct
+
+    def test_booster_keys_in_item_vocab(self) -> None:
+        vocab = enc._item_key_vocab()
+        self.assertIn("p_buffoon_normal_2", vocab)
+        self.assertIn("p_arcana_normal_1", vocab)
+
+
 if __name__ == "__main__":
     unittest.main()
