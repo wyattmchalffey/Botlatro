@@ -541,6 +541,35 @@
   with the bootstrap-v3 head (does 0.48 beat the heuristic shop?), then scale the bootstrap
   (512→2000 runs + stronger regularization) to push val_corr past 0.48.
 
+### 2026-06-03 — Option C increment 1 (TD(λ) targets): value head breaks the ceiling on-distribution, but DISTRIBUTION SHIFT blocks the shop
+
+- **TD(λ) relabel of the bootstrap captures** (`scripts/phase8_td_relabel.py`): replace
+  high-variance MC final-ante labels with TD(λ) targets `G_i=(1-λ)·V(s_{i+1})+λ·G_{i+1}`
+  (γ=1, terminal `final_ante/9`), bootstrapped from the bootstrap-v3 net; fitted value
+  iteration (freeze V, relabel, train fresh net, swap). Reuses captures (replay + cache),
+  no rollouts — cheap.
+- **A SINGLE TD step beat the MC bootstrap** (first ceiling break this session): val
+  ante_corr **0.48 → 0.58**, val shop_std on the basic_strategy training states **0.074 →
+  0.10**. λ=0.5 ≈ λ=0.9 at iter 0. The variance-reduction thesis held — lower-variance
+  targets let the net fit the outcome better AND discriminate shop states.
+- **Naive fitted value iteration COLLAPSES**: iters 1→3 degrade both (corr → 0.52–0.56,
+  shop_std → 0.07–0.08, train_target_std shrinks each round) — bootstrapping off a flat-ish
+  V pulls variance toward the mean. Stable iteration needs a target network / regularization.
+  The win is the single relabel step; banked `phase8_value_td_iter0.pt` (corr 0.575).
+- **Shop A/B (100 seeds) STILL FAILS: TD-iter0 = 2.64 ante / 0% vs heuristic 4.87 / 5%**
+  (≈ bootstrap-v3's 2.61 / 1%). SMOKING GUN: calib shop_std on the DEPLOYMENT (SolverPolicy)
+  states = **0.073 ≈ bootstrap-v3's 0.074** — vs 0.10 on the basic_strategy TRAINING states.
+  **DISTRIBUTION SHIFT**: the head discriminates the shop states it trained on but is just as
+  flat as before on the SolverPolicy shop states the beam actually visits.
+- **CONCLUSION — offline shortcuts are exhausted.** MC bootstrap (flat shop), rollout-relabel
+  (data-starved), TD-relabel (great on-distribution, flat off-distribution) ALL fail to guide
+  the shop. The value head CAN learn (corr 0.58) but training≠deployment distribution + shop's
+  long-horizon credit assignment block it. The principled fix is the **ON-POLICY loop** (the
+  AlphaZero analog the plan always pointed to): generate states + search-improved targets with
+  the SAME search that deploys the head, train on that distribution, iterate. NEXT (await user):
+  on-policy loop's first increment (capture SolverPolicy runs → TD-relabel → shop A/B) vs the
+  full iterative loop.
+
 ## Next Steps
 
 > **Top priority (2026-05-31): the Phase 8 neural build** — `PHASE8_NEURAL_PLAN.md`.
