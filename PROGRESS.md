@@ -569,6 +569,22 @@
   the SAME search that deploys the head, train on that distribution, iterate. NEXT (await user):
   on-policy loop's first increment (capture SolverPolicy runs → TD-relabel → shop A/B) vs the
   full iterative loop.
+- **Shop action-ranker prototype (`scripts/phase8_shop_action_label.py`) — GATE FAILED →
+  shop-value CONCLUSIVELY CLOSED.** Per the "train Q/ranking, not V(state)" synopsis: at shop
+  states, enumerate legal actions, apply each with the forward model, evaluate every branch via
+  COMMON-RANDOM-NUMBER bounded rollouts (paired delta cancels shared variance). Gate = does the
+  action ranking REPRODUCE (split-half) + show headroom over the heuristic? Bounded M=10:
+  top1_stable 0.30, half_corr 0.24, reliable_disagree 0.033. Rigorous M=16 + coarse-V truncation
+  (TD-iter0 head estimates the tail): top1_stable 0.27, half_corr 0.18, reliable_disagree 0.033 —
+  V-truncation slightly HURT (injected the value head's own noise). VERDICT: even at the best
+  feasible config the CRN signal is noise-dominated (the shop edge is a residual *below
+  feasible-rollout resolution*) AND the heuristic shop SELECTION is already near-optimal (1/30
+  reproducible disagreements). Every shop-value form (V-net, rollout, TD, action-ranker) is now
+  closed. **KEY IMPLICATION: shop selection is near-optimal yet winrate is 12-14% → the gap is
+  NOT selection; it's build-CEILING, PLAY, or META.** NEXT: ante-8 build-vs-play diagnostic (for
+  ante-8-loss states, can a deep play search clear the hand? = play-limited vs build-limited) +
+  audit discrete meta decisions (skips/tags, vouchers, pack picks). Play was "tapped" only on
+  AVERAGE — endgame play untested.
 
 ## Next Steps
 
