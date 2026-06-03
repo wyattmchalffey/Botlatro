@@ -499,6 +499,48 @@
   direction**, not heuristics. (Also confirmed ~1-win baseline wobble from Python hash
   randomization → pin `PYTHONHASHSEED=0` for exact A/B baselines.)
 
+### 2026-06-02 — Phase 8 encoder was BROKEN (3 bugs); value lever is DATA not rollouts; play-policy unlocked
+
+- **Audited the encoder** (degenerate-bucket rate over 1164 real states) — the "encoder
+  RULED OUT" verdict (Stage 2.5) had been reached on a **broken encoder**. Found + fixed
+  THREE bugs, each tested + committed; `ENCODING_VERSION` 1→3:
+  - **Suit/rank mis-encoding** (`encoding._canon_suit`/`_canon_rank`, e103b99): real sim
+    cards use single-letter suits ("S"/"H"/"D"/"C") and "T" for ten, but the vocab only
+    knew "Spades"/"10" → EVERY card's suit → SUIT_NONE, deck suit-counts all 0, tens →
+    rank 0 ("2"). The net saw **no suit info**; `_classify_hand` never detected a flush.
+  - **Packs/vouchers unencoded** (`_shop_card_dicts` merge + `boosters` vocab, c7b24d4):
+    booster packs live in `modifiers["booster_packs"]`, the voucher offer in
+    `["voucher_cards"]` — separate fields the encoder never read (only `shop_cards`).
+    Packs were **completely invisible** (no type/cost/identity).
+  - **Joker scaling counter always 0** (`_joker_counter` reads metadata, 359d3ae):
+    `joker.effect.*` is None in the local sim; the live value is in
+    `metadata['current_mult'|'current_xmult'|'current_chips']`. The net couldn't tell a
+    +50 Ride-the-Bus from a fresh one. (Stickers don't appear on white stake.) 6 new
+    regression tests; **45 ml tests green**.
+- **Clean re-tests on the fixed encoder** (reuse `phase8-bootstrap-basic.jsonl`, replay +
+  re-encode, identical hyperparameters — only the encoder changed):
+  - **Value head (bootstrap, single-traj): val ante_corr 0.43 → 0.48. MODEST** — the
+    encoder was *not* the value-head's binding constraint.
+  - **Play-candidate policy: val top1 0.388 → 0.533 (+37%). BIG** — the fix unlocked
+    suit-aware play evaluation (the subset scorer sees flushes/straights now). Per-card
+    pointer stayed flat (DeepSets mean-pool blur, a separate known issue). Policy heads
+    have *clean* labels (teacher's action) → they benefit from the encoder where the
+    noisy-label value head couldn't.
+- **Option A Part 2 (rollout-averaged value relabel — the planned "label-noise" fix)
+  FAILED.** 1500 states × 5 full-game rollouts (≈6h) → **val_corr 0.10**, *worse* than the
+  cheap bootstrap's 0.48. Root cause = **data starvation**: clean rollout labels cost ~50×
+  more per label → only 1200 train states vs the bootstrap's 61k → the net underfits to a
+  near-constant (label std 0.82; joker frac_pos 0.99 but Δ 0.0004). The averaged-target
+  signal is real (Part 1), but you can't *train* a net on 1500 of them. **Rollout-labeling
+  is a dead end at feasible scale** (60k states × 5 ≈ 60+ h).
+- **Revised map of the value-head lever:** not the encoder (modest), not rollout-relabel
+  (data-starved dead end) — it's **data quantity + regularization on the cheap bootstrap**
+  (single-traj, 76k examples nearly free via replay; overfits train 0.73 / val 0.48).
+  Checkpoints: `phase8_value_v3_bootstrap.pt` (0.48, best value), `phase8_playpolicy_v3.pt`
+  (0.53, good play prior), `phase8_value_relabel_v1.pt` (0.10, weak). **NEXT:** shop A/B
+  with the bootstrap-v3 head (does 0.48 beat the heuristic shop?), then scale the bootstrap
+  (512→2000 runs + stronger regularization) to push val_corr past 0.48.
+
 ## Next Steps
 
 > **Top priority (2026-05-31): the Phase 8 neural build** — `PHASE8_NEURAL_PLAN.md`.
