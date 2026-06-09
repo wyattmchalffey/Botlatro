@@ -77,8 +77,25 @@ def _shop_action_value(
 ) -> float:
     context = context or _ShopContext()
     kind = str(action.metadata.get("kind", ""))
-    profile = _build_profile(state)
-    plan = plan or _run_plan(state, profile, pressure)
+    # _build_profile and _run_plan are only read by the voucher / OPEN_PACK /
+    # REROLL branches; the BUY-card branch (the dominant case — every reroll_ev
+    # item valuation is a BUY-card scoring) never touches either. Resolve both
+    # lazily so the card path skips the whole profile + plan computation.
+    # Behaviour-identical: both are pure functions of (state[, profile], pressure)
+    # computed exactly when first needed, with the passed-in plan reused if given.
+    _profile_box: list[_BuildProfile] = []
+
+    def _profile() -> _BuildProfile:
+        if not _profile_box:
+            _profile_box.append(_build_profile(state))
+        return _profile_box[0]
+
+    def _plan() -> _RunPlan:
+        nonlocal plan
+        if plan is None:
+            plan = _run_plan(state, _profile(), pressure)
+        return plan
+
     if action.action_type == ActionType.BUY and kind == "card":
         shop_cards = state.modifiers.get("shop_cards", ())
         index = int(action.metadata.get("index", action.amount or 0))
@@ -109,7 +126,7 @@ def _shop_action_value(
         index = int(action.metadata.get("index", action.amount or 0))
         if index >= len(vouchers):
             return 0.0
-        return _voucher_value(state, vouchers[index], pressure, plan) - _cost_penalty(state, vouchers[index], pressure)
+        return _voucher_value(state, vouchers[index], pressure, _plan()) - _cost_penalty(state, vouchers[index], pressure)
     if action.action_type == ActionType.OPEN_PACK:
         packs = state.modifiers.get("booster_packs", ())
         index = int(action.metadata.get("index", action.amount or 0))
@@ -119,17 +136,17 @@ def _shop_action_value(
         if (
             _shop_pack_can_trigger_hidden_target_error(state, pack)
             and not _pressured_target_hand_pack_is_worth_opening(state, pressure)
-            and not _run_plan_allows_target_hand_pack(state, plan, pack)
+            and not _run_plan_allows_target_hand_pack(state, _plan(), pack)
         ):
             return 0.0
         if _is_standard_pack(pack) and not _standard_pack_has_build_payoff(state):
             return 0.0
         if state.money - _card_cost(pack) < 4 and pressure.ratio < 1.15:
             return 0.0
-        if not _late_pack_is_worth_opening(state, pack, pressure, context, plan):
+        if not _late_pack_is_worth_opening(state, pack, pressure, context, _plan()):
             return 0.0
         return (
-            _pack_value(state, pack, plan)
+            _pack_value(state, pack, _plan())
             + pressure.danger * 16
             + _pressure_pack_bonus(state, pack, pressure)
             + _scaling_commitment_pack_bonus(state, pack, pressure)
@@ -139,20 +156,20 @@ def _shop_action_value(
         reroll_cost = _shop_reroll_cost(state)
         if not _early_reroll_is_allowed(state, pressure):
             return 0.0
-        panic_reroll = _panic_reroll_is_worth_it(state, pressure, profile, context, plan)
+        panic_reroll = _panic_reroll_is_worth_it(state, pressure, _profile(), context, _plan())
         if state.money < _minimum_reroll_bank(state, pressure) and not panic_reroll:
             return 0.0
         if pressure.ratio < 0.95 and state.money < 14:
             return 0.0
-        if not panic_reroll and not _late_reroll_is_worth_it(state, pressure, profile, context, plan):
+        if not panic_reroll and not _late_reroll_is_worth_it(state, pressure, _profile(), context, _plan()):
             return 0.0
-        if _normal_joker_open_slots(state) <= 0 and pressure.ratio < 1.1 and not _rich_late_role_hunt(profile):
+        if _normal_joker_open_slots(state) <= 0 and pressure.ratio < 1.1 and not _rich_late_role_hunt(_profile()):
             return 0.0
-        if _visible_safety_pack_before_reroll(state, pressure, profile, context):
+        if _visible_safety_pack_before_reroll(state, pressure, _profile(), context):
             return 0.0
         pressure_bonus = max(0, 4 - _normal_joker_slots_used(state)) * 7
         pressure_bonus += pressure.danger * 22
-        pressure_bonus += _reroll_role_hunt_bonus(profile, pressure)
+        pressure_bonus += _reroll_role_hunt_bonus(_profile(), pressure)
         if any(joker.name == "Flash Card" for joker in state.jokers):
             pressure_bonus += 26
         return (

@@ -209,6 +209,10 @@ def _joker_late_durability_factor(state: GameState, joker: Joker) -> float:
         elif state.ante >= 5:
             factor *= 0.88
 
+    # NOTE: strengthening this decay penalty was A/B-tested 2026-06-09 (env knob
+    # BALATRO_DECAY_W=1.6, paired 128 seeds) = winrate-NEUTRAL (+1/128). The S-pre
+    # signal "losers over-own decay jokers" (Cohen's d -0.49) is largely correlational;
+    # the calibrated factors above already handle decay adequately. Knob reverted.
     return max(0.0, min(1.0, factor))
 
 

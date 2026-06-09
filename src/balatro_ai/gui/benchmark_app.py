@@ -27,7 +27,15 @@ from balatro_ai.tools.headless_exe import ensure_tiny_startup_copy
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 CURRENT_BENCHMARK_SEEDS_PATH = PROJECT_ROOT / ".data" / "current-light-100-seeds.txt"
 
-BOT_NAMES = ("basic_strategy_bot", "search_bot_v1", "search_bot_v2", "greedy_bot", "random_bot")
+BOT_NAMES = (
+    "basic_strategy_bot",
+    "solver_policy_bot",
+    "solver_shop_basic_play_bot",
+    "search_bot_v1",
+    "search_bot_v2",
+    "greedy_bot",
+    "random_bot",
+)
 STAKES = ("white", "red", "green", "black", "blue", "purple", "orange", "gold")
 DECKS = (
     "RED",

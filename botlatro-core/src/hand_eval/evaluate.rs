@@ -17,7 +17,7 @@
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
-use crate::hand_eval::chips::card_chip_value;
+use crate::hand_eval::chips::{card_can_score, card_chip_value};
 use crate::hand_eval::effects::{
     ability_joker_effect, enhancement_effect, held_card_effect,
     held_pass_possible, held_retrigger_count, is_face_with_pareidolia,
@@ -94,18 +94,26 @@ pub fn evaluate_simple(
         return None;
     }
     // Joker editions are parallel to joker_names. Empty list is treated
-    // as "all None" — keeps backward-compatible call sites simple.
-    let editions_for_jokers: Vec<crate::state::card::Edition> = if joker_editions.len() == joker_names.len() {
-        joker_editions.to_vec()
-    } else {
-        vec![crate::state::card::Edition::None; joker_names.len()]
-    };
+    // as "all None" — keeps backward-compatible call sites simple. Borrow the
+    // input slice directly on the dominant length-match path (no per-call heap
+    // copy); only allocate the padded default vec when the lengths disagree.
+    let editions_owned: Option<Vec<crate::state::card::Edition>> =
+        if joker_editions.len() == joker_names.len() {
+            None
+        } else {
+            Some(vec![crate::state::card::Edition::None; joker_names.len()])
+        };
+    let editions_for_jokers: &[crate::state::card::Edition] =
+        editions_owned.as_deref().unwrap_or(joker_editions);
     // Same pattern for joker metadata — default to "no scaling" entries.
-    let metadata_for_jokers: Vec<JokerMetadata> = if joker_metadata.len() == joker_names.len() {
-        joker_metadata.to_vec()
-    } else {
-        vec![JokerMetadata::default(); joker_names.len()]
-    };
+    let metadata_owned: Option<Vec<JokerMetadata>> =
+        if joker_metadata.len() == joker_names.len() {
+            None
+        } else {
+            Some(vec![JokerMetadata::default(); joker_names.len()])
+        };
+    let metadata_for_jokers: &[JokerMetadata] =
+        metadata_owned.as_deref().unwrap_or(joker_metadata);
 
     // Identification joker flags. When any of these are set OR a
     // Wild card is in the played hand, take the joker-aware path;
@@ -210,6 +218,9 @@ pub fn evaluate_simple(
     let first_scoring_card_index = scoring.first().copied();
     for (pos, &i) in scoring.iter().enumerate() {
         let c = cards[i];
+        if !card_can_score(c, debuffed_suits) {
+            continue;
+        }
         // Retrigger count: fire all the per-card effects N times.
         // Computed once per card; the inner loop just applies the
         // base effects per trigger. Python matches: card_chip_value
@@ -262,7 +273,14 @@ pub fn evaluate_simple(
     //   4. multiply mult by joker edition xmult (Polychrome = x1.5)
     // Matches Python's `_effect_adjustments` ability-pass ordering at
     // lines 1297-1436.
-    let scoring_cards: Vec<Card> = scoring.iter().map(|&i| cards[i]).collect();
+    // scoring_cards is only consumed by ability_joker_effect inside the per-joker
+    // loop; with no jokers that loop never runs, so skip the per-call allocation
+    // on the hot no-joker path (shop/early-game scoring).
+    let scoring_cards: Vec<Card> = if joker_names.is_empty() {
+        Vec::new()
+    } else {
+        scoring.iter().map(|&i| cards[i]).collect()
+    };
     let baseball_count: u32 = joker_names
         .iter()
         .filter(|n| n.as_str() == "Baseball Card")
@@ -273,7 +291,7 @@ pub fn evaluate_simple(
     // case).
     let total_triggers_on_2s: u32 = if joker_names.iter().any(|n| n == "Wee Joker") {
         scoring.iter().filter_map(|&i| {
-            if cards[i].rank == Rank::Two {
+            if cards[i].rank == Rank::Two && card_can_score(cards[i], debuffed_suits) {
                 let is_first_scored = first_scoring_card_index == Some(i);
                 Some(scored_card_trigger_count(
                     cards[i], is_first_scored, joker_names,
@@ -739,6 +757,26 @@ mod tests {
         assert_eq!(chips, 32);
         assert_eq!(mult, 6);
         assert_eq!(score, 192);
+    }
+
+    #[test]
+    fn debuffed_scoring_cards_do_not_trigger_per_card_jokers() {
+        let mut debuffed_club_king = card(Rank::King, Suit::Clubs);
+        debuffed_club_king.debuffed = true;
+        let cards = [
+            card(Rank::King, Suit::Spades),
+            debuffed_club_king,
+            card(Rank::Three, Suit::Clubs),
+            card(Rank::Three, Suit::Diamonds),
+        ];
+        let jokers = vec!["Gluttonous Joker".to_string()];
+        let (chips, mult, score, ht) = evaluate_simple(
+            &cards, 1, &[], &jokers, &[], &[], &[], &[], HandContext::default(),
+        ).unwrap();
+        assert_eq!(ht, "Two Pair");
+        assert_eq!(chips, 36);
+        assert_eq!(mult, 5);
+        assert_eq!(score, 180);
     }
 
     #[test]

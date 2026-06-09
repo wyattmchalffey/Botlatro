@@ -71,7 +71,6 @@ class BotConfig:
     # score delta vs hand-tuned heuristics. Used in _joker_card_value,
     # _candidate_joker_value_for_replacement, _owned_joker_value.
     joker_sample_coefficient: float = 0.08
-
     # _panic_discard_ratio: how far below pace before bot bails to a discard.
     panic_discard_base_ratio: float = 0.45
     panic_discard_ante4_bonus: float = 0.10

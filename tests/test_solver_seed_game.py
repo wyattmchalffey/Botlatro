@@ -108,6 +108,11 @@ class SeedGameInitialStateTests(unittest.TestCase):
         self.assertIn("boss_key", surface)
         self.assertIn("voucher_key", surface)
 
+    def test_initial_state_modifiers_carry_seed_string(self) -> None:
+        state = SeedGame("AAAAAAA").initial_state()
+
+        self.assertEqual(state.modifiers.get("balatro_seed"), "AAAAAAA")
+
     def test_hand_levels_initialized_to_one(self) -> None:
         state = SeedGame("AAAAAAA").initial_state()
         # Every hand type should be present at level 1.

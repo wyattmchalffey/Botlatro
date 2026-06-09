@@ -393,10 +393,25 @@ class ShopSampler:
         except ValueError:
             return -float(cost)
 
+        # _shop_pressure is invariant across every sampled item (it reads only owned
+        # state, never the shop card), so for the default scorer compute it ONCE on
+        # post_reroll_state and pass it into each call — otherwise every item builds
+        # a fresh temp_state and recomputes pressure (an id()-cache miss each time).
+        item_pressure = None
+        if item_value_fn is None:
+            from balatro_ai.bots.basic_strategy.shop_pressure import _shop_pressure
+
+            item_pressure = _shop_pressure(post_reroll_state)
         total = 0.0
         for _ in range(samples):
             shop_cards = self.sample_shop(post_reroll_state, rng=rng)
-            best = max((value_fn(post_reroll_state, item) for item in shop_cards), default=0.0)
+            if item_pressure is not None:
+                best = max(
+                    (value_fn(post_reroll_state, item, item_pressure) for item in shop_cards),
+                    default=0.0,
+                )
+            else:
+                best = max((value_fn(post_reroll_state, item) for item in shop_cards), default=0.0)
             total += max(0.0, best)
         return (total / samples) - cost
 
@@ -520,6 +535,32 @@ class ShopSampler:
         return None
 
     def _pool_records(self, pool_type: str, state: GameState) -> list[Mapping[str, Any]]:
+        # Availability-filtered pool for ``pool_type`` under ``state``. The raw
+        # pool is static and the availability gate (_record_available) reads only
+        # state.modifiers fields (banned/unlocked/pool_flags/voucher/enhancement)
+        # that are FIXED across a shop decision -- yet this is called ~5K times/run
+        # (each filtering ~60 records via _record_available), redundantly rebuilding
+        # the same ~4 lists for every reroll-EV sample. Memoize per (state, pool_type)
+        # in a per-state, identity-pinned, decision-scoped bucket (cleared each
+        # decision; falls back to a direct compute when no scope is active). The
+        # returned list is read-only at every call site (callers build new filtered
+        # lists from it), so sharing the cached list is safe.
+        try:
+            from balatro_ai.bots.basic_strategy.cache import _state_scoped_cache
+
+            bucket = _state_scoped_cache(("shop_pool_records", id(self)), state)
+        except Exception:  # noqa: BLE001 — caching must never break sampling
+            bucket = None
+        if bucket is not None:
+            cached = bucket.get(pool_type)
+            if cached is not None:
+                return cached
+        records = self._pool_records_uncached(pool_type, state)
+        if bucket is not None:
+            bucket[pool_type] = records
+        return records
+
+    def _pool_records_uncached(self, pool_type: str, state: GameState) -> list[Mapping[str, Any]]:
         if pool_type in SHOP_TYPE_TO_DATA_KEY:
             raw = self.data.get(SHOP_TYPE_TO_DATA_KEY[pool_type], ())
         else:
@@ -542,8 +583,17 @@ def _load_default_shop_pool_data() -> dict[str, Any]:
     return json.loads(SHOP_POOL_DATA_PATH.read_text(encoding="utf-8"))
 
 
-def basic_strategy_shop_item_value(state: GameState, item: Mapping[str, Any]) -> float:
-    """Value one visible shop-card item through the current rule bot heuristic."""
+def basic_strategy_shop_item_value(
+    state: GameState, item: Mapping[str, Any], pressure: Any | None = None
+) -> float:
+    """Value one visible shop-card item through the current rule bot heuristic.
+
+    ``pressure`` may be precomputed by the caller. _shop_pressure depends only on
+    OWNED state (jokers/levels/blind/money/deck), never on the shop card, so it is
+    identical for every item valued against the same ``state``; reroll_ev passes it
+    in once instead of recomputing per sampled item (it would otherwise miss the
+    id()-keyed cache, since each item builds a fresh temp_state).
+    """
 
     from balatro_ai.api.actions import Action, ActionType
     from balatro_ai.bots.basic_strategy.profile import _ShopContext
@@ -581,7 +631,10 @@ def basic_strategy_shop_item_value(state: GameState, item: Mapping[str, Any]) ->
         won=state.won,
     )
     action = Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0})
-    return _shop_action_value(temp_state, action, _shop_pressure(temp_state), _ShopContext())
+    # _shop_pressure ignores shop_cards, so the caller-supplied pressure (computed
+    # once on the un-stashed state) equals _shop_pressure(temp_state) exactly.
+    item_pressure = pressure if pressure is not None else _shop_pressure(temp_state)
+    return _shop_action_value(temp_state, action, item_pressure, _ShopContext())
 
 
 def _item_buy_cost(item: Mapping[str, Any]) -> int:

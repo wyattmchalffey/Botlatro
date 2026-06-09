@@ -1,14 +1,21 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import context  # noqa: F401
 from balatro_ai.api.actions import Action, ActionType
 from balatro_ai.api.state import GamePhase, GameState, Joker
 from balatro_ai.search.forward_sim import PLANET_TO_HAND
 from balatro_ai.search.shop_sampler import ShopSampler
+from balatro_ai.bots.basic_strategy.shop_jokers import (
+    _rare_hand_commitment_reliability,
+    _stencil_slot_discipline_penalty,
+)
 from balatro_ai.search.shop_search import (
     ShopSearchConfig,
+    _BeamNode,
+    _action_potential_shaping,
     _minimum_safe_shop_money,
     _shop_money_floor_penalty,
     best_shop_action,
@@ -1016,6 +1023,83 @@ class ShopSearchTests(unittest.TestCase):
         self.assertGreater(weak_terms.conditional_penalty, 80.0)
         self.assertLess(supported_terms.conditional_penalty, weak_terms.conditional_penalty)
 
+    def test_shop_leaf_can_penalize_unsupported_rare_hand_commitment(self) -> None:
+        weak = GameState(
+            phase=GamePhase.SHOP,
+            ante=4,
+            blind="Small Blind",
+            required_score=5000,
+            hands_remaining=4,
+            discards_remaining=3,
+            deck_size=40,
+            money=18,
+            jokers=(Joker("The Family"),),
+        )
+        supported = GameState(
+            phase=GamePhase.SHOP,
+            ante=4,
+            blind="Small Blind",
+            required_score=5000,
+            hands_remaining=4,
+            discards_remaining=3,
+            deck_size=40,
+            money=18,
+            jokers=(Joker("The Family"),),
+            consumables=("Strength", "Death", "The Hanged Man"),
+        )
+
+        with patch("balatro_ai.search.shop_search._RARE_HAND_LEAF_PENALTY_WEIGHT", 1.0):
+            weak_terms = shop_leaf_terms(weak)
+            supported_terms = shop_leaf_terms(supported)
+
+        self.assertIn("rare_hand_penalty", weak_terms.to_trace_dict())
+        self.assertGreater(weak_terms.rare_hand_penalty, 80.0)
+        self.assertLess(supported_terms.rare_hand_penalty, weak_terms.rare_hand_penalty)
+
+    def test_rare_hand_commitment_reliability_discounts_uncommitted_family(self) -> None:
+        early = GameState(
+            phase=GamePhase.SHOP,
+            ante=2,
+            blind="Big Blind",
+            required_score=1200,
+            jokers=(Joker("The Family"),),
+        )
+        weak = GameState(
+            phase=GamePhase.SHOP,
+            ante=3,
+            blind="Small Blind",
+            required_score=2000,
+            jokers=(Joker("The Family"),),
+        )
+        supported = GameState(
+            phase=GamePhase.SHOP,
+            ante=3,
+            blind="Small Blind",
+            required_score=2000,
+            jokers=(Joker("The Family"),),
+            hand_levels={"Four of a Kind": 3},
+            consumables=("Strength",),
+        )
+
+        with patch("balatro_ai.bots.basic_strategy.shop_jokers._RARE_HAND_COMMITMENT_RELIABILITY_WEIGHT", 1.0):
+            self.assertEqual(_rare_hand_commitment_reliability(early, early.jokers[0]), 1.0)
+            self.assertLess(_rare_hand_commitment_reliability(weak, weak.jokers[0]), 0.20)
+            self.assertEqual(_rare_hand_commitment_reliability(supported, supported.jokers[0]), 1.0)
+
+    def test_stencil_slot_discipline_penalizes_filling_protected_slots(self) -> None:
+        state = GameState(
+            phase=GamePhase.SHOP,
+            ante=3,
+            blind="Small Blind",
+            required_score=2000,
+            jokers=(Joker("Blue Joker"), Joker("Joker Stencil")),
+        )
+
+        self.assertEqual(_stencil_slot_discipline_penalty(state, Joker("Greedy Joker")), 0.0)
+        with patch("balatro_ai.bots.basic_strategy.shop_jokers._STENCIL_SLOT_DISCIPLINE_WEIGHT", 1.0):
+            self.assertGreater(_stencil_slot_discipline_penalty(state, Joker("Greedy Joker")), 20.0)
+            self.assertEqual(_stencil_slot_discipline_penalty(state, Joker("Joker Stencil")), 0.0)
+
     def test_shop_action_value_prefers_stable_mult_to_more_conditional_chips(self) -> None:
         state = GameState(
             phase=GamePhase.SHOP,
@@ -1058,6 +1142,79 @@ class ShopSearchTests(unittest.TestCase):
         driver = Action(ActionType.BUY, target_id="card", amount=0, metadata={"kind": "card", "index": 0})
 
         self.assertLess(shop_action_search_value(state, driver), 40.0)
+
+    def test_shop_consumable_action_value_can_avoid_leaf_delta_double_count(self) -> None:
+        state = GameState(
+            phase=GamePhase.SHOP,
+            ante=1,
+            blind="Small Blind",
+            required_score=600,
+            hands_remaining=4,
+            discards_remaining=3,
+            deck_size=40,
+            money=7,
+            consumables=("Saturn",),
+            hand_levels={"Straight": 1},
+        )
+        action = Action(
+            ActionType.USE_CONSUMABLE,
+            target_id="consumable",
+            amount=0,
+            metadata={"kind": "consumable", "index": 0},
+        )
+
+        with (
+            patch("balatro_ai.search.shop_search._USE_CONSUMABLE_LEAF_DELTA_WEIGHT", 0.55),
+            patch("balatro_ai.search.shop_search._USE_CONSUMABLE_BONUS_WEIGHT", 0.0),
+        ):
+            full_delta_value = shop_action_search_value(state, action)
+        with (
+            patch("balatro_ai.search.shop_search._USE_CONSUMABLE_LEAF_DELTA_WEIGHT", 0.0),
+            patch("balatro_ai.search.shop_search._USE_CONSUMABLE_BONUS_WEIGHT", 0.55),
+        ):
+            bonus_only_value = shop_action_search_value(state, action)
+
+        self.assertGreater(full_delta_value, bonus_only_value)
+        self.assertGreater(bonus_only_value, 0.0)
+
+    def test_use_consumable_potential_shaping_is_ablatable(self) -> None:
+        state = GameState(phase=GamePhase.SHOP, money=7, consumables=("Saturn",))
+        node = _BeamNode(
+            state=state,
+            first_action=None,
+            path=(),
+            action_score=0.0,
+            leaf_score=0.0,
+            score=0.0,
+        )
+        action = Action(
+            ActionType.USE_CONSUMABLE,
+            target_id="consumable",
+            amount=0,
+            metadata={"kind": "consumable", "index": 0},
+        )
+
+        with patch("balatro_ai.search.shop_search._USE_CONSUMABLE_POTENTIAL_WEIGHT", 1.0):
+            shaped = _action_potential_shaping(
+                node,
+                action,
+                10.0,
+                leaf_value_fn=lambda _state: 2.0,
+                leaf_terms_fn=None,
+                weight=0.65,
+            )
+        with patch("balatro_ai.search.shop_search._USE_CONSUMABLE_POTENTIAL_WEIGHT", 0.0):
+            disabled = _action_potential_shaping(
+                node,
+                action,
+                10.0,
+                leaf_value_fn=lambda _state: 2.0,
+                leaf_terms_fn=None,
+                weight=0.65,
+            )
+
+        self.assertAlmostEqual(shaped, 5.2)
+        self.assertEqual(disabled, 0.0)
 
     def test_shop_build_capacity_delta_rewards_score_growth(self) -> None:
         root = GameState(

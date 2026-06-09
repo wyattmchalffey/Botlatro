@@ -216,11 +216,13 @@ def load_checkpoint(path: str | Path, *, strict_version: bool = True) -> ValueNe
     Raises if the checkpoint's encoding version differs from the current
     `ENCODING_VERSION` (set `strict_version=False` to load anyway).
     """
+    path = Path(path)
     ckpt = torch.load(str(path), map_location="cpu", weights_only=False)
     if strict_version and ckpt.get("encoding_version") != ENCODING_VERSION:
         raise ValueError(
-            f"checkpoint encoding_version={ckpt.get('encoding_version')} "
-            f"!= current ENCODING_VERSION={ENCODING_VERSION}"
+            f"{path}: checkpoint encoding_version={ckpt.get('encoding_version')} "
+            f"!= current ENCODING_VERSION={ENCODING_VERSION}; retrain/regenerate "
+            "the checkpoint with the current encoder or pass a current-version ckpt"
         )
     model = ValueNet(ckpt["spec"], **ckpt.get("hparams", {}))
     # strict=False so checkpoints predating a newly-added head (e.g. clear_head)

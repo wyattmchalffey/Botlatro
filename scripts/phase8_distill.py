@@ -6,7 +6,7 @@ to regress them, reports fit, and saves a checkpoint. The downstream search A/B
 runs separately: `scripts/phase8_leaf_ab.py --ckpt <ckpt> --head clear`.
 
     PYTHONPATH=src python scripts/phase8_distill.py --train-seeds 16 --val-seeds 6 \
-        --epochs 15 --ckpt .data/phase8_clear_v0.pt --metrics .data/phase8_distill.json
+        --epochs 15 --ckpt .data/phase8_clear_v3.pt --metrics .data/phase8_distill.json
 """
 
 from __future__ import annotations

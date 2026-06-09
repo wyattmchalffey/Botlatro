@@ -143,6 +143,7 @@ class SeedGame:
         deck = self.deck()
 
         modifiers = _base_modifiers()
+        modifiers["balatro_seed"] = self.seed
         # Stash surface predictions where downstream code expects them.
         # Use simple flat keys for now; can promote to the full bridge-style
         # nested "blinds" / "current_round.voucher" shape later if needed.

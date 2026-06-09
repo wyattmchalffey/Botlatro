@@ -97,6 +97,9 @@ pub struct HandContext {
 /// no-face gate).
 #[inline]
 pub fn is_face_with_pareidolia(card: Card, pareidolia_active: bool) -> bool {
+    if card.debuffed || card.enhancement == Enhancement::Stone {
+        return false;
+    }
     if pareidolia_active {
         return true;
     }
@@ -249,14 +252,14 @@ pub fn ability_joker_effect(
         "Gros Michel" => Some(mult(15)),
 
         // Hand-shape gated jokers
-        "Jolly Joker" if hand_contains_pair(hand_type) => Some(mult(8)),
-        "Zany Joker" if hand_contains_three_of_a_kind(hand_type) => Some(mult(12)),
-        "Mad Joker" if hand_contains_two_pair(hand_type) => Some(mult(10)),
+        "Jolly Joker" if contains_pair(scoring_cards, hand_type) => Some(mult(8)),
+        "Zany Joker" if contains_three_of_a_kind(scoring_cards, hand_type) => Some(mult(12)),
+        "Mad Joker" if contains_two_pair(scoring_cards, hand_type) => Some(mult(10)),
         "Crazy Joker" if hand_type == HandType::Straight || hand_type == HandType::StraightFlush => Some(mult(12)),
         "Droll Joker" if hand_contains_flush(hand_type) => Some(mult(10)),
-        "Sly Joker" if hand_contains_pair(hand_type) => Some(chips(50)),
-        "Wily Joker" if hand_contains_three_of_a_kind(hand_type) => Some(chips(100)),
-        "Clever Joker" if hand_contains_two_pair(hand_type) => Some(chips(80)),
+        "Sly Joker" if contains_pair(scoring_cards, hand_type) => Some(chips(50)),
+        "Wily Joker" if contains_three_of_a_kind(scoring_cards, hand_type) => Some(chips(100)),
+        "Clever Joker" if contains_two_pair(scoring_cards, hand_type) => Some(chips(80)),
         "Devious Joker" if hand_type == HandType::Straight || hand_type == HandType::StraightFlush => Some(chips(100)),
         "Crafty Joker" if hand_contains_flush(hand_type) => Some(chips(80)),
         "Jolly Joker" | "Zany Joker" | "Mad Joker" | "Crazy Joker"
@@ -276,10 +279,9 @@ pub fn ability_joker_effect(
         "Bootstraps" => Some(mult((2 * (ctx.money.max(0) / 5)) as i64)),
 
         // Ability xmult jokers (gated on hand shape)
-        "The Duo" if hand_contains_pair(hand_type) => Some(xmult(2.0)),
-        "The Trio" if hand_contains_three_of_a_kind(hand_type) => Some(xmult(3.0)),
-        "The Family" if matches!(hand_type, HandType::FourOfAKind | HandType::FiveOfAKind
-                                  | HandType::FlushFive) => Some(xmult(4.0)),
+        "The Duo" if contains_pair(scoring_cards, hand_type) => Some(xmult(2.0)),
+        "The Trio" if contains_three_of_a_kind(scoring_cards, hand_type) => Some(xmult(3.0)),
+        "The Family" if contains_four_of_a_kind(scoring_cards, hand_type) => Some(xmult(4.0)),
         "The Order" if hand_type == HandType::Straight || hand_type == HandType::StraightFlush
             => Some(xmult(3.0)),
         "The Tribe" if hand_contains_flush(hand_type) => Some(xmult(2.0)),
@@ -343,16 +345,15 @@ pub fn ability_joker_effect(
         "Green Joker" => Some(mult(meta.current_plus_mult as i64 + 1)),
 
         // Scaled additive-mult, fires ONLY when no scored face.
-        // (Python wraps the whole block in the no-face check.)
-        // Pareidolia turns every card into a face → no card passes
-        // the no-face check → joker never fires.
-        "Ride the Bus" if !ctx.pareidolia_active && scoring_cards.iter().all(|c| !matches!(
-            c.rank, Rank::Jack | Rank::Queen | Rank::King
-        )) => Some(mult(meta.current_plus_mult as i64 + 1)),
+        // Debuffed and Stone cards do not count as faces, even when
+        // Pareidolia is active, matching Python's face helper.
+        "Ride the Bus" if scoring_cards.iter().all(|&c| {
+            !is_face_with_pareidolia(c, ctx.pareidolia_active)
+        }) => Some(mult(meta.current_plus_mult as i64 + 1)),
         "Ride the Bus" => Some(JokerEffect::default()),
 
         // Scaled additive-mult + 2 if hand contains two-pair.
-        "Spare Trousers" if hand_contains_two_pair(hand_type) =>
+        "Spare Trousers" if contains_two_pair(scoring_cards, hand_type) =>
             Some(mult(meta.current_plus_mult as i64 + 2)),
         "Spare Trousers" => Some(mult(meta.current_plus_mult as i64)),
 
@@ -842,27 +843,67 @@ pub fn blackboard_active(held_cards: &[Card]) -> bool {
 // --- Hand-type predicates -------------------------------------------------
 
 #[inline]
-fn hand_contains_pair(ht: HandType) -> bool {
+fn hand_contains_flush(ht: HandType) -> bool {
+    matches!(ht, HandType::Flush | HandType::StraightFlush | HandType::FlushHouse
+              | HandType::FlushFive)
+}
+
+#[inline]
+fn contains_pair(cards: &[Card], ht: HandType) -> bool {
+    if cards.is_empty() {
+        return hand_type_contains_pair(ht);
+    }
+    rank_counts(cards).iter().any(|&n| n >= 2)
+}
+
+#[inline]
+fn contains_two_pair(cards: &[Card], ht: HandType) -> bool {
+    if cards.is_empty() {
+        return hand_type_contains_two_pair(ht);
+    }
+    rank_counts(cards).iter().filter(|&&n| n >= 2).count() >= 2
+}
+
+#[inline]
+fn contains_three_of_a_kind(cards: &[Card], ht: HandType) -> bool {
+    if cards.is_empty() {
+        return hand_type_contains_three_of_a_kind(ht);
+    }
+    rank_counts(cards).iter().any(|&n| n >= 3)
+}
+
+#[inline]
+fn contains_four_of_a_kind(cards: &[Card], ht: HandType) -> bool {
+    if cards.is_empty() {
+        return matches!(ht, HandType::FourOfAKind | HandType::FiveOfAKind | HandType::FlushFive);
+    }
+    rank_counts(cards).iter().any(|&n| n >= 4)
+}
+
+fn rank_counts(cards: &[Card]) -> [u8; 15] {
+    let mut counts = [0u8; 15];
+    for c in cards {
+        counts[c.rank as usize] = counts[c.rank as usize].saturating_add(1);
+    }
+    counts
+}
+
+#[inline]
+fn hand_type_contains_pair(ht: HandType) -> bool {
     matches!(ht, HandType::Pair | HandType::TwoPair | HandType::ThreeOfAKind
               | HandType::FullHouse | HandType::FourOfAKind | HandType::FiveOfAKind
               | HandType::FlushHouse | HandType::FlushFive)
 }
 
 #[inline]
-fn hand_contains_two_pair(ht: HandType) -> bool {
+fn hand_type_contains_two_pair(ht: HandType) -> bool {
     matches!(ht, HandType::TwoPair | HandType::FullHouse | HandType::FlushHouse)
 }
 
 #[inline]
-fn hand_contains_three_of_a_kind(ht: HandType) -> bool {
+fn hand_type_contains_three_of_a_kind(ht: HandType) -> bool {
     matches!(ht, HandType::ThreeOfAKind | HandType::FullHouse | HandType::FourOfAKind
               | HandType::FiveOfAKind | HandType::FlushHouse | HandType::FlushFive)
-}
-
-#[inline]
-fn hand_contains_flush(ht: HandType) -> bool {
-    matches!(ht, HandType::Flush | HandType::StraightFlush | HandType::FlushHouse
-              | HandType::FlushFive)
 }
 
 #[cfg(test)]
@@ -890,6 +931,59 @@ mod tests {
         assert_eq!(
             ability_joker_effect("Jolly Joker", HandType::Pair, 5, &[], &[], ctx(), JokerMetadata::default()).unwrap().mult_delta,
             8,
+        );
+    }
+
+    #[test]
+    fn shape_jokers_look_at_cards_not_only_resolved_hand_type() {
+        let flush_with_pair = [
+            card(Rank::King, Suit::Clubs),
+            card(Rank::King, Suit::Clubs),
+            card(Rank::Queen, Suit::Clubs),
+            card(Rank::Jack, Suit::Clubs),
+            card(Rank::Six, Suit::Clubs),
+        ];
+        assert_eq!(
+            ability_joker_effect(
+                "Sly Joker",
+                HandType::Flush,
+                5,
+                &flush_with_pair,
+                &[],
+                ctx(),
+                JokerMetadata::default(),
+            )
+            .unwrap()
+            .chip_delta,
+            50,
+        );
+        assert_eq!(
+            ability_joker_effect(
+                "Jolly Joker",
+                HandType::Flush,
+                5,
+                &flush_with_pair,
+                &[],
+                ctx(),
+                JokerMetadata::default(),
+            )
+            .unwrap()
+            .mult_delta,
+            8,
+        );
+        assert_eq!(
+            ability_joker_effect(
+                "The Duo",
+                HandType::Flush,
+                5,
+                &flush_with_pair,
+                &[],
+                ctx(),
+                JokerMetadata::default(),
+            )
+            .unwrap()
+            .xmult,
+            2.0,
         );
     }
 
@@ -967,6 +1061,35 @@ mod tests {
         // so technically a misuse would fire. The caller must compute
         // is_first_face correctly, which evaluate_simple does by
         // scanning for face cards in scoring order.)
+    }
+
+    #[test]
+    fn debuffed_and_stone_cards_do_not_count_as_faces() {
+        let mut debuffed_king = card(Rank::King, Suit::Clubs);
+        debuffed_king.debuffed = true;
+        assert!(!is_face_with_pareidolia(debuffed_king, false));
+        assert!(!is_face_with_pareidolia(debuffed_king, true));
+
+        let mut stone_king = card(Rank::King, Suit::Clubs);
+        stone_king.enhancement = Enhancement::Stone;
+        assert!(!is_face_with_pareidolia(stone_king, false));
+        assert!(!is_face_with_pareidolia(stone_king, true));
+    }
+
+    #[test]
+    fn ride_the_bus_ignores_debuffed_faces() {
+        let meta = JokerMetadata { current_plus_mult: 8, ..Default::default() };
+        let mut debuffed_king = card(Rank::King, Suit::Clubs);
+        debuffed_king.debuffed = true;
+        let e = ability_joker_effect(
+            "Ride the Bus", HandType::HighCard, 1, &[debuffed_king], &[], ctx(), meta,
+        ).unwrap();
+        assert_eq!(e.mult_delta, 9);
+
+        let e_face = ability_joker_effect(
+            "Ride the Bus", HandType::HighCard, 1, &[card(Rank::King, Suit::Clubs)], &[], ctx(), meta,
+        ).unwrap();
+        assert_eq!(e_face.mult_delta, 0);
     }
 
     #[test]
@@ -1114,4 +1237,3 @@ mod tests {
         }
     }
 }
-

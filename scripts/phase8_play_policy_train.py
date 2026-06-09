@@ -5,7 +5,7 @@ Splits BY RUN, trains the play-candidate scorer, and reports held-out top-1
 
     PYTHONPATH=src python scripts/phase8_play_policy_train.py \
         --captures .data/phase8-bootstrap-basic.jsonl --epochs 15 \
-        --ckpt .data/phase8_playpolicy_v0.pt --metrics .data/phase8_play_policy.json
+        --ckpt .data/phase8_playpolicy_v3.pt --metrics .data/phase8_play_policy.json
 """
 
 from __future__ import annotations

@@ -60,6 +60,26 @@ pub fn card_chip_value(card: Card, debuffed_suits: &[Suit]) -> Option<u16> {
     Some(base + enhancement_chips)
 }
 
+/// True when a card participates in the scored-card effects pass.
+/// Matches Python's `_card_can_score`: debuffed cards and suit-debuffed
+/// non-Stone cards keep their hand-shape role but do not trigger scored-card
+/// jokers, editions, seals, or enhancements.
+pub fn card_can_score(card: Card, debuffed_suits: &[Suit]) -> bool {
+    if card.debuffed {
+        return false;
+    }
+    if card.enhancement == Enhancement::Stone {
+        return true;
+    }
+    if debuffed_suits.is_empty() {
+        return true;
+    }
+    if card.enhancement == Enhancement::Wild {
+        return false;
+    }
+    !debuffed_suits.contains(&card.suit)
+}
+
 /// Bonus chips contributed by the card's enhancement.
 /// Matches `_enhancement_chips` at `hand_evaluator.py:1622`.
 #[inline]

@@ -8,7 +8,7 @@ decomposition isolates the two neural changes independently:
   => leaf effect = leaf_only - heuristic ; policy-prune effect = neural_full - leaf_only.
 
     PYTHONPATH=src python scripts/phase8_neural_search_ab.py \
-        --value-ckpt .data/phase8_clear_v0.pt --policy-ckpt .data/phase8_playpolicy_v0.pt \
+        --value-ckpt .data/phase8_clear_v3.pt --policy-ckpt .data/phase8_playpolicy_v3.pt \
         --seeds 12 --metrics .data/phase8_neural_search_ab.json
 """
 

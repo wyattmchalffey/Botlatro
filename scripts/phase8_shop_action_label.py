@@ -22,6 +22,7 @@ beat. Either way we learn it cheaply, before the expensive ranker build.
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import json
 import os
 import statistics
@@ -73,17 +74,20 @@ def _truncation_value(state, ckpt_path) -> float:
 
 
 def _action_key(a):
-    return (str(a.action_type), a.target_id, a.amount)
+    return (a.action_type.value, a.target_id, a.amount)
 
 
 def _shop_actions(state):
     from balatro_ai.api.actions import ActionType
     from balatro_ai.api.state import with_derived_legal_actions
-    shop_types = {ActionType.BUY, ActionType.SELL, ActionType.REROLL, ActionType.END_SHOP}
+    shop_types = {
+        ActionType.BUY, ActionType.OPEN_PACK, ActionType.SELL,
+        ActionType.REROLL, ActionType.END_SHOP,
+    }
     s = with_derived_legal_actions(state)
     acts = [a for a in s.legal_actions if a.action_type in shop_types]
-    # Keep all buys/reroll/end; cap sells (the failure mode is over-selling, 2 is enough),
-    # and cap total to bound rollout cost.
+    # Keep all buys/packs/reroll/end; cap sells (the failure mode is over-selling,
+    # 2 is enough), and cap total to bound rollout cost.
     non_sell = [a for a in acts if a.action_type != ActionType.SELL]
     sell = [a for a in acts if a.action_type == ActionType.SELL][:2]
     return (non_sell + sell)[:10]
@@ -170,12 +174,18 @@ def _label_one_state(arg):
     half_corr = _pearson([a_half[k] for k in keys], [b_half[k] for k in keys])
     hp_in = hp_key in meanv
     headroom = meanv[best_full] - (meanv[hp_key] if hp_in else min(meanv.values()))
+    ordered_values = sorted(meanv.values(), reverse=True)
+    best_margin = ordered_values[0] - ordered_values[1] if len(ordered_values) > 1 else 0.0
     return {
         "n_actions": len(keys),
         "top1_stable": 1.0 if bestA == bestB else 0.0,
         "half_corr": half_corr,
         "agree_heuristic": (1.0 if best_full == hp_key else 0.0) if hp_in else None,
+        "heuristic_within_0_05": (1.0 if headroom <= 0.05 else 0.0) if hp_in else None,
         "headroom_vs_heuristic": headroom if hp_in else None,
+        "best_margin": best_margin,
+        "best_action_type": best_full[0],
+        "heuristic_action_type": hp_key[0] if hp_in else None,
         # labeler reliably prefers a NON-heuristic action (real, reproducible edge):
         "reliable_disagree": 1.0 if (hp_in and best_full != hp_key
                                      and bestA == bestB and headroom > 0.05) else 0.0,
@@ -193,7 +203,8 @@ def _collect_shop_states(seeds, cap, per_seed, max_antes_skip=0):
     from balatro_ai.solver.trajectory import _stable_seed_int
     from dataclasses import replace as _replace
 
-    shop_types = {ActionType.BUY, ActionType.REROLL, ActionType.END_SHOP}
+    shop_types = {ActionType.BUY, ActionType.OPEN_PACK, ActionType.REROLL, ActionType.END_SHOP}
+    choice_types = {ActionType.BUY, ActionType.OPEN_PACK}
     out = []
     with bot_config_scope(_replace(DEFAULT_CONFIG, shop_audit_enabled=False)):
         for sd in seeds:
@@ -207,8 +218,8 @@ def _collect_shop_states(seeds, cap, per_seed, max_antes_skip=0):
                     break
                 if st.phase == GamePhase.SHOP:
                     shop_acts = [a for a in st.legal_actions if a.action_type in shop_types]
-                    # require a real choice: at least one BUY + the option to skip
-                    if sum(1 for a in shop_acts if a.action_type == ActionType.BUY) >= 1 and len(shop_acts) >= 2:
+                    # require a real choice: at least one buy/open-pack + the option to skip
+                    if any(a.action_type in choice_types for a in shop_acts) and len(shop_acts) >= 2:
                         out.append(st)
                         taken += 1
                         if len(out) >= cap:
@@ -233,6 +244,8 @@ def main() -> int:
     ap.add_argument("--value-ckpt", default="", help="coarse value head for truncation (empty=ante+frac)")
     ap.add_argument("--metrics", required=True)
     args = ap.parse_args()
+    if args.rollouts < 2 or args.rollouts % 2:
+        ap.error("--rollouts must be an even number >= 2 for split-half reliability")
 
     seeds = [f"{700000 + i:07d}" for i in range(1, 400)]
     states = _collect_shop_states(seeds, cap=args.states, per_seed=args.per_seed)
@@ -257,6 +270,13 @@ def main() -> int:
         return round(statistics.mean(xs), 4) if xs else None
 
     with_heur = [r for r in results if r["agree_heuristic"] is not None]
+    best_types = Counter(r["best_action_type"] for r in results)
+    heur_types = Counter(r["heuristic_action_type"] for r in with_heur if r["heuristic_action_type"])
+
+    def _freq(counter):
+        total = sum(counter.values())
+        return {k: round(v / total, 4) for k, v in sorted(counter.items())} if total else {}
+
     out = {
         "n_states": len(results),
         "rollouts_per_action": args.rollouts,
@@ -267,11 +287,16 @@ def main() -> int:
         "top1_stable": _mean("top1_stable"),
         "mean_half_corr": _mean("half_corr"),
         "mean_value_spread": _mean("value_spread"),
+        "mean_best_margin": _mean("best_margin"),
         # HEADROOM: does the labeler reliably disagree with (beat) the heuristic?
         "agree_heuristic_rate": (round(statistics.mean([r["agree_heuristic"] for r in with_heur]), 4)
                                  if with_heur else None),
+        "heuristic_within_0_05_rate": (round(statistics.mean([r["heuristic_within_0_05"] for r in with_heur]), 4)
+                                       if with_heur else None),
         "reliable_disagree_rate": _mean("reliable_disagree"),
         "mean_headroom_vs_heuristic": _mean("headroom_vs_heuristic"),
+        "best_action_type_mix": _freq(best_types),
+        "heuristic_action_type_mix": _freq(heur_types),
     }
     print("[shop-label] RESULT:", json.dumps(out, indent=2), flush=True)
     with open(args.metrics, "w", encoding="utf-8") as fh:

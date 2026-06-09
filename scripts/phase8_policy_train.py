@@ -6,7 +6,7 @@ per-card play-pointer accuracy.
 
     PYTHONPATH=src python scripts/phase8_policy_train.py \
         --captures .data/phase8-bootstrap-basic.jsonl --epochs 15 \
-        --ckpt .data/phase8_policy_v0.pt --metrics .data/phase8_policy.json
+        --ckpt .data/phase8_policy_v3.pt --metrics .data/phase8_policy.json
 """
 
 from __future__ import annotations

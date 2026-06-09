@@ -21,8 +21,9 @@ Design:
 
 Grounded in the real `GameState` API: jokers carry display `name` (not a key),
 `hand_levels` is a direct dict field, blind type lives in
-`modifiers["current_blind"]["type"]`, and shop items are the dicts in
-`modifiers["shop_cards"]`. Vocabularies derive from canonical data
+`modifiers["current_blind"]["type"]`, and shop offers are the dicts in
+`modifiers["shop_cards"]`, `modifiers["booster_packs"]`, and
+`modifiers["voucher_cards"]`. Vocabularies derive from canonical data
 (`data/shop_pools.json`, `api.state` name maps).
 """
 
@@ -69,19 +70,30 @@ _SUIT_INDEX = {s: i for i, s in enumerate(SUITS)}
 SUIT_NONE = len(SUITS)  # stone cards / unknown
 
 # Real sim/deck cards use single-letter suits (H/S/D/C) and "T" for ten, while the
-# vocab above uses full suit names and "10". Normalize so BOTH forms map to the same
-# index — without this every real card encodes as SUIT_NONE and tens as rank 0 (a "2").
-_SUIT_BY_LETTER = {"S": "Spades", "H": "Hearts", "D": "Diamonds", "C": "Clubs"}
+# vocab above uses full suit names and "10". Normalize exact aliases only: unknown /
+# suitless labels such as "Stone" should stay in SUIT_NONE, not become Spades because
+# they share a first letter.
+_SUIT_ALIASES = {
+    "s": "Spades", "spade": "Spades", "spades": "Spades",
+    "h": "Hearts", "heart": "Hearts", "hearts": "Hearts",
+    "d": "Diamonds", "diamond": "Diamonds", "diamonds": "Diamonds",
+    "c": "Clubs", "club": "Clubs", "clubs": "Clubs",
+}
 
 
 def _canon_suit(suit: str) -> str:
-    if suit in _SUIT_INDEX:
-        return suit
-    return _SUIT_BY_LETTER.get((suit or "")[:1].upper(), suit)
+    raw = str(suit or "").strip()
+    if raw in _SUIT_INDEX:
+        return raw
+    return _SUIT_ALIASES.get(raw.lower(), raw)
 
 
 def _canon_rank(rank: str) -> str:
-    return "10" if rank in ("T", "t", "10") else rank
+    raw = str(rank or "").strip()
+    upper = raw.upper()
+    if upper == "T" or raw == "10":
+        return "10"
+    return upper if upper in _RANK_INDEX else raw
 
 # index 0 = none, then the editions (after stripping the "e_" prefix).
 EDITIONS = ("foil", "holographic", "polychrome", "negative")
@@ -229,11 +241,12 @@ def _meta_flag(joker: Joker, *keys: str) -> float:
     return 0.0
 
 
-# Scaling jokers carry their accumulated progress in metadata (current_mult /
+# Scaling jokers carry their visible/current magnitude in metadata (current_mult /
 # current_xmult / current_chips), NOT in effect.* — the local sim doesn't populate the
 # effect-text regex, so reading effect alone pins the counter at 0 and the net can't
-# tell a ramped scaling joker (a +50-Mult Ride the Bus, an X15 Hologram) from a fresh
-# one. Mirror the bot's metadata key sets + nested-source traversal.
+# tell a +50-Mult Ride the Bus or X15 Hologram from a fresh one. XMult values are
+# encoded as their visible absolute multiplier (so X1.0 is the baseline, not missing).
+# Mirror the bot's metadata key sets + nested-source traversal.
 _COUNTER_XMULT_KEYS = ("current_xmult", "xmult", "current_x_mult", "x_mult")
 _COUNTER_PLUS_KEYS = ("current_mult", "current_chips", "mult", "chips")
 

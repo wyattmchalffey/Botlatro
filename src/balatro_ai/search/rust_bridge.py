@@ -99,6 +99,18 @@ _JOKER_CACHE_LIMIT = 512
 
 _RARITY_TO_INT = {"common": 0, "uncommon": 1, "rare": 2, "legendary": 3}
 
+# The batch best-play path is used by ``rules.hand_evaluator.best_play_from_hand``
+# when BALATRO_RUST_BESTPLAY=1. It scores every subset through Rust, then only
+# rebuilds the winning Python HandEvaluation. That is fast, but unlike the
+# per-action score bridge it must be safe across projection contexts too
+# (discard projections, boss adjustment wrappers, copied abilities, etc.).
+#
+# Extra projection-divergence kill switch for the best-play batch bridge.
+# Keep this empty unless a real trajectory full-vector parity audit proves a
+# supported Rust joker has drifted from Python. Unsupported cards/jokers still
+# bail through Rust returning None.
+RUST_BESTPLAY_UNSAFE_JOKERS: frozenset[str] = frozenset()
+
 
 def rust_joker_data(jokers: tuple) -> tuple[object, ...] | None:
     """Identity-cached extraction of joker fields for the Rust
@@ -116,37 +128,46 @@ def rust_joker_data(jokers: tuple) -> tuple[object, ...] | None:
             _joker_leading_plus,
             _loyalty_card_ready, _drivers_license_active,
             _joker_rarity, _joker_target_suit, _joker_target_rank_suit,
-            _obelisk_xmult_gain,
+            _obelisk_xmult_gain, _effective_ability_joker_indices,
         )
     except ImportError:
         return None
     try:
-        joker_names = [j.name for j in jokers]
+        # Blueprint/Brainstorm copy resolution mirrors Python scoring:
+        # the physical slot keeps edition/rarity/sell value, while the
+        # active ability name and scaling metadata come from the copied joker.
+        ability_indices = _effective_ability_joker_indices(jokers)
+        ability_jokers = [jokers[ability_indices[i]] for i in range(len(jokers))]
+        joker_names = [j.name for j in ability_jokers]
         joker_editions = [getattr(j, "edition", None) for j in jokers]
-        joker_plus_mult = [int(_joker_current_plus(j, suffix="mult")) for j in jokers]
-        joker_plus_chips = [int(_joker_current_plus(j, suffix="chips")) for j in jokers]
-        joker_xmult = [float(_joker_current_xmult(j)) for j in jokers]
+        joker_plus_mult = [
+            int(_joker_current_plus(j, suffix="mult")) for j in ability_jokers
+        ]
+        joker_plus_chips = [
+            int(_joker_current_plus(j, suffix="chips")) for j in ability_jokers
+        ]
+        joker_xmult = [float(_joker_current_xmult(j)) for j in ability_jokers]
         joker_loyalty_ready = [
             bool(_loyalty_card_ready(j)) if j.name == "Loyalty Card" else False
-            for j in jokers
+            for j in ability_jokers
         ]
         joker_drivers_active = [
             bool(_drivers_license_active(j)) if j.name == "Driver's License" else False
-            for j in jokers
+            for j in ability_jokers
         ]
         joker_leading_plus_mult = [
             int(_joker_leading_plus(j, suffix="mult")) if j.name == "Popcorn" else 0
-            for j in jokers
+            for j in ability_jokers
         ]
         joker_leading_plus_chips = [
             int(_joker_leading_plus(j, suffix="chips")) if j.name == "Ice Cream" else 0
-            for j in jokers
+            for j in ability_jokers
         ]
         joker_sell_value = [int(getattr(j, "sell_value", 0) or 0) for j in jokers]
         joker_rarity = [_RARITY_TO_INT.get(_joker_rarity(j), 0) for j in jokers]
         joker_target_suit: list[str | None] = []
         joker_target_rank: list[str | None] = []
-        for j in jokers:
+        for j in ability_jokers:
             if j.name == "Ancient Joker":
                 joker_target_suit.append(_joker_target_suit(j))
                 joker_target_rank.append(None)
@@ -164,14 +185,23 @@ def rust_joker_data(jokers: tuple) -> tuple[object, ...] | None:
                 joker_target_rank.append(None)
         joker_obelisk_gain = [
             float(_obelisk_xmult_gain(j)) if j.name == "Obelisk" else 0.0
-            for j in jokers
+            for j in ability_jokers
         ]
-        # Swashbuckler precompute: sum of OTHER jokers' sell values.
+        # Swashbuckler precompute mirrors Python's ability arm:
+        # a physical Swashbuckler uses the sum of other physical jokers'
+        # sell values; a Blueprint/Brainstorm copying Swashbuckler uses
+        # the copied joker's current_plus_mult metadata.
         if "Swashbuckler" in joker_names:
             total_sell = sum(joker_sell_value)
             for i, n in enumerate(joker_names):
                 if n == "Swashbuckler":
-                    joker_plus_mult[i] = total_sell - joker_sell_value[i]
+                    ability_index = ability_indices[i]
+                    if ability_index == i:
+                        joker_plus_mult[i] = total_sell - joker_sell_value[i]
+                    else:
+                        joker_plus_mult[i] = int(
+                            _joker_current_plus(jokers[ability_index], suffix="mult")
+                        )
     except Exception:  # noqa: BLE001
         return None
     result = (
@@ -234,11 +264,21 @@ def rust_best_play_scores(
     money: int = 0,
     played_hand_types: tuple = (),
     max_cards: int = 5,
-) -> tuple[list[tuple[int, ...]], list[int]] | None:
+    with_tiebreak: bool = False,
+):
     """Score EVERY 1..max_cards-card subset of ``cards`` via the Rust
     batched scorer, returning ``(action_indices_list, scores)`` in the
     SAME enumeration order as ``itertools.combinations`` (so callers can
     apply their own tie-break), or None to signal Python fallback.
+
+    When ``with_tiebreak`` is True, returns a 3-tuple ``(actions, scores,
+    detail)`` where ``detail`` maps each tied-at-top subset's index tuple to
+    its Rust ``(score, chips, mult)`` triple — letting the caller break ties
+    without a Python re-evaluation of every tied subset (the hot cost in
+    ``best_play_from_hand``). ``detail`` is ``None`` if the per-subset detail
+    could not be computed consistently (caller should fall back to a Python
+    tie-break). The score/chips/mult come from the same Rust scorer, so on the
+    Rust-safe path they equal the batch scores (asserted: detail score == top).
 
     Bails (returns None) on: non-vanilla scoring blinds, The Psychic
     (Python zeroes !=5-card plays — handled by Python loop), empty hand,
@@ -265,6 +305,8 @@ def rust_best_play_scores(
      joker_leading_plus_mult, joker_leading_plus_chips,
      joker_sell_value, joker_rarity, joker_target_suit,
      joker_target_rank, joker_obelisk_gain) = joker_data
+    if any(name in RUST_BESTPLAY_UNSAFE_JOKERS for name in joker_names):
+        return None
 
     if any(n in {"Card Sharp", "Supernova", "Obelisk"} for n in joker_names):
         played_types_strs = [
@@ -310,7 +352,90 @@ def rust_best_play_scores(
         return None
     if scores is None or len(scores) != len(action_indices_list):
         return None
-    return [tuple(a) for a in action_indices_list], [int(s) for s in scores]
+    if blind_name in {"The Eye", "The Mouth"}:
+        try:
+            from balatro_ai.rules.hand_evaluator import (
+                _cards_after_pre_score_transforms,
+                _identify_hand_type,
+                _prepare_joker_evaluation_context,
+            )
+            played_type_values = [
+                ht.value if hasattr(ht, "value") else str(ht)
+                for ht in played_hand_types
+            ]
+            if played_type_values:
+                joker_context = _prepare_joker_evaluation_context(tuple(jokers))
+                ability_jokers = joker_context.active_ability_jokers
+                adjusted_scores = list(scores)
+                for pos, idxs in enumerate(action_indices_list):
+                    candidate = tuple(cards[index] for index in idxs)
+                    shape_cards = _cards_after_pre_score_transforms(
+                        candidate, ability_jokers
+                    )
+                    hand_type = _identify_hand_type(shape_cards, ability_jokers)
+                    hand_type_value = hand_type.value
+                    if blind_name == "The Eye" and hand_type_value in played_type_values:
+                        adjusted_scores[pos] = 0
+                    elif blind_name == "The Mouth" and hand_type_value != played_type_values[0]:
+                        adjusted_scores[pos] = 0
+                scores = adjusted_scores
+        except Exception:  # noqa: BLE001
+            return None
+    actions = [tuple(a) for a in action_indices_list]
+    int_scores = [int(s) for s in scores]
+    if not with_tiebreak:
+        return actions, int_scores
+
+    # Tie-break detail: for every subset tied at the top score, recover its
+    # Rust (score, chips, mult) so the caller can pick the (score, chips, mult)
+    # argmax (matching Python's _evaluation_sort_key) WITHOUT re-evaluating each
+    # tied subset in Python. Reuses the already-parsed joker data; only the
+    # tied set (not all subsets) is detailed, so it is cheap.
+    top = max(int_scores) if int_scores else 0
+    tied_positions = [pos for pos, sc in enumerate(int_scores) if sc == top]
+    if len(tied_positions) <= 1:
+        return actions, int_scores, {}
+    detail: dict[tuple[int, ...], tuple[int, int, int]] = {}
+    hand_size = len(rust_hand)
+    for pos in tied_positions:
+        idxs = action_indices_list[pos]
+        idx_set = set(idxs)
+        played = [rust_hand[i] for i in idxs]
+        held = [rust_hand[i] for i in range(hand_size) if i not in idx_set]
+        try:
+            res = balatro_core.evaluate_simple_with_levels(
+                played, hand_levels or {}, debuffed_suits=debuffed,
+                joker_names=joker_names, joker_editions=joker_editions,
+                held_cards=held,
+                joker_current_plus_mult=joker_plus_mult,
+                joker_current_plus_chips=joker_plus_chips,
+                joker_current_xmult=joker_xmult,
+                joker_loyalty_ready=joker_loyalty_ready,
+                joker_drivers_active=joker_drivers_active,
+                joker_leading_plus_mult=joker_leading_plus_mult,
+                joker_leading_plus_chips=joker_leading_plus_chips,
+                joker_sell_value=joker_sell_value, joker_rarity=joker_rarity,
+                joker_target_suit=joker_target_suit, joker_target_rank=joker_target_rank,
+                joker_obelisk_gain=joker_obelisk_gain,
+                money=int(money), joker_slot_limit=5,
+                discards_remaining=int(max(0, discards_remaining)),
+                hands_remaining=int(max(0, hands_remaining)),
+                played_hand_types=played_types_strs,
+                deck_size=int(max(0, deck_size)),
+            )
+        except Exception:  # noqa: BLE001
+            return actions, int_scores, None
+        if res is None:
+            return actions, int_scores, None
+        chips, mult, score, _ht = res
+        # Consistency guard: the per-subset Rust score must match the batch top
+        # (boss-blind score adjustments above can zero scores; tied-at-top means
+        # un-zeroed, so they must agree). If not, the args diverge somewhere —
+        # signal a Python tie-break rather than trust mismatched detail.
+        if int(score) != top:
+            return actions, int_scores, None
+        detail[tuple(idxs)] = (int(score), int(chips), int(mult))
+    return actions, int_scores, detail
 
 
 def rust_evaluate_score(

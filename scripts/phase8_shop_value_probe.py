@@ -9,6 +9,7 @@ END_SHOP / away from BUY, the near-constant value head is causing under-buying
 
 from __future__ import annotations
 
+import argparse
 import os
 import sys
 from collections import Counter
@@ -17,6 +18,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 
 def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--ckpt", default=".data/phase8_value_v3_bootstrap.pt")
+    args = ap.parse_args()
+
     from balatro_ai.api.state import GamePhase
     from balatro_ai.ml.shop_value import NeuralShopLeaf, calibrate_scale
     from balatro_ai.ml.train import load_checkpoint
@@ -48,7 +53,7 @@ def main() -> int:
             break
 
     calib_states, probe_states = states[:40], states[40:70]
-    model = load_checkpoint(".data/phase8_value_v0.pt")
+    model = load_checkpoint(args.ckpt)
     calib = calibrate_scale(model, calib_states)
     leaf = NeuralShopLeaf(model, calib)
     print(f"calib n={calib['n']} | heuristic mean={calib['mean_h']:.1f} std={calib['std_h']:.1f}"

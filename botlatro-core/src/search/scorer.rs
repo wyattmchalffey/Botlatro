@@ -268,9 +268,18 @@ pub fn py_score_play_actions_batch(
             scores.push(None);
             continue;
         }
-        let played_set: std::collections::HashSet<usize> = indices.iter().copied().collect();
+        // Membership mask instead of a per-action HashSet alloc+hash. Hands are
+        // <=16 cards and the guard above guarantees every i in indices indexes a
+        // real hand slot (i < hand.len() <= 16), so this reproduces
+        // !played_set.contains(i) exactly with no heap allocation.
+        let mut in_played = [false; 16];
+        for &i in indices.iter() {
+            if i < 16 {
+                in_played[i] = true;
+            }
+        }
         let held: Vec<Card> = hand.iter().enumerate()
-            .filter(|(i, _)| !played_set.contains(i))
+            .filter(|(i, _)| !(*i < 16 && in_played[*i]))
             .map(|(_, c)| *c)
             .collect();
 

@@ -45,6 +45,30 @@ _SELL_FLAT_MIN: float = float(os.environ.get("BALATRO_SELL_FLAT_MIN", "0.0"))
 _BUILD_CAP_BASE: float = float(os.environ.get("BALATRO_BUILD_CAP_BASE", "0.018"))
 # Evaluate build score against the upcoming boss (Directive 2). Off by default.
 _BOSS_AWARE_EVAL: bool = os.environ.get("BALATRO_BOSS_AWARE_EVAL", "0") != "0"
+_RARE_HAND_LEAF_PENALTY_WEIGHT: float = float(os.environ.get("BALATRO_RARE_HAND_LEAF_PENALTY_W", "0.0"))
+_USE_CONSUMABLE_LEAF_DELTA_WEIGHT: float = float(
+    os.environ.get("BALATRO_USE_CONSUMABLE_LEAF_DELTA_W", "0.55")
+)
+_USE_CONSUMABLE_BONUS_WEIGHT: float = float(os.environ.get("BALATRO_USE_CONSUMABLE_BONUS_W", "0.0"))
+_USE_CONSUMABLE_POTENTIAL_WEIGHT: float = float(os.environ.get("BALATRO_USE_CONSUMABLE_POTENTIAL_W", "1.0"))
+# Economy-discipline dial (2026-06-08 econ audit): losing runs dip below the $25
+# interest cap far more than winners (62% vs 79% of antes 2-6 at >=$25), forfeiting
+# compounding interest the depth-2 shop beam is too myopic to value. This multiplies
+# the interest-holding rewards + below-reserve penalty in _shop_money_value so the
+# beam prefers leaves that keep money at/above the interest cap.
+# DEFAULT 1.5 (adopted 2026-06-08): replicated +2..+4 winrate / +0.1 mean ante across
+# 100/160/200-seed A/Bs (30->34/160, 22->24/100, 39->43/200); 2.0 over-saves and
+# regresses. Set BALATRO_ECON_W=1.0 for the pre-2026-06-08 baseline.
+_ECON_W: float = float(os.environ.get("BALATRO_ECON_W", "1.5"))
+# Economy-joker investment (2026-06-08): the `economy` role SATURATES at
+# min(1, score/req)*10, so once one money joker meets the requirement the beam
+# values a 2nd/3rd economy joker at ~0 -- yet stacking economy compounds via
+# interest every ante (winners diverge on money from ante 3). This rewards owning
+# economy role-score UNCAPPED (sqrt-damped), mirroring _SCALING_INVEST_WEIGHT.
+# Economy differs from scaling: it pays off immediately (interest), so it may avoid
+# the survival-trade that made scaling-invest negative. DEFAULT 0.0 (inert);
+# A/B via BALATRO_ECON_INVEST_W against winrate.
+_ECON_INVEST_WEIGHT: float = float(os.environ.get("BALATRO_ECON_INVEST_W", "0.0"))
 
 _CONDITIONAL_CHIP_JOKERS = frozenset(
     {
@@ -113,10 +137,12 @@ class ShopLeafTerms:
     leveling_value: float
     coherence_value: float
     scaling_investment_value: float
+    economy_investment_value: float
     missing_penalty: float
     money_floor_penalty: float
     clear_gate_penalty: float
     conditional_penalty: float
+    rare_hand_penalty: float
     build_score: float
     root_build_score: float
     pressure_ratio: float
@@ -137,10 +163,12 @@ class ShopLeafTerms:
             + self.leveling_value
             + self.coherence_value
             + self.scaling_investment_value
+            + self.economy_investment_value
             - self.missing_penalty
             - self.money_floor_penalty
             - self.clear_gate_penalty
             - self.conditional_penalty
+            - self.rare_hand_penalty
         )
 
     def to_trace_dict(self) -> dict[str, float]:
@@ -157,10 +185,12 @@ class ShopLeafTerms:
             "leveling": round(self.leveling_value, 3),
             "coherence": round(self.coherence_value, 3),
             "scaling_invest": round(self.scaling_investment_value, 3),
+            "economy_invest": round(self.economy_investment_value, 3),
             "missing_penalty": round(self.missing_penalty, 3),
             "money_floor_penalty": round(self.money_floor_penalty, 3),
             "clear_gate_penalty": round(self.clear_gate_penalty, 3),
             "conditional_penalty": round(self.conditional_penalty, 3),
+            "rare_hand_penalty": round(self.rare_hand_penalty, 3),
             "build_score": round(self.build_score, 3),
             "root_build_score": round(self.root_build_score, 3),
             "pressure_ratio": round(self.pressure_ratio, 3),
@@ -307,6 +337,11 @@ def shop_action_search_value(
         reroll_cost = shop_sampler.reroll_cost(state)
         basic_value = _basic_shop_action_value(state, action, runtime_context)
         spend_penalty = _spend_opportunity_penalty(state, reroll_cost)
+        # NOTE: "reroll-more-when-behind" was A/B-tested 2026-06-09 (scale this spend-penalty
+        # down when capacity_ratio<1) and REGRESSED winrate (21->14/128, lost 7 / gained 0).
+        # The S0 clean-reroll signal (forced rerolls win 5.6%/attempt at shops the bot declined)
+        # was hindsight luck, not a systematic lever -- the bot's reroll/economy discipline is
+        # near-optimal. Knob reverted.
         reroll_value = shop_sampler.reroll_ev(state, samples=search_config.reroll_samples, rng=Random(search_config.seed))
         sampled_value = reroll_value - spend_penalty
         if basic_value <= 0.0 and _safe_shop_blocks_reroll_override(state):
@@ -355,19 +390,32 @@ def shop_action_search_value(
     if action.action_type == ActionType.USE_CONSUMABLE:
         search_config = config or ShopSearchConfig()
         try:
-            return consumable_action_value(
-                state,
-                action,
-                config=ConsumableSearchConfig(
-                    leaf_samples=1,
-                    seed=search_config.seed,
-                    stochastic_samples=max(4, min(12, search_config.reroll_samples)),
-                    min_shop_delta=0.0,
-                ),
-                value_fn=shop_leaf_value,
-                baseline_value=shop_leaf_value(state),
-                sampler=sampler,
-            ) * 0.55
+            consumable_config = ConsumableSearchConfig(
+                leaf_samples=1,
+                seed=search_config.seed,
+                stochastic_samples=max(4, min(12, search_config.reroll_samples)),
+                min_shop_delta=0.0,
+            )
+            value = 0.0
+            if _USE_CONSUMABLE_LEAF_DELTA_WEIGHT:
+                value += consumable_action_value(
+                    state,
+                    action,
+                    config=consumable_config,
+                    value_fn=shop_leaf_value,
+                    baseline_value=shop_leaf_value(state),
+                    sampler=sampler,
+                ) * _USE_CONSUMABLE_LEAF_DELTA_WEIGHT
+            if _USE_CONSUMABLE_BONUS_WEIGHT:
+                value += consumable_action_value(
+                    state,
+                    action,
+                    config=consumable_config,
+                    value_fn=lambda _candidate: 0.0,
+                    baseline_value=0.0,
+                    sampler=sampler,
+                ) * _USE_CONSUMABLE_BONUS_WEIGHT
+            return value
         except (ValueError, IndexError, TypeError, AttributeError):
             return 0.0
     return 0.0
@@ -411,14 +459,65 @@ def shop_leaf_value(
     return shop_leaf_terms(state, root_state=root_state, root_build_score=root_build_score).total
 
 
+# Escape hatch (default OFF) to bypass the shop_leaf_terms decision-cache memo —
+# used only to A/B-verify the memo is behaviour-preserving (BALATRO_LEAFMEMO_OFF=1).
+_LEAFMEMO_OFF = bool(os.environ.get("BALATRO_LEAFMEMO_OFF"))
+
+
 def shop_leaf_terms(
     state: GameState,
     *,
     root_state: GameState | None = None,
     root_build_score: float | None = None,
 ) -> ShopLeafTerms:
-    """Break the shop leaf value into auditable terms."""
+    """Break the shop leaf value into auditable terms.
 
+    Memoized within the active ``decision_cache_scope``: the result is a PURE
+    function of the leaf's owned state (jokers / hand levels / money / ante /
+    deck / hand / consumables) plus the fixed per-decision build baseline. The
+    shop beam evaluates ~75 leaves per decision and many land on equal-but-
+    distinct states (reroll / end-shop / buy-consumable lines leave the owned
+    state unchanged), so the cache collapses the duplicates. Behaviour is
+    identical to the uncached path — verified by ``scripts/bot_parity_speed.py``
+    (combined-signature parity across the seed set). Outside a decision scope
+    (``_decision_cached`` finds no cache) this falls straight through to the
+    uncached computation, so non-bot callers are unaffected.
+    """
+
+    from balatro_ai.bots.basic_strategy.cache import (
+        _decision_cached,
+        _sample_build_score_cache_key,
+    )
+
+    # ``baseline`` mirrors the uncached body's derivation purely to form the
+    # cache key; the original ``root_state`` / ``root_build_score`` are passed
+    # through UNCHANGED so the heavy computation is byte-identical.
+    baseline = root_build_score
+    if baseline is None and root_state is not None:
+        baseline = _shop_build_score(root_state)
+    key = (
+        "shop_leaf_terms",
+        _sample_build_score_cache_key(state, state.jokers),
+        round(float(baseline or 0.0), 3),
+    )
+    if _LEAFMEMO_OFF:
+        return _shop_leaf_terms_uncached(
+            state, root_state=root_state, root_build_score=root_build_score
+        )
+    return _decision_cached(
+        key,
+        lambda: _shop_leaf_terms_uncached(
+            state, root_state=root_state, root_build_score=root_build_score
+        ),
+    )
+
+
+def _shop_leaf_terms_uncached(
+    state: GameState,
+    *,
+    root_state: GameState | None = None,
+    root_build_score: float | None = None,
+) -> ShopLeafTerms:
     from balatro_ai.bots.basic_strategy.build_profile import _build_profile
     from balatro_ai.bots.basic_strategy.shop_jokers import _owned_joker_value
 
@@ -430,6 +529,7 @@ def shop_leaf_terms(
         requirement = max(1.0, profile.role_requirement(role))
         role_value += min(1.0, profile.role_score(role) / requirement) * 10.0
     scaling_investment_value = _shop_scaling_investment_value(state, profile)
+    economy_investment_value = _shop_economy_investment_value(state, profile)
     missing_penalty = len(profile.missing_roles) * (8.0 + min(8.0, max(0, state.ante - 2) * 1.5))
     money_value = _shop_money_value(state)
     leaf_build_score = _shop_build_score(state)
@@ -466,6 +566,7 @@ def shop_leaf_terms(
         raw_pressure_ratio=raw_pressure_ratio,
         capacity_ratio=capacity_ratio,
     )
+    rare_hand_penalty = _rare_hand_leaf_reliability_penalty(state)
     return ShopLeafTerms(
         raw_owned_value=raw_owned_value,
         owned_value=shop_owned_joker_leaf_value(
@@ -485,10 +586,12 @@ def shop_leaf_terms(
         leveling_value=leveling_value,
         coherence_value=coherence_value,
         scaling_investment_value=scaling_investment_value,
+        economy_investment_value=economy_investment_value,
         missing_penalty=missing_penalty,
         money_floor_penalty=money_floor_penalty,
         clear_gate_penalty=clear_gate_penalty,
         conditional_penalty=conditional_penalty,
+        rare_hand_penalty=rare_hand_penalty,
         build_score=leaf_build_score,
         root_build_score=baseline,
         pressure_ratio=pressure_ratio,
@@ -671,6 +774,71 @@ def _conditional_joker_reliability_penalty(
     return min(110.0, max(0.0, penalty))
 
 
+def _rare_hand_leaf_reliability_penalty(state: GameState) -> float:
+    """Discount leaf states that only clear on unsupported rare-hand payoffs."""
+
+    weight = _RARE_HAND_LEAF_PENALTY_WEIGHT
+    if weight <= 0.0:
+        return 0.0
+    try:
+        from balatro_ai.bots.basic_strategy.data import RARE_HAND_JOKER_TARGETS
+        from balatro_ai.bots.basic_strategy.rare_hands import _rare_hand_deck_manipulation_need
+    except (ImportError, TypeError, ValueError, AttributeError):
+        return 0.0
+
+    penalty = 0.0
+    for joker in state.jokers:
+        hand_type = RARE_HAND_JOKER_TARGETS.get(joker.name)
+        if hand_type is None:
+            continue
+        try:
+            need = float(_rare_hand_deck_manipulation_need(state, hand_type))
+        except (TypeError, ValueError, AttributeError):
+            continue
+        if need <= 0.0:
+            continue
+        penalty += 22.0 + need * 18.0
+
+    if penalty <= 0.0:
+        return 0.0
+    if state.ante <= 2:
+        penalty *= 0.60
+    elif state.ante >= 4:
+        penalty *= 1.15
+    return min(180.0, max(0.0, penalty * weight))
+
+
+def _cached_simulate_buy(state: GameState, action: Action) -> GameState:
+    """Decision-scoped memo of ``simulate_buy(state, action)``.
+
+    For a given BUY action the same (state, action) transition is simulated up to
+    3x within one shop decision — in ``_conditional_joker_buy_penalty``,
+    ``_unresolved_pressure_buy_penalty`` and the real ``_simulate_shop_action``
+    expansion. ``simulate_buy`` is a PURE deterministic function of (state, action)
+    here (every randomized aspect is an explicit kwarg, all left default by these
+    callers; the overstock-voucher rng refill happens AFTER, in
+    ``_simulate_shop_action``). The bucket is identity-guarded on the state object
+    (so no id-reuse risk) and keyed by the action's kind/index/buy_and_use.
+    Behaviour-identical to recomputation (the result GameState is immutable).
+    """
+
+    from balatro_ai.bots.basic_strategy.cache import _state_scoped_cache
+
+    bucket = _state_scoped_cache("shop_simulate_buy", state)
+    if bucket is None:
+        return simulate_buy(state, action)
+    akey = (
+        _action_kind(action, default="card"),
+        _action_index(action),
+        bool(action.metadata.get("buy_and_use")),
+    )
+    cached = bucket.get(akey)
+    if cached is None:
+        cached = simulate_buy(state, action)
+        bucket[akey] = cached
+    return cached
+
+
 def _conditional_joker_buy_penalty(state: GameState, action: Action) -> float:
     if action.action_type != ActionType.BUY:
         return 0.0
@@ -680,7 +848,7 @@ def _conditional_joker_buy_penalty(state: GameState, action: Action) -> float:
         return 0.0
 
     try:
-        next_state = simulate_buy(state, action)
+        next_state = _cached_simulate_buy(state, action)
         from balatro_ai.bots.basic_strategy.build_profile import _build_profile
 
         profile = _build_profile(next_state)
@@ -822,6 +990,24 @@ def _shop_scaling_investment_value(state: GameState, profile) -> float:
     # sqrt: rewards the first several growth jokers strongly, then tapers so a
     # single editioned xmult joker can't swamp the whole leaf score.
     return (raw ** 0.5) * _SCALING_INVEST_WEIGHT
+
+
+def _shop_economy_investment_value(state: GameState, profile) -> float:
+    """De-saturated reward for owning economy role-score (stacking money jokers).
+
+    The role term caps economy at min(1, score/req)*10; this rewards economy
+    beyond the cap so the beam keeps valuing a 2nd/3rd money joker, which compounds
+    via interest. sqrt-damped so a single big economy joker can't swamp the leaf.
+    DEFAULT-OFF (weight 0.0); env-gated for the BALATRO_ECON_INVEST_W winrate A/B.
+    """
+
+    if _ECON_INVEST_WEIGHT == 0.0:
+        return 0.0
+    try:
+        economy = max(0.0, float(profile.role_score("economy")))
+    except (AttributeError, TypeError, ValueError):
+        return 0.0
+    return (economy ** 0.5) * _ECON_INVEST_WEIGHT
 
 
 def _shop_archetype_coherence_value(state: GameState) -> float:
@@ -1078,11 +1264,11 @@ def _shop_money_value(state: GameState) -> float:
     above_reserve = max(0, money - reserve)
 
     return (
-        (interest_bank * 0.45)
+        (interest_bank * 0.45 * _ECON_W)
         + (max(0, money - interest_cap) * 0.22)
-        + (projected_interest * 3.5)
-        + (next_breakpoint_progress * 0.8)
-        - (reserve_shortfall * 0.45)
+        + (projected_interest * 3.5 * _ECON_W)
+        + (next_breakpoint_progress * 0.8 * _ECON_W)
+        - (reserve_shortfall * 0.45 * _ECON_W)
         + (above_reserve * 0.12)
     )
 
@@ -1269,7 +1455,7 @@ def _unresolved_pressure_buy_penalty(state: GameState, action: Action) -> float:
         return 0.0
 
     try:
-        next_state = simulate_buy(state, action)
+        next_state = _cached_simulate_buy(state, action)
     except (TypeError, ValueError, IndexError, AttributeError):
         return 0.0
 
@@ -1387,6 +1573,10 @@ def _action_potential_shaping(
 ) -> float:
     if weight <= 0.0 or action.action_type not in {ActionType.BUY, ActionType.SELL, ActionType.USE_CONSUMABLE}:
         return 0.0
+    if action.action_type == ActionType.USE_CONSUMABLE:
+        weight *= _USE_CONSUMABLE_POTENTIAL_WEIGHT
+        if weight <= 0.0:
+            return 0.0
     if node.path:
         current_leaf_score = node.leaf_score
     else:
@@ -1397,7 +1587,7 @@ def _action_potential_shaping(
 
 def _simulate_shop_action(state: GameState, action: Action, sampler: ShopSampler, *, rng: Random) -> GameState:
     if action.action_type == ActionType.BUY:
-        bought = simulate_buy(state, action)
+        bought = _cached_simulate_buy(state, action)
         if not _is_overstock_voucher_buy(state, action):
             return bought
         current_shop = _modifier_items(bought.modifiers, "shop_cards")

@@ -586,18 +586,2151 @@
   audit discrete meta decisions (skips/tags, vouchers, pack picks). Play was "tapped" only on
   AVERAGE — endgame play untested.
 
+### 2026-06-03 evening — Refresh/audit pass; pack-aware labeler correction; SolverPolicy exposed as strongest current bot path
+
+- **Phase 1 cleanup after encoder fixes:** tightened suit normalization so exact aliases
+  (`S`, `spade`, `Spades`) still work but unknown/suitless labels such as `Stone` stay
+  `SUIT_NONE`; made the XMult counter semantics explicit (`current_xmult=1.0` is a visible
+  baseline value); updated runnable Phase 8 script defaults/examples to v3 checkpoints; and
+  made stale-checkpoint errors include the path/remedy. Focused ML tests + compile pass green.
+- **Corrected the shop action-ranker gate:** the prototype omitted `OPEN_PACK`, so prior
+  headroom/agreement conclusions under-tested one of the most important shop actions.
+  After adding pack actions and tie-aware metrics, a small pack-aware rerun
+  (`8 states x 4 CRN rollouts, +3 ante`) showed:
+  `top1_stable=0.75`, `half_corr=0.058`, `reliable_disagree=0.0`,
+  `heuristic_within_0.05=0.875`, `mean_best_margin=0.0`.
+  Revised verdict: pack omission was a real measurement bug, but the corrected cheap gate
+  still does **not** produce a useful shop-ranker target; most "disagreements" are ties/noisy
+  residuals, not clear regret.
+- **Death-margin diagnostic hardened:** now buckets only true `RUN_OVER` losses and reports
+  no-action/sim-error/max-step aborts separately, so aborted simulations cannot masquerade as
+  death-margin losses.
+- **Current winrate path:** exposed `SolverPolicy` through the bot registry as
+  `solver_policy_bot` (and GUI list) so the stronger offline-solver policy is benchmarkable via
+  normal tooling. Same generic sim canaries with `PYTHONHASHSEED=0`:
+  `basic_strategy_bot` 2/24 (8.3%, 177s), `solver_policy_bot` 4/24 (16.7%, 309s).
+  On 12 seeds: basic 1/12, search_bot_v2 2/12, solver_policy_bot 3/12. This is slower but is
+  the best current explicit bot path. Tested likely knobs: search_bot_v2 hand width 1 regressed
+  (1/12), shop depth 2->3 regressed (3/12 -> 0/12), and build-aggression+boss-aware remained
+  negative (3/12 -> 0/12). Leave defaults alone; use `solver_policy_bot` as the current
+  quality baseline.
+
+### 2026-06-03 late evening -- paired A/B harness; solver shop memory; best current path is solver shop + basic play
+
+- **Added `scripts/bot_paired_ab.py`** for same-seed bot A/Bs. It runs both bots on each
+  seed inside the same worker, disables shop audit payloads, records aborts separately, and
+  reports paired ante/win flips. It now avoids misleading aggregate score deltas by only
+  aggregating score on same-ante losses and by reporting normalized loss-fraction deltas.
+- **Found and fixed a real `SolverPolicy` shop-context bug:** full solver shop search was
+  called with a fresh `ShopSearchContext()` every decision and no protected-joker memory,
+  unlike `search_bot_v1/v2`. It now tracks rerolls, packs opened, last-slot fills, and
+  newly bought protected jokers across the current shop, preserves that state through
+  `BOOSTER_OPENED`, and resets on non-shop/new-shop transitions. Focused tests cover the
+  context handoff and memory reset behavior. Solver-owned shop actions are also mirrored
+  into the BasicStrategy fallback's shop memory, so fallback pack-card choices see the
+  correct pack-open context after solver shop search opens a pack.
+- **Measured full `solver_policy_bot` after the shop-memory fix:** on 24 paired seeds vs
+  `basic_strategy_bot`, wins were 3/24 vs 2/24 and mean ante delta was only -0.17
+  (better 9 / worse 8 / same 7). This is an improvement over the prior full-solver
+  36-seed shape (8/36 wins but mean ante -0.56), but the full solver is still spiky and
+  much slower (~92s/run vs ~36s/run on the 24-seed run).
+- **Traced the remaining early solver collapses:** the problem is not just shop selection.
+  Full solver play search makes fragile early blind decisions on some seeds (e.g. ante-1
+  deaths after search-driven discards/weak build pieces), while basic play often survives
+  those same situations. The full solver's wins and baseline's wins also barely overlap,
+  so treating full solver as a straight replacement is premature.
+- **New best measured experiment lane:** added `solver_shop_basic_play_bot`, which uses
+  `SolverPolicy` shop search but delegates play/fallback decisions to `BasicStrategyBot`.
+  Same-seed A/B vs `basic_strategy_bot`:
+  - 24 seeds: hybrid 5/24 wins, mean ante 6.67 vs 5.62, paired d_ante +1.04 median +1,
+    better 15 / worse 2 / same 7, CPU ~47s/run vs ~36s/run.
+  - 36 seeds: hybrid 7/36 wins, mean ante 6.61 vs 5.86, paired d_ante +0.75 median +1,
+    better 21 / worse 6 / same 9, CPU ~47.5s/run vs ~35.6s/run.
+  This is the strongest current local-sim lane by ante distribution, but it loses the
+  baseline's 4 wins on the 36-seed slice while creating 7 different wins. Treat it as
+  a candidate, not a final default. It is exposed in the registry and GUI list.
+
+### 2026-06-03 night -- hybrid shop ablations: keep depth 2 / reroll 8; width 3 is the fast near-equal option
+
+- **Regression traces for baseline-win / hybrid-loss seeds** showed many solver-shop
+  `SELL -> BUY` churn lines, but the simple fix "never take solver SELL" was too blunt.
+  Added `allow_shop_sells=False` and a registry-only
+  `solver_shop_basic_play_no_sell_bot` ablation. On the first 24 seeds it was positive
+  vs baseline but worse than the existing hybrid: **4/24 wins, mean ante 6.17** vs the
+  default hybrid's **5/24 wins, mean ante 6.67**. Conclusion: solver-only sells are
+  sometimes harmful, but also create real wins; do not globally disable them.
+- **Added SolverPolicy shop env knobs** for efficient tuning without new bot classes:
+  `BALATRO_SOLVER_SHOP_DEPTH`, `BALATRO_SOLVER_SHOP_BEAM_WIDTH`,
+  `BALATRO_SOLVER_SHOP_REROLL_SAMPLES`, and `BALATRO_SOLVER_SHOP_MIN_SEARCH_VALUE`.
+  Tests cover the override path.
+- **Shop horizon/width ablations on `solver_shop_basic_play_bot`:**
+  - `depth=1` is bad: 24 seeds **0/24 wins, mean ante 5.21**, despite being faster.
+    The hybrid needs two-step shop lookahead.
+  - `depth=2,width=2` is positive but too weak: 24 seeds **4/24 wins, mean ante 6.12**.
+  - `depth=2,width=3` is the best speed/quality compromise tested: 24 seeds **5/24,
+    mean ante 6.54**, and 36 seeds **7/36, mean ante 6.56**, paired d_ante **+0.69**,
+    better/worse/same **20/5/11**, CPU **~43.5s/run** vs width-4 default's **~47.5s/run**.
+  - `depth=2,width=3,reroll_samples=4` loses the signal: 24 seeds **2/24, mean ante
+    5.71**. Keep reroll samples at 8.
+- **Negative shop-beam gate checked after seed-37 trace:** the beam sometimes accepts
+  negative-value actions because default `min_search_value=-inf`. Thresholds improved some
+  severe regressions but lost too much upside on the 24-seed slice:
+  `min=0` -> **4/24, mean ante 6.42**; `min=-25` -> **4/24, 6.38**;
+  `min=-60` -> **5/24, 6.33** vs default **5/24, 6.67**. Leave the default ungated; use
+  the env knob only for diagnostics.
+- **Current recommendation:** use `solver_shop_basic_play_bot` as the quality lane. Default
+  width 4 is still the highest measured ante on the 36-seed slice (**+0.75 d_ante, 7/36
+  wins**). For faster iteration, run with
+  `BALATRO_SOLVER_SHOP_BEAM_WIDTH=3` (**same 7/36 wins, slightly lower ante, ~9% cheaper**).
+- **Larger confirmation:** default `solver_shop_basic_play_bot` vs `basic_strategy_bot` on
+  60 paired seeds: **12/60 wins vs 7/60**, mean ante **6.43 vs 5.78**, paired d_ante
+  **+0.65** (median **+1.0**), better/worse/same **34/16/10**, CPU **~47.2s/run vs
+  35.2s/run**. This is the strongest current measured lane and the first clearly meaningful
+  local-sim winrate lift this pass, though it still loses 7 baseline wins while creating 12
+  different wins.
+
+### 2026-06-03 late night -- hybrid guard audit: 16/60 wins with funded-sell exception
+
+- **Fixed a subtle guard bug before measuring:** the first `prefer_fallback_info_first_shop`
+  implementation called `fallback.choose_action(state)` just to ask whether BasicStrategy
+  wanted an info-first pack. That could mutate BasicStrategy's per-shop memory even when the
+  solver ignored the fallback action. Replaced it with a pure reconstruction of
+  BasicStrategy's info-first check using the same shop value helpers, then added regression
+  coverage so the fallback is not called on that path.
+- **Ablated the two hybrid guards on the same 60 seeds:**
+  - no guards / old hybrid: **12/60 wins**, mean ante **6.43**.
+  - info-first only: **14/60 wins**, mean ante **6.42**.
+  - negative-sell fallback only: **12/60 wins**, mean ante **6.37**.
+  - both guards before refinement: **16/60 wins**, mean ante **6.38**.
+  The interaction is real: info-first creates extra upside, and the negative-sell fallback
+  preserves two of those wins by preventing pointless `SELL -> BUY` sequences when the buy
+  was already affordable or the sell was just search churn.
+- **Found and fixed the downside pattern:** seed `0000052` regressed from ante 7 to ante 2
+  because the negative-sell fallback blocked a sale that was actually needed to fund the
+  planned visible joker buy (`Merry Andy -> Devious Joker`). The guard now falls back only
+  for negative SELLs that do **not** fund the first planned BUY in the shop search path.
+  Regression tests cover both cases: unfunded negative SELL falls back; funded negative
+  SELL is allowed.
+- **Refined current best:** `solver_shop_basic_play_bot` (info-first + negative-sell guard
+  with funded-sell exception) vs `basic_strategy_bot`, 60 paired seeds:
+  **16/60 wins vs 7/60**, mean ante **6.52 vs 5.78**, paired d_ante **+0.73** (median
+  **+1.0**), better/worse/same **34/17/9**, CPU **~49.0s/run vs 35.5s/run**. This is now
+  the best measured local-sim lane: same win count as the unrefined guard, better ante
+  distribution, and the seed-52 floor regression fixed.
+
+### 2026-06-04 after midnight -- stopping-point sweep: more ablations, no new default
+
+- **Made the paired A/B harness interruption-safe:** an interrupted 60-seed reroll-sampling
+  run exited without writing metrics, wasting the completed work. `scripts/bot_paired_ab.py`
+  now writes an atomic partial metrics JSON after each finished seed pair, with
+  `expected_n` and `complete` fields. This is a pure workflow/perf-safety improvement for
+  long local runs under Codex/thread interruptions.
+- **Remaining baseline-win losses traced:** the 7 baseline wins still lost by the hybrid are
+  seeds `0000010`, `0000015`, `0000026`, `0000030`, `0000037`, `0000039`, `0000059`. The
+  traces show no single clean correction: some are early first-shop ordering differences,
+  some are build-archetype divergence, and some are later positive-valued sell/rebuild
+  choices. This argues against another broad default guard without proof.
+- **Tested two targeted guard ablations; both failed on 24 seeds:**
+  - `solver_shop_basic_play_buffoon_bot` (force first-shop Buffoon when no jokers):
+    **4/24 wins, mean ante 6.25** vs current default's **7/24, 6.25**.
+  - `solver_shop_basic_play_sell_guard_bot` (fallback for unfunded sells while a joker
+    slot is open): **3/24 wins, mean ante 6.38**. It removed some ugly sells but also
+    killed too much upside. Leave both as registry-only diagnostics, not defaults.
+- **Checked quality/sampling knobs after the refined default:**
+  - `BALATRO_SOLVER_SHOP_BEAM_WIDTH=5`: **6/24 wins, mean ante 6.25**; not better than
+    width 4.
+  - `BALATRO_SOLVER_SHOP_REROLL_SAMPLES=12`: **5/24 wins, mean ante 6.46**, CPU ~59.7s/run;
+    not worth it.
+  - `BALATRO_SOLVER_SHOP_REROLL_SAMPLES=16`: promising on 24 seeds (**8/24, mean ante
+    6.50**) but 60-seed confirmation was **15/60 wins, mean ante 6.60**, CPU **~66.7s/run**.
+    This improves depth/ante distribution but loses one win and is ~36% slower than the
+    refined default. It is a diagnostic/deep setting, not the quality default.
+- **Current stopping point:** keep `solver_shop_basic_play_bot` default at depth 2,
+  width 4, reroll samples 8, with the info-first and funded negative-sell guard. Best
+  verified quality result remains **16/60 wins vs baseline's 7/60** at **~49s/run**.
+
+### 2026-06-04 -- staged hybrid tested; 100-seed confirmation
+
+- **Tested staged hybrids to recover baseline-win losses:** several lost-baseline traces
+  diverged in ante-1/ante-2 shops, so two hidden aliases let BasicStrategy own early SHOP
+  decisions before handing back to solver shop search:
+  - `solver_shop_basic_play_basic_ante1_bot`: **3/24 wins, mean ante 5.67**. Hard miss;
+    the solver's ante-1 shop aggression is carrying too much upside.
+  - `solver_shop_basic_play_basic_ante2_bot`: **6/24 wins, mean ante 6.38**, then
+    **15/60 wins, mean ante 6.28**. It loses fewer baseline wins (4 vs current default's
+    7 on the 60-seed slice) but creates fewer solver wins and has lower overall winrate.
+    Leave staged variants as diagnostics only.
+- **100-seed confirmation for the current default:** `solver_shop_basic_play_bot` vs
+  `basic_strategy_bot`, paired seeds `0000001..0000100`, `PYTHONHASHSEED=0`:
+  **22/100 wins vs 13/100**, mean ante **6.52 vs 5.87**, median ante **7 vs 6**,
+  better/worse/same **53/27/20**, win flips **21 for hybrid / 12 for baseline**, CPU
+  **~56.0s/run vs 42.4s/run**. The lift survives the larger slice: +9 wins, +0.65 mean ante.
+  Hybrid and baseline still overlap very little (only seed `0000097` won for both), so
+  future gains likely need a real meta-decision or better shop value, not a single early
+  fallback window.
+- **Added a pipe-free subprocess backend to `scripts/bot_paired_ab.py`:** Codex's Windows
+  sandbox denies `multiprocessing.Pipe`, so `--backend auto` now falls back from
+  `ProcessPoolExecutor` to independent per-seed subprocess workers that write row JSON
+  files. This preserves parallel paired A/B runs without requiring escalated Python
+  prompts, while keeping the old process-pool path for normal local runs.
+- **Tested a broader negative-action fallback diagnostic:** `solver_shop_basic_play_neg_action_bot`
+  lets BasicStrategy override any negative-valued shop-search action when Basic has an
+  active non-`END_SHOP` move. It looked plausible at 24 seeds (**6/24 wins, mean ante
+  6.54**, better/worse/same **15/3/6**) but failed the 60-seed check: **13/60 wins,
+  mean ante 6.33**, versus the current default's same-seed first-60 slice of **16/60 wins,
+  mean ante 6.52**. It rescues some losses but kills too many current-default wins; keep
+  it as a hidden diagnostic only.
+- **Current quality lane remains unchanged:** `solver_shop_basic_play_bot` with depth 2,
+  width 4, reroll samples 8, info-first guard, and funded negative-sell fallback. This is
+  now verified at **22% on 100 local-sim paired seeds**, up from `basic_strategy_bot`'s
+  **13%** on the same seeds.
+
+### 2026-06-04 -- rare-hand commitment guard promoted
+
+- **Found the next systematic loss shape:** seed `0000037` was a baseline win but hybrid
+  died in ante 4 after overcommitting to an unsupported rare-hand/suit build
+  (`The Family`, `Flower Pot`, `Sock and Buskin`). The existing support check treated a
+  normal deck with four same-rank cards as "possible enough", so it did not penalize
+  midgame commitment to Four of a Kind without rank manipulation or hand-level support.
+- **Added a default-on rare-hand commitment reliability multiplier:** rare-hand payoff
+  jokers such as `The Family` keep full value in ante 1-2, but from ante 3 onward their
+  candidate/owned shop value is discounted unless the build has support from hand levels,
+  rank-manipulation tarot cards, or extra duplicate-rank density. The weight remains
+  ablatable via `BALATRO_RARE_HAND_COMMITMENT_RELIABILITY_W=0.0`.
+- **Kept the early speculative upside:** the first version discounted ante 1-2 too, which
+  rescued seed `0000037` but lost seed `0000053` by selling out of an early `The Family`
+  line that later converted into a stable `Banner`/`Half Joker`/`Card Sharp` win. Gating
+  the reliability multiplier to ante 3+ preserved both: seed `0000037` improves from
+  ante 4 to ante 8, and seed `0000053` remains a win.
+- **100-seed confirmation versus the saved current default:** the new default keeps
+  `solver_shop_basic_play_bot` at **22/100 wins**, improves mean ante **6.52 -> 6.61**,
+  and moves paired better/worse/same **53/27/20 -> 54/26/20**. All six changed solver
+  seeds are non-win improvements: `0000027` ante 6 -> 7, `0000037` ante 4 -> 8,
+  `0000046` same ante with higher score, `0000067` same ante with higher score,
+  `0000076` ante 5 -> 8, and `0000094` ante 5 -> 6. Metrics:
+  `.data/bot_paired_basic_solver_shop_basicplay_rarecommit_ante3_100.json`.
+- **Current quality lane:** `solver_shop_basic_play_bot` with depth 2, width 4, reroll
+  samples 8, info-first guard, funded negative-sell fallback, and ante-3+ rare-hand
+  commitment reliability. It is still **22% on the 100-seed paired slice**, but with a
+  better loss distribution than the previous default.
+
+### 2026-06-04 -- first-divergence sweep; no second default from shop fallbacks
+
+- **Generated a reusable first-divergence report:** `.data/first_divergence_100.json`
+  compares `basic_strategy_bot` and current `solver_shop_basic_play_bot` on the saved
+  100-seed paired slice, stopping at the first different decision. The main lesson is that
+  the largest obvious category is not baseline-favorable:
+  `ante 1, no jokers, Basic opens Buffoon, solver buys visible Joker` has **32 seeds**,
+  but solver wins **6** and baseline wins **3**. The related
+  `Basic opens Buffoon, solver buys planet` bucket is balanced (**17 seeds, 2 wins each**).
+  This explains why broad Buffoon-first guards keep failing despite rescuing a few baseline
+  traces.
+- **Tested Stencil slot-discipline as an env-gated diagnostic:** added
+  `BALATRO_STENCIL_SLOT_DISCIPLINE_W` to penalize ordinary joker buys that consume protected
+  `Joker Stencil` slots. It improved seed `0000030` from ante 5 to ante 6, but the 25-60
+  slice stayed **9/36 wins** and only one row changed (seed `0000030`). Leave it off by
+  default.
+- **Rejected two narrower fallback bots after A/B screens:**
+  - `solver_shop_basic_play_buffoon_nonjoker_bot` only opens an ante-1 Buffoon over a
+    non-joker buy. It lost the first-24 screen: **6/24 wins, mean ante 6.12** vs current
+    default's **7/24, 6.25**, losing current solver win `0000005`.
+  - `solver_shop_basic_play_neg_end_bot` falls back only when shop search chooses a
+    negative-valued `END_SHOP`. It deepened some losses and gained seed `0000006`, but also
+    lost solver wins `0000005` and `0000016`: **6/24 wins, mean ante 6.54** vs current
+    default's **7/24, 6.25**. Not a winrate default.
+- **Checked the high-precision one-joker planet pocket:** `solver_shop_basic_play_ante1_planet_bot`
+  falls back only when ante-1 has exactly one joker, solver wants a planet, and Basic wants
+  a joker or Celestial pack. It changed the intended traces but did not convert them:
+  `0000026` still dies ante 8 and `0000081` still dies ante 8; the deliberately excluded
+  standard-pack case `0000094` remains unchanged. Leave it as a diagnostic, not a measured
+  default candidate.
+- **Conclusion for this pass:** the rare-hand commitment guard remains the only new default
+  from this round. The next likely real gains are not simple first-divergence fallbacks; they
+  probably need either a better shop leaf value for late build quality or a learned/meta
+  selector that can exploit the very low overlap between baseline wins and solver wins.
+
+### 2026-06-04 -- follow-up audit: consumable scoring and ValueNet wiring
+
+- **Fixed a stale diagnostic tool:** `scripts/shop_decision_trace.py` was still tracing a raw
+  `SolverPolicy`, so it could mislead audits of the active hybrid lane. It now accepts
+  `--bot` (default `solver_shop_basic_play_bot`) and traces the actual registry bot path.
+- **Screened a plausible consumable double-count bug, but did not promote it:** trace scores
+  showed very large `USE_CONSUMABLE` action values from leaf-delta terms. Two ablations failed
+  the quality gate:
+  - `BALATRO_USE_CONSUMABLE_LEAF_DELTA_W=0.0` with bonus-only scoring: **5/24 wins, mean ante
+    6.04**, versus current first-24 **7/24, 6.25**.
+  - `BALATRO_USE_CONSUMABLE_POTENTIAL_W=0.0`: tied the first-24 aggregate (**7/24, 6.25**) but
+    churned seeds, then failed the 60-seed check: **15/60 wins, mean ante 6.50** versus current
+    first-60 **16/60, 6.60**. Leave the current default unchanged.
+- **Found and fixed stale Phase 8 shop-guidance wiring:** `basic_strategy.value_guidance`
+  only knew about the old coarse `ml.features` / `phase8_value_model.npz` path, so a current
+  `ValueNet` checkpoint could not drive the 1-step shop buy bonus. It now supports
+  `BALATRO_VALUE_MODEL_CKPT=<checkpoint>` with `BALATRO_VALUE_MODEL_HEAD=ante|win|clear`, while
+  preserving the old `BALATRO_VALUE_MODEL=1` npz path and keeping the feature off by default.
+  A smoke with `.data/phase8_value_v3_bootstrap.pt` loaded successfully and returned a real
+  delta; focused tests cover the new checkpoint path.
+
+### 2026-06-04 -- seed-known portfolio diagnostic, not the target bot
+
+- **Screened the fixed ValueNet shop-guidance hook as a bot decision signal:** using
+  `.data/phase8_value_v3_bootstrap.pt`, `BALATRO_VALUE_GUIDED_HEAD=ante`, and low scales:
+  - Basic + scale 25: **2/24 wins**, mean ante **5.79** vs Basic **2/24**, **5.62**; no win
+    flips and a ~28% CPU tax before the cache/threading fix.
+  - Basic + scale 50: **2/24 wins**, mean ante **5.88**; still no win flips.
+  - Solver hybrid + scale 50: **5/24 wins**, mean ante **6.21** vs current solver **7/24**,
+    **6.25**, with two solver wins lost and a large CPU tax. Do not promote current ValueNet
+    1-step guidance as a quality default.
+- **Reduced ValueNet guidance experiment overhead:** prediction now uses the BasicStrategy
+  decision cache and single-thread batch-size-1 torch inference. An 8-seed timing sanity check
+  dropped guided Basic from the earlier ~50s/run range to **~42.9s/run**, about baseline speed.
+- **Added `portfolio_basic_solver_bot` as a diagnostic only:** it reads the seed string
+  (`BALATRO_RUN_SEED` from the paired harness, or `modifiers["balatro_seed"]` from `SeedGame`)
+  and simulates candidate full-run policies before choosing one to follow. This is a
+  seed-known oracle-style selector; it is **not** counted as a meaningful general bot winrate
+  and should not be treated as the target lane.
+- **100-seed diagnostic result:** `portfolio_basic_solver_bot` vs current
+  `solver_shop_basic_play_bot`, paired seeds `0000001..0000100`:
+  **34/100 wins vs 22/100**, mean ante **7.09 vs 6.61**, paired d_ante **+0.48**, better/worse/same
+  **26/0/74**, and **zero solver-win regressions**. The 12 win flips are exactly the Basic-only
+  seeds from the prior overlap analysis: `0000010`, `0000015`, `0000026`, `0000030`, `0000037`,
+  `0000039`, `0000059`, `0000067`, `0000070`, `0000081`, `0000089`, `0000090`. Metrics:
+  `.data/bot_paired_solver_portfolio_basic_solver_100.json`.
+- **Correct takeaway:** the useful information is not "34% winrate"; it is that Basic and the
+  solver still win very different states. Future work should mine those Basic-only / solver-only
+  divergences for state-local rules or learned action selectors that do **not** use full-seed
+  rollout outcomes at deployment.
+
+### 2026-06-04 -- rejected weak-joker Buffoon fallback
+
+- **Tested a narrow non-seed-known rule from the Basic-only overlap:** ante 1, empty build,
+  solver buys one of `Blue Joker` / `Greedy Joker` / `Seltzer`, and Basic opens a Buffoon
+  pack. The rule was intentionally state-local and did not inspect the seed outcome.
+- **Result:** first 24 seeds were a no-op (**7/24 wins, mean ante 6.25** on both bots). The
+  offset 25-60 slice failed: **9/36 wins** on both bots, but mean ante fell
+  **6.83 -> 6.78**, with better/worse/same **0/1/35** and zero win flips. The single changed
+  seed was `0000039`, where the fallback made the solver drop from ante 5 to ante 3.
+- **Cleanup:** removed the temporary `solver_shop_basic_play_buffoon_weak_joker_bot` alias and
+  policy flag. This is a useful warning: copying Basic's first divergent shop move is not enough
+  when the later play/shop policy context differs.
+- **Validation stance:** seed-known portfolio numbers stay diagnostic only. General bot changes
+  should pass contiguous seed slices and ideally separate discovery/holdout ranges before becoming
+  defaults.
+
+### 2026-06-04 -- holdout sanity check for seed fitting
+
+- **Fresh contiguous holdout:** `basic_strategy_bot` vs current `solver_shop_basic_play_bot`,
+  seeds `0000101..0000160`, `PYTHONHASHSEED=0`, same paired harness:
+  Basic **10/60 wins**, mean ante **5.98**; hybrid **8/60 wins**, mean ante **6.33**.
+  Paired better/worse/same **27/22/11**, hybrid win flips **8**, Basic win flips **10**.
+  Metrics: `.data/bot_paired_basic_solver_shop_basicplay_holdout_101_160.json`.
+- **Interpretation:** the current hybrid is not merely seed-fitting the first 100 seeds; it still
+  improves depth on a fresh slice. But the first-100 **22%** winrate is not a stable expected
+  arbitrary-seed winrate. On this holdout it loses the win-count comparison while retaining a
+  survival/ante advantage. Treat current quality as "better depth, unstable win conversion" until
+  larger held-out runs say otherwise.
+- **Combined first-160 view:** current hybrid is **30/160 wins** vs Basic **23/160**, with mean
+  ante **6.51 vs 5.93**, paired better/worse/same **81/48/31**, and win flips **29 vs 22**.
+  That is evidence of a real general depth lift, but the winrate intervals still overlap; do not
+  claim a stable arbitrary-seed winrate until a larger holdout confirms it.
+
+### 2026-06-04 -- neural path reset: sim gate + candidate-ranker data
+
+- **Stopped treating seed-known portfolio as the target:** pro-human white-stake play is an
+  unseeded/general-policy objective. Portfolio remains only a diagnostic for Basic/solver
+  complementarity.
+- **Added a repeatable full-sim verification gate:** `scripts/full_sim_verification_gate.py`
+  runs forward-sim tests, replay/score tests, RNG fixture validators, and score-edge fixtures
+  with independent verifier tasks in parallel. Full no-live-bridge gate passed:
+  `.data/full_sim_gate.json` (`forward_sim_tests` 147 tests + 19 subtests, replay/score 45 tests,
+  RNG surface/shop/spectral validators, score fixtures).
+- **Started the neural action-ranker path:** added `src/balatro_ai/ml/shop_candidate_dataset.py`
+  and `scripts/phase8_shop_candidate_dataset.py`. The artifact is one JSONL row per shop state:
+  encoded state (encoder v3), source bot, heuristic action, legal candidate actions, and
+  common-random-number rollout values/ranks. This directly targets
+  `score(state, candidate_action)` instead of the failed raw `V(state)` shop leaf.
+- **Efficiency stance:** the sim gate runs independent verifier tasks with `--jobs`; candidate
+  labeling uses `ProcessPoolExecutor` via `--jobs` and keeps smoke/default settings small enough
+  for this machine. A one-record, two-worker smoke completed and wrote
+  `.data/phase8_shop_candidates_smoke.jsonl` plus metrics.
+
+### 2026-06-05 -- candidate-ranker label audit and first training probe
+
+- **Found a real target bug before scaling data:** bounded rollout labels collapsed to flat
+  ante values for candidates that all survived to the horizon. A 12-record probe had
+  `mean_best_margin=0.0` and every best label was `buy card index 0`, which was just
+  candidate-order tie-breaking.
+- **Fixed the label value:** `rollout_value_after_action` now keeps ante/win survival as the
+  dominant term, but adds a bounded same-horizon shop/build quality bonus from
+  `shop_leaf_value`. This gives common-random-number labels enough resolution without letting
+  the old heuristic override actual survival progress.
+- **Fixed duplicate capture rows:** `scripts/phase8_shop_candidate_dataset.py` now over-collects
+  cheap trajectory states, dedupes equivalent shop states across capture bots, and reports raw
+  versus deduped counts.
+- **Added the neural shop ranker and soft-label trainer:** `src/balatro_ai/ml/shop_ranker.py`
+  scores `(state, candidate_action)` using the encoded state trunk plus action/shop-token
+  features. The trainer supports hard argmax labels and soft rollout-value distributions via
+  `--loss {soft,hard}` and `--target-temperature`.
+- **Added an env-gated deployment wrapper:** `RankerGuidedShopBot` loads
+  `BALATRO_SHOP_RANKER_CKPT` and scores shop candidates, with basic and
+  solver-shop/basic-play registry aliases. No checkpoint means pure fallback.
+- **Probe after fixes:** `.data/phase8_shop_candidates_probe_dedup.jsonl` captured 8 raw states,
+  deduped to 4 unique rows, `mean_best_margin=0.0866`, and best actions were no longer a fixed
+  first-card tie. Tiny training smoke with soft temperature 0.03 wrote
+  `.data/phase8_shop_ranker_probe_dedup_soft_t003.metrics.json`: train top-1 1.0, all-row top-1
+  0.75, all-row mean regret 0.0175. This is pipeline evidence only; the sample is far too small
+  to claim playing strength.
+- **Deployment smoke:** one seed with the tiny checkpoint loaded and ran through
+  `solver_shop_basic_play_shop_ranker_bot`, but it regressed that seed from ante 8 to ante 3.
+  Treat this as proof the wrapper executes, not as a usable model.
+- **Verification:** focused ranker/dataset/registry tests pass, and the quick full-sim gate
+  passed after the wrapper change (`.data/full_sim_gate_quick_after_ranker_wrapper.json`).
+
+### 2026-06-05 -- candidate-data diversity and capture efficiency
+
+- **Fixed first-shop/first-bot bias in candidate data:** `collect_shop_states` now accepts
+  ante filters, and `scripts/phase8_shop_candidate_dataset.py` deterministically shuffles
+  deduped states before slicing. This keeps larger datasets from being filled by the first
+  capture bot's earliest shops.
+- **Parallelized capture, not just labeling:** the dataset CLI now splits seed chunks across
+  capture bots using `--collect-jobs` (defaulting to `--jobs`). This matters because later-shop
+  capture itself was slow before any rollout labels were computed.
+- **Added label-quality metrics:** metrics now include source/ante histograms, selected vs
+  captured/deduped counts, split-half best-action agreement, nonzero best-margin rate, and
+  mean top-tie count. These are needed because top-1 accuracy is arbitrary on tied rollout
+  labels.
+- **Ante-2 parallel smoke:** `.data/phase8_shop_candidates_ante2_parallel_4.jsonl` with
+  `rollouts=2`, `max_actions=6`, `max_antes=1`, `jobs=8`, `collect_jobs=8` captured 32 states,
+  deduped to 30, selected 4, and produced `mean_best_margin=0.1292`,
+  `nonzero_best_margin_rate=0.75`, `mean_top_tie_count=2.25`, and
+  `split_half_best_agreement_rate=0.5`. Training smoke wrote
+  `.data/phase8_shop_ranker_ante2_parallel_4.metrics.json` with all-row top-1 0.75 and mean
+  regret 0.0367. This is still a smoke; real data should use at least 4 CRN rollouts and judge
+  held-out regret/ties, not raw top-1 alone.
+- **Verification:** focused candidate/ranker/wrapper tests passed, and the quick full-sim gate
+  passed after the parallel capture changes
+  (`.data/full_sim_gate_quick_after_parallel_candidate_data.json`).
+
+### 2026-06-05 -- soft/regret labels for multiple viable builds
+
+- **User insight folded into the training target:** early shops often have several viable
+  build basins on the same seed, so a single hard "best action" label is the wrong abstraction.
+  The data and ranker metrics now report acceptable-action bands and near-best accuracy rather
+  than relying on raw top-1.
+- **4-rollout ante-2 dataset:** `.data/phase8_shop_candidates_ante2_r4_8.jsonl` captured
+  64 states, deduped to 59, selected 8, balanced source bots 4/4, all ante 2. Label metrics:
+  `mean_best_margin=0.0377`, `nonzero_best_margin_rate=0.625`, `mean_top_tie_count=1.875`,
+  `mean_actions_within_0_05=2.25`, `mean_actions_within_0_10=3.0`,
+  `heuristic_within_0_05_rate=0.6667`, and split-half agreement `0.375`.
+- **Tiny ranker comparison:** on the same 6/2 split, soft mean-pool had the best held-out
+  regret (`0.0721`) and near-best accuracy (`0.5`) among the tried variants. Hard labels
+  overfit train top-1 but had much worse held-out regret (`0.2710`) and near-best accuracy
+  `0.0`; attention-soft also underperformed on the tiny split. These are not playing-strength
+  results, but they strongly support soft/regret labels for the next scale run.
+- **Deployment decision:** no wrapper A/B was run from these checkpoints because the held-out
+  sanity bar is not met. Next useful scale run should increase records first, keep 4+ CRN
+  rollouts, and judge by held-out regret/near-best plus eventual paired bot A/B.
+- **Verification:** focused candidate/ranker/wrapper tests passed and the quick full-sim gate
+  passed after near-best metric changes (`.data/full_sim_gate_quick_after_near_best_metrics.json`).
+
+### 2026-06-05 -- Rust best-play path fixed
+
+- **Fixed the Rust best-play bridge instead of treating it as unsafe:** `rust_joker_data`
+  now resolves Blueprint/Brainstorm like Python, with ability names/scaling metadata copied
+  from the target joker while physical edition/rarity/sell value stay on the original slot.
+  Copied Swashbuckler now uses copied metadata instead of incorrectly receiving the physical
+  sell-value sum. The same Swashbuckler projection fix was applied to `state_value._cached_joker_data`.
+- **Fixed Rust evaluator parity bugs found by real trajectory audits:** shape-gated jokers
+  now inspect actual card rank counts; debuffed/Stone cards no longer count as faces for
+  Photograph/Ride the Bus/Sock and Buskin-style checks; Ride the Bus uses that shared helper;
+  and debuffed or suit-debuffed scoring cards skip the scored-card joker/effect pass, while
+  still contributing to hand shape exactly like Python.
+- **Added boss adjustment for the batch best-play path:** The Eye/The Mouth now post-process
+  Rust score vectors using Python hand identification so repeated/disallowed hand types are
+  zeroed before winner selection.
+- **Removed the conservative best-play joker bailout list:** `RUST_BESTPLAY_UNSAFE_JOKERS`
+  is now empty; unsupported cards/jokers still bail naturally through Rust returning `None`.
+- **Verification:** rebuilt and force-reinstalled `balatro_core`. `cargo test` passes
+  101 Rust tests; focused Python Rust suites pass (`tests/test_rust_bestplay_bridge.py`
+  6 tests, `tests/test_rust_score_action_parity.py` 117 tests). Normal
+  `BALATRO_BESTPLAY_PARITY=1 python scripts/bestplay_parity_check.py 4` now reports
+  6,150 best-play calls, 5,692 Rust fast-path uses (92.6%), 458 bails (7.4%), and
+  **0 vector divergences**.
+- **Speed:** on `basic_strategy_bot` seed `0000001`, full-run wall time improved from
+  25.5s with `BALATRO_RUST_BESTPLAY=0` to 8.27s with `BALATRO_RUST_BESTPLAY=1` on the
+  same 163-step trajectory (~3.1x faster). The lane remains env-gated, but it is now a
+  credible data-generation accelerator rather than a known-divergent experiment.
+
+### 2026-06-05 -- Rust-backed candidate data smoke
+
+- **Full sim gate re-run after Rust fixes:** `python scripts/full_sim_verification_gate.py
+  --jobs 6 --metrics .data/full_sim_gate_after_rust_bestplay_fix.json` passed the full
+  no-live-bridge gate in 1.35s across forward-sim, replay/score, RNG, fixture validators,
+  and score-edge fixtures.
+- **Candidate-data CLI now uses the safe Rust lane by default:** `scripts/phase8_shop_candidate_dataset.py`
+  sets `BALATRO_RUST_BESTPLAY=1` before worker processes import the evaluator and records
+  `rust_bestplay` in metrics. `--no-rust-bestplay` remains available for debugging/parity
+  probes.
+- **Fixed source-bot selection bias:** state selection can now round-robin across capture
+  bot sources and the CLI defaults to that balanced mode. This avoids tiny datasets being
+  accidentally dominated by one teacher trajectory distribution; metrics record
+  `balance_source_bots`.
+- **Multiworker smoke:** `.data/phase8_shop_candidates_ante2_r4_8_after_rust_balanced.jsonl`
+  captured 64 states, deduped to 57, selected 8 balanced rows (4 basic / 4 solver-shop),
+  `rollouts=4`, `max_antes=1`, `max_actions=8`, `jobs=8`, `collect_jobs=8`. Metrics:
+  228 candidate continuations in 99.64s (2.29 continuations/s), `wall_s_per_record=12.46`,
+  `mean_candidates=7.125`, `mean_best_margin=0.0485`, `mean_top_tie_count=2.625`,
+  `mean_actions_within_0_05=3.125`, and split-half best agreement `0.625`.
+- **Tiny train smoke:** soft mean-pool ranker on the balanced artifact wrote
+  `.data/phase8_shop_ranker_ante2_r4_8_after_rust_balanced_soft.pt`. This is still a
+  pipeline artifact only: all-row near-best@0.05 is 0.875, but the one-row held-out split
+  fails top-1/near-best, so no deployment claim.
+
+### 2026-06-05 overnight -- first 32-row balanced Rust-backed ranker checkpoint
+
+- **Generated the first non-tiny balanced artifact:** `.data/phase8_shop_candidates_ante2_r4_32_after_rust_balanced.jsonl`
+  with `states=32`, `rollouts=4`, `max_antes=1`, `max_actions=8`, `jobs=12`,
+  `collect_jobs=12`, `seed_offset=920000`, source-balanced 16/16 between
+  `basic_strategy_bot` and `solver_shop_basic_play_bot`. Metrics:
+  980 candidate continuations in 324.22s (3.02 continuations/s),
+  `wall_s_per_record=10.13`, `mean_best_margin=0.0534`, nonzero-margin rate
+  `0.6875`, `mean_top_tie_count=1.9062`, `mean_actions_within_0_05=2.7812`,
+  `mean_actions_within_0_10=3.5625`, and split-half best agreement `0.5625`.
+- **Soft vs hard ranker sanity check:** both trained on the same seed split
+  (`26 train / 6 val`, mean encoder, 120 epochs). Hard-label training memorized
+  train top-1 (`1.0`) but failed held-out completely (`val top1=0.0`,
+  `near_best_0_05=0.0`, regret `0.3101`). Soft labels were still weak but clearly
+  better (`val top1=0.1667`, `near_best_0_05=0.3333`, regret `0.2052`).
+  All-row metrics also favor soft on regret/near-best (`0.0385` regret and
+  `0.875` near-best vs hard `0.0581` and `0.8125`).
+- **Interpretation:** no deployment yet. The signal supports the current target design:
+  train on soft/regret labels, scale records before adding architecture complexity, and
+  judge by held-out regret/near-best rather than train top-1.
+
+### 2026-06-05 resume-safe data generation checkpoint
+
+- **Long candidate runs are now checkpointed:** `scripts/phase8_shop_candidate_dataset.py`
+  writes ordered partial JSONL and partial metrics during the label pass by default
+  (`--partial-every`, default 4). This avoids losing every completed shop-state label
+  when a large multiworker run is interrupted.
+- **Added resume support:** `--resume-partial` reloads records from the partial JSONL
+  using `(source_bot, seed, state_index)` and labels only the remaining selected jobs.
+  Final output remains ordered by the deterministic selected-state order, not by worker
+  completion order.
+- **Verification:** focused tests pass (`18 passed`). A 4-row multiworker smoke wrote
+  final and `.partial` artifacts; rerunning the same command with `--resume-partial`
+  reused all 4 records (`resumed_partial_records=4`, `remaining_label_jobs=0`) and
+  finished in 11.59s instead of recomputing the label continuations.
+
+### 2026-06-05 128-row candidate-ranker scale gate
+
+- **Generated the first resume-safe 128-row artifact:** `.data/phase8_shop_candidates_ante2_r4_128_after_rust_balanced.jsonl`
+  with `states=128`, `rollouts=4`, `max_antes=1`, `max_actions=8`, `jobs=12`,
+  `collect_jobs=12`, `seed_offset=930000`, and `--resume-partial`. The run selected
+  128 balanced ante-2 shop rows from 1,019 captured / 964 deduped states and finished
+  cleanly with no stderr. Metrics: 3,828 candidate continuations in 948.22s
+  (4.04 continuations/s), `wall_s_per_record=7.41`, source split 64/64,
+  `mean_best_margin=0.0485`, nonzero-margin rate `0.5938`, split-half best agreement
+  `0.6562`, and average near-best ambiguity of 2.875 actions within 0.05 and 3.523
+  within 0.10.
+- **Added missing heuristic baselines and best-val checkpoint selection:** ranker metrics
+  now report heuristic train/val/all regret on the exact split, and training saves the
+  epoch with best validation mean regret rather than the final epoch. Focused tests pass
+  (`19 passed`).
+- **128-row model verdict:** still not deployable. Best mean encoder selected epoch 110
+  with held-out regret `0.1062`, near-best@0.05 `0.5833`; best attention selected epoch
+  60 with held-out regret `0.1042`, near-best@0.05 `0.5833`. The heuristic baseline on
+  the same val split is better: regret `0.0859`, near-best@0.05 `0.6957`. The all-row
+  model numbers look good because the models fit train; held-out says scale data and/or
+  improve labels before downstream A/B.
+
+### 2026-06-05 label-quality and horizon-2 probe
+
+- **Added train-label quality controls:** ranker examples now retain best-margin,
+  split-half agreement, and near-best action counts from the rollout labels. The trainer
+  can filter the training split by these fields and reports quality summaries for all,
+  train, filtered-train, and val slices. This made the noisy-label hypothesis testable
+  without changing the held-out validation slice.
+- **Filtering the 128-row horizon-1 data did not help:** margin-only and stable/low-ambiguity
+  filters reduced the training set to 47 and 27 rows respectively and both worsened held-out
+  regret versus the unfiltered model and the heuristic. Conclusion: do not solve the
+  horizon-1 failure by throwing away ambiguous rows; it becomes data-starved.
+- **Added repeated split-sweep tooling:** `scripts/phase8_ranker_split_sweep.py` trains
+  across multiple seed splits and compares neural regret/near-best against the stored
+  heuristic action, avoiding one lucky validation split.
+- **Horizon-2 labels are slower but more stable/tied:** `.data/phase8_shop_candidates_ante2_r4_m2_32_after_rust_balanced.jsonl`
+  used `max_antes=2`, `states=32`, `rollouts=4`, `jobs=12`, and source balancing. It
+  finished in 596.14s: 916 continuations at 1.54/s, 16/16 source split, split-half best
+  agreement `0.9375`, but low `mean_best_margin=0.0190` with 4.06 actions within 0.05.
+- **Tiny horizon-2 attention sweep is promising but not deployable:** repeated seed-split
+  sweep over 7 split seeds (`.data/phase8_ranker_sweep_ante2_r4_m2_32_attention.metrics.json`)
+  has attention mean regret `0.0503` vs heuristic `0.1066`, winning regret on all 7 splits;
+  near-best@0.05 is `0.7517` vs heuristic `0.6000`, winning 5/7. The same sweep on the
+  128-row horizon-1 artifact (`.data/phase8_ranker_sweep_ante2_r4_m1_128_attention.metrics.json`)
+  still loses on average: model regret `0.1079` vs heuristic `0.0969`, near-best@0.05
+  `0.5460` vs `0.6201`. Next gate: scale horizon-2 labels before any bot deployment.
+
+### 2026-06-05 64-row horizon-2 scale confirmation
+
+- **Scaled the promising horizon-2 label path to 64 rows:** `.data/phase8_shop_candidates_ante2_r4_m2_64_after_rust_balanced.jsonl`
+  used `states=64`, `rollouts=4`, `max_antes=2`, `max_steps=420`, `max_actions=8`,
+  `jobs=12`, source balancing, Rust best-play, and resume checkpoints. It finished cleanly
+  with no stderr: 634 captured -> 601 deduped -> 64 selected, 1,928 candidate
+  continuations in 1,237.53s (1.56/s), 32/32 source split.
+- **Label diagnostics stayed horizon-2-shaped:** `mean_best_margin=0.0297`, nonzero-margin
+  rate `0.375`, `mean_top_tie_count=3.1562`, `mean_actions_within_0_05=3.8906`,
+  `mean_actions_within_0_10=4.6406`, split-half best agreement `0.8281`.
+- **Attention ranker repeated split sweep confirms the direction:** `.data/phase8_ranker_sweep_ante2_r4_m2_64_attention.metrics.json`
+  over the standard 7 seed splits reports mean model regret `0.0729` vs heuristic
+  `0.1217`, with regret wins 7/7. Near-best@0.05 is `0.6576` vs heuristic `0.5847`,
+  winning 4/7 splits. This is weaker than the tiny 32-row probe on near-best but much
+  stronger evidence than horizon-1 because it survives more rows and repeated splits.
+- **Current verdict:** still no deployment claim, because this is offline candidate ranking
+  on ante-2 shop states only. But horizon-2 attention is now the best neural signal found:
+  scale it next (128 rows or mixed ante-2/3) and then test a ranker-guided shop bot only
+  after repeated split metrics stay ahead of heuristic.
+
+### 2026-06-05 combined horizon-2 offline/online gate
+
+- **Combined existing horizon-2 datasets instead of immediately spending more rollout CPU:**
+  `scripts/phase8_train_shop_ranker.py` and `scripts/phase8_ranker_split_sweep.py` now accept
+  repeated `--data` arguments and dedupe examples by `(source_bot, seed, state_index)`.
+  The 32-row and 64-row horizon-2 artifacts combine into a 96-row offline gate.
+- **Matched training action space to safe deployment:** ranker loading can filter candidate
+  action types before recomputing the best label. For live testing, the shop-ranker wrapper
+  also supports `BALATRO_SHOP_RANKER_ACTION_TYPES` and
+  `BALATRO_SHOP_RANKER_MAX_ACTIONS_PER_SHOP`. Focused tests pass (`77 passed`) after these
+  changes.
+- **Combined 96-row horizon-2 attention sweep remains strong offline:**
+  `.data/phase8_ranker_sweep_ante2_r4_m2_96_attention.metrics.json` reports mean regret
+  `0.0535` vs heuristic `0.0960`, regret wins 7/7, near-best@0.05 `0.7458` vs `0.6071`,
+  near-best wins 7/7. The action-space-matched safe-action sweep
+  `.data/phase8_ranker_sweep_ante2_r4_m2_96_attention_safeactions.metrics.json` is also
+  strong: mean regret `0.0463` vs heuristic `0.0756`, regret wins 7/7, near-best@0.05
+  `0.7899` vs `0.6524`, near-best wins 6/7.
+- **Downstream wrapper smoke exposed the offline/online gap:** unconstrained live ranker was
+  catastrophic, because it could chain SELL/REROLL actions and sell key jokers. Gating to
+  `buy,open_pack,end_shop` fixed the obvious failure mode. On a deterministic 24-seed paired
+  smoke (`PYTHONHASHSEED=0`, ante-2 only, no sell/reroll,
+  `.data/bot_paired_solver_shop_ranker_h2_96_ante2_safeactions_pyhash0_24.json`), the ranker
+  wrapper is only slightly positive: 6 wins vs 5 for baseline, mean ante +0.083, better 9 /
+  worse 10 / same 5. This is not promotion-worthy yet.
+- **Current verdict:** horizon-2 attention is a real offline signal, and safe action gating
+  prevents catastrophic live behavior, but the online edge is too small/noisy. Next gate:
+  scale horizon-2 labels to at least 128 combined rows or add ante-3 horizon-2 data, then run
+  a deterministic 48+ seed safe-action A/B only if the repeated split sweep stays ahead.
+
+### 2026-06-05 overnight ante-balance checkpoint
+
+- **Added opt-in ante-balanced state selection:** `scripts/phase8_shop_candidate_dataset.py`
+  now supports `--balance-antes`, which round-robins selected states across `(source_bot, ante)`
+  groups when used with the default source balancing. Focused tests pass (`78 passed`).
+- **Mixed ante-2/3 collection attempt completed but exposed a collector quota issue:**
+  `.data/phase8_shop_candidates_ante2to3_r4_m2_64_after_rust_balanced.jsonl` finished
+  cleanly with no stderr: 768 captured -> 714 deduped -> 64 selected, 1,864 candidate
+  continuations in 1,293.63s (1.44/s), 32/32 source split. However `records_by_ante` is
+  `{"2": 64}` despite `--max-capture-ante 3` and `--balance-antes`.
+- **Do not treat this as ante-3 coverage:** the likely cause is the collector filling each
+  seed's `--per-seed 2` quota with the first two ante-2 shops before ante-3 states enter the
+  candidate pool. Keep this artifact as extra ante-2 horizon-2 data, but do not train a
+  "mixed ante" model from it. Next fix: make collection ante-balanced too, increase
+  `--per-seed`, or run an explicit ante-3-only capture before the next sweep.
+
+### 2026-06-05 mixed-ante v2 labels and online gate
+
+- **Fixed mixed-ante collection and label semantics:** `--balance-antes` now applies during
+  collection as a per-ante quota, not just final selection. Same-horizon terminal labels now
+  include a small resource/economy floor bonus (`label_value_version=2`), so a richer/scalier
+  line can beat a slightly higher immediate-clear line when both survive to the same horizon.
+  Focused tests pass (`85 passed` after wrapper fixes).
+- **Made safe-action data generation cheaper and better matched to deployment:**
+  `scripts/phase8_shop_candidate_dataset.py --candidate-action-types buy,open_pack,end_shop`
+  filters candidates before expensive rollouts. The safe-action 64-row mixed ante artifact
+  `.data/phase8_shop_candidates_ante2to3_r4_m2_64_resourcefloor_safeactions.jsonl` finished
+  cleanly: 768 captured -> 737 deduped -> 64 selected, exact 32/32 source split, exact 32/32
+  ante split, all label v2, 1,348 continuations in 1,227.81s. This is substantially cheaper
+  than the all-action corrected artifact (1,976 continuations in 1,744.76s).
+- **Offline ranker signal is real but still small-data:** safe-action mean encoder sweep
+  `.data/phase8_ranker_sweep_ante2to3_r4_m2_64_resourcefloor_safeactions_mean_attention.metrics.json`
+  reports mean regret `0.0599` vs heuristic `0.1168`, regret wins 5/7, near-best@0.05
+  `0.8132` vs heuristic `0.7560`. Attention is worse here (`0.0751` regret). Full-action
+  corrected labels are only mildly ahead offline (attention regret `0.0786` vs heuristic
+  `0.0940`, 4/7 wins), so they are not the next deployment lane.
+- **Online replacement still fails:** trained
+  `.data/phase8_shop_ranker_ante2to3_r4_m2_64_resourcefloor_safeactions_mean.pt`. Deterministic
+  12-seed paired smokes against `solver_shop_basic_play_bot` are negative: no cap was 1/12 wins
+  vs 4/12, mean ante -1.333; cap=1 was 0/12 before fixing a booster-session cap leak and 1/12
+  after; cap=1 plus `BALATRO_SHOP_RANKER_MIN_MARGIN=0.5` improved to 2/12, mean ante -0.417;
+  margin 1.0 nearly neutralized but still lost, 3/12 vs 4/12, mean ante -0.167. Added a
+  baseline-comparison gate (`BALATRO_SHOP_RANKER_COMPARE_BASELINE=1`) that probes the wrapped
+  solver on a deep-copied bot and only allows neural overrides over covered safe candidates;
+  it is mechanically safer but still negative on the same 12-seed lane:
+  `.data/bot_paired_solver_shop_ranker_ante2to3_safeactions_resourcefloor_mean_cap1_margin10_comparebaseline_12.json`
+  has ranker 2/12 wins vs baseline 4/12, mean ante -0.25, better 2 / worse 4 / same 6, and
+  higher mean CPU (47.82s vs 27.52s).
+- **Diagnosis:** the ranker can reduce offline regret, but free-running replacement is the
+  wrong deployment shape. Safe-action training cannot compare against the solver's sell/reroll
+  choices, and one-action labels do not authorize repeated ranker control across a shop. The
+  baseline-comparison wrapper confirms that gating a one-action ranker is not enough. Next
+  neural gate should be an override/advantage model: label the baseline action/continuation
+  alongside alternatives, predict advantage over that baseline, and only override when predicted
+  advantage is large and validated on paired online seeds.
+- **Added baseline-aware advantage training/eval:** shop-ranker examples now carry
+  `baseline_index`, `baseline_value`, and candidate-minus-baseline `advantages`; batches carry
+  advantage tensors; training supports `--loss advantage_mse`; and train/sweep metrics now
+  report thresholded override lift/harm over the current solver action. Focused tests pass
+  (`87 passed`). On the existing 64-row mixed ante safe-action artifact, repeated mean-encoder
+  split sweep with `advantage_mse`
+  (`.data/phase8_ranker_sweep_ante2to3_r4_m2_64_resourcefloor_safeactions_mean_advantage_mse.metrics.json`)
+  is aligned offline: mean lift vs baseline `+0.0906`, regret delta `-0.0906`, positive in
+  6/7 splits, but with high override rate (`0.971`) and nonzero harm (`0.0567`).
+- **Advantage checkpoint still fails online unless made inert:** trained
+  `.data/phase8_shop_ranker_ante2to3_r4_m2_64_resourcefloor_safeactions_mean_advantage_mse.pt`.
+  With baseline comparison, cap=1, safe actions, and baseline margin `0.10`, the 12-seed paired
+  lane is still negative:
+  `.data/bot_paired_solver_shop_ranker_ante2to3_safeactions_resourcefloor_mean_advantage_mse_baseline_margin010_12.json`
+  has ranker 2/12 wins vs baseline 4/12, mean ante -0.417, better 4 / worse 5 / same 3. Raising
+  the baseline margin to `0.30`
+  (`.data/bot_paired_solver_shop_ranker_ante2to3_safeactions_resourcefloor_mean_advantage_mse_baseline_margin030_12.json`)
+  makes the run exactly neutral (4/12 vs 4/12, all 12 same), meaning the threshold only becomes
+  safe when it suppresses essentially all neural overrides.
+- **Trace diagnosis:** on baseline-win regression seed `0300005`, the neural run dies at ante 3
+  while baseline wins. The first damaging divergence is an ante-2 shop where the model opens a
+  Jumbo Celestial pack over the solver's `end_shop` with predicted baseline margin `0.27193`.
+  That detour changes the future shop/economy path and loses the Card Sharp/Half Joker/Ramen/Bull
+  line the solver later finds. This confirms the current horizon-2 labels still over-credit some
+  pack/buy detours; the next dataset should use deeper/full-run baseline-vs-candidate advantage
+  labels, with particular attention to pack openings and money preservation.
+- **Fixed the baseline coverage mismatch for advantage labels:** candidate records can now
+  `--include-heuristic-action`, which appends the solver/heuristic action as a comparison-only
+  candidate even when `--candidate-action-types buy,open_pack,end_shop` filters it out. Ranker
+  loading/training can now use `--keep-heuristic-action` so safe neural candidates are compared
+  against unsafe solver baselines such as reroll/sell without allowing the neural policy to return
+  those unsafe actions. The live wrapper mirrors this: it may score the wrapped solver action as
+  baseline, but chooses overrides only from `BALATRO_SHOP_RANKER_ACTION_TYPES`. Focused tests pass
+  (`90 passed`).
+- **Deep advantage smoke:** generated
+  `.data/phase8_shop_candidates_deep_advantage_includeheuristic_smoke.jsonl` with safe candidates
+  plus retained solver action, `max_antes=8`, 2 CRN rollouts, balanced ante/source selection.
+  It completed 4 rows / 50 candidate continuations in 370.57s (`0.135` continuations/s), with
+  exact 2/2 source and 2/2 ante split, `heuristic_present_rate=1.0`, `heuristic_best_rate=0.25`,
+  mean best margin `1.0851`, and one retained baseline outside the safe action set (`reroll`).
+  The tiny train CLI smoke
+  `.data/phase8_shop_ranker_deep_advantage_includeheuristic_smoke.metrics.json` verifies
+  `--loss advantage_mse --keep-heuristic-action` end-to-end with 100% baseline coverage. This is
+  not a trainable artifact; it proves the next scale lane and exposes the cost.
+- **Added focused candidate budgeting for deep labels:** `candidate_shop_actions(...,
+  priority="deep_advantage")` now orders candidates as `end_shop`, pack opens, buys, rerolls,
+  sells before `max_actions` truncation. The dataset CLI exposes this as
+  `--candidate-priority deep_advantage`. A comparable focused smoke
+  `.data/phase8_shop_candidates_deep_advantage_focused_smoke.jsonl` used `--max-actions 4`
+  and completed the same 4 selected states with 38 candidate continuations in 283.05s, reducing
+  continuation count and wall time by about 24% while preserving exact source/ante balance and
+  `heuristic_present_rate=1.0`. It retained one comparison-only `reroll` baseline outside the
+  safe neural action set. The tiny train smoke
+  `.data/phase8_shop_ranker_deep_advantage_focused_smoke.metrics.json` confirms
+  `--loss advantage_mse --keep-heuristic-action` still runs end-to-end on the focused artifact.
+  Focused tests pass (`91 passed`).
+- **First modest focused deep artifact:** added dataset metrics for `heuristic_action_types` and
+  comparison-only baselines outside the safe candidate action types. Generated
+  `.data/phase8_shop_candidates_deep_advantage_focused_8.jsonl` with 8 rows, `max_antes=8`,
+  2 rollouts, `--candidate-priority deep_advantage --max-actions 4`, 8 workers, and partial
+  checkpoints. It completed 70 candidate continuations in 327.31s (`0.214/s`, 40.9s/record),
+  exact 4/4 source split and 4/4 ante split, `heuristic_present_rate=1.0`, heuristic action
+  types `buy=7, reroll=1`, comparison-only outside-safe rate `0.125`, mean best margin `0.8967`,
+  and split-half agreement `0.5`. The 8-row train artifact
+  `.data/phase8_shop_ranker_deep_advantage_focused_8.metrics.json` is still too small to deploy
+  but verifies the scaled artifact path.
+- **Tiny repeated split check on 12 focused deep rows:** combining the 4-row focused smoke and
+  the 8-row focused artifact in
+  `.data/phase8_ranker_sweep_deep_advantage_focused_12_mean_advantage_mse.metrics.json`
+  gives a noisy but encouraging advantage signal: mean model regret `1.0953` vs heuristic
+  `1.8602`, model regret wins 7/7, mean advantage lift vs baseline `+0.8644`, advantage regret
+  delta `-0.8644`, positive lift 7/7. Harmful override rate remains nonzero (`0.1429`), so this
+  is not deployable; it supports scaling the same deep-focused lane before another online A/B.
+- **Focused deep 16/28 check and economy label correction:** generated
+  `.data/phase8_shop_candidates_deep_advantage_focused_16.jsonl` with 16 rows, `max_antes=8`,
+  2 rollouts, exact 8/8 source and ante splits, 150 candidate continuations in 929.50s, and
+  `heuristic_present_rate=1.0`. It finally includes meaningful comparison-only solver baselines
+  outside the safe neural action set (`sell=5`, `reroll=2`, outside-safe rate `0.4375`). The
+  28-row repeated split sweep
+  `.data/phase8_ranker_sweep_deep_advantage_focused_28_mean_advantage_mse.metrics.json` improves
+  average regret on every split (`0.8469` model vs `1.4799` heuristic; mean advantage lift
+  `+0.4281`), but the override policy is still too eager (`0.3905` harmful override rate), so it
+  is not deployable. Also audited the label semantics against the user's economy concern: v2 made
+  resource/economy mostly a floor. `LABEL_VALUE_VERSION=3` now adds an explicit bounded resource
+  bonus for same-horizon survivors, so a safely clearing line with a healthier bankroll remains
+  distinguishable from a slightly higher immediate/build score. Focused tests pass (`92 passed`).
+  Existing v2 artifacts are diagnostic only; regenerate v3 labels before the next scale or online
+  A/B.
+- **V3 focused deep 32-row gate:** generated two independent v3 focused deep shards:
+  `.data/phase8_shop_candidates_deep_advantage_focused_v3_16.jsonl` and
+  `.data/phase8_shop_candidates_deep_advantage_focused_v3_16b.jsonl`. Both are exact 8/8 source
+  and ante splits with retained solver baselines. Shard A completed 150 continuations in 673.19s,
+  split-half agreement `0.625`, outside-safe baseline rate `0.4375`; shard B completed 146
+  continuations in 794.95s, split-half agreement `0.3125`, outside-safe baseline rate `0.1875`.
+  Combined 32-row quality: mean best margin `0.7035`, split-half agreement `0.46875`.
+  The combined attention ranker is the best v3 signal so far:
+  `.data/phase8_ranker_sweep_deep_advantage_focused_v3_32_attention_advantage_mse.metrics.json`
+  reports model regret `0.7233` vs heuristic `0.9500`, near-best@0.05 `0.4741` vs `0.3367`,
+  and top-1 `0.4095` vs `0.2721`. But override calibration is still unsafe: at threshold
+  `0.1`, mean lift is only `+0.1559`, positive in 2/7 splits, with harmful override rate
+  `0.3476`; threshold `0.3` reduces harm to `0.2143` but is positive in only 1/7 splits;
+  threshold `0.5` still has harm `0.2857`. Training only on split-half-agreeing rows is worse
+  and starves the model. Verdict: do not run online A/B or promote a checkpoint. The ranker is
+  learning useful ordering, but advantage gating needs cleaner/more stable labels.
+- **Rollouts=4 probe and snapshot relabel path:** generated
+  `.data/phase8_shop_candidates_deep_advantage_focused_v3_r4_8.jsonl` as a small v3 focused
+  `rollouts=4` label-quality probe. It was not better: 8 rows took 144 continuations in
+  866.75s, split-half agreement fell to `0.125`, and tiny repeated sweeps lost to the heuristic
+  (attention regret `0.8783` vs heuristic `0.5139`, harmful override rate `0.6429`; mean regret
+  `0.9377` vs heuristic `0.5139`). This argues against blindly scaling fresh `r4` collection.
+  To make future label-quality work cheaper, candidate records now include a reloadable
+  `state_snapshot`, and `scripts/phase8_shop_candidate_dataset.py --input-records` can relabel
+  those exact selected states with new rollout counts/settings without recollecting trajectories.
+  Smoke artifacts `.data/phase8_snapshot_relabel_smoke_source.jsonl` and
+  `.data/phase8_snapshot_relabel_smoke_relabel.jsonl` verify the path end-to-end: the second run
+  consumed input records, doubled continuations from 12 to 24, and avoided a fresh capture pass.
+  Focused tests pass (`39 passed`). Existing older candidate JSONL files do not have snapshots;
+  regenerate once with the current CLI before using `--input-records`.
+- **Same-state r2/r4 relabel comparison:** generated a fresh snapshot-bearing 8-state shard
+  `.data/phase8_same_state_v3_r2_8.jsonl` (`rollouts=2`, 70 continuations in 298.17s,
+  split-half agreement `0.375`) and relabeled the exact same states through `--input-records`
+  as `.data/phase8_same_state_v3_r4_8.jsonl` (`rollouts=4`, 140 continuations in 592.01s,
+  split-half agreement still `0.375`). The r4 attention sweep is better on this tiny state set
+  (regret `0.2772` vs heuristic `0.7518`, harmful override rate `0.0`) while r2 has regret
+  `0.4676` vs heuristic `1.1365`, harmful override `0.1429`. However, the direct label diff is
+  the important signal: the best action changed on 5/8 states (`0.625`), with mean absolute
+  shared-candidate value delta `0.9403` and max delta `2.2970`. More CRN seeds materially change
+  labels but do not solve split-half instability. Treat r2 deep labels as too noisy for
+  deployment calibration; r4 is more plausible but needs a larger same-state/snapshot gate before
+  any online test.
+- **Same-state r4/r8 label-noise gate:** generated a reusable balanced 16-state snapshot pool
+  `.data/phase8_capture_pool_v3_16.jsonl` and relabeled it as
+  `.data/phase8_capture_pool_v3_r4_16.jsonl` (`rollouts=4`, 292 candidate continuations,
+  1383.48s, 8 workers). The r4 pool has exact 8/8 source and ante splits, but split-half
+  agreement is only `0.25`. Repeated split sweeps do not justify deployment: attention is
+  slightly worse than the heuristic on raw regret (`0.6071` vs `0.5876`), while mean is slightly
+  better (`0.5253` vs `0.5876`) but unsafe as an override model. The cleanest-looking attention
+  gate at threshold `0.3` has mean lift `+0.0836` and harmful override rate `0.0714`, but it is
+  positive in only 2/7 splits and overrides only `0.131` of covered examples. This is too small
+  and too fragile for online A/B.
+- **Higher-rollout same-state r8 check:** relabeled the exact same 16-state snapshot pool as
+  `.data/phase8_capture_pool_v3_r8_16.jsonl` (`rollouts=8`, 584 continuations, 2858.25s /
+  47.6 minutes, 8 workers). Doubling rollouts did not improve the core stability metric:
+  split-half agreement stayed `0.25`, mean best margin fell to `0.3118`, and the heuristic was
+  within `0.05` of the labeled best on half the states. Compared with r4, best action changed on
+  3/16 exact states (`0.1875`), but shared-candidate values still moved substantially
+  (mean absolute delta `0.4358`, max `1.4950`). R8 ranker sweeps also do not clear the gate:
+  attention regret `0.5356` vs heuristic `0.4100`, mean regret `0.4123` vs heuristic `0.4100`,
+  and thresholded overrides remain negative or harmful on average. Training only on
+  `best_margin >= 0.25` examples did not fix calibration and starved each split to roughly
+  6-7 training rows. Conclusion: more CRN seeds alone is not enough. Early/deep shop states often
+  have several viable branches, so a single "best action" argmax target creates fake precision.
+- **Cheap breadth lane established:** capture-only state pools are now clearly worthwhile. A
+  larger reusable pool, `.data/phase8_capture_pool_v3_64.jsonl`, captured 64 balanced ante-2/3
+  shop snapshots in 172.06s with exact 32/32 source and ante splits. This decouples cheap state
+  collection from expensive relabeling and should be the basis for the next label-design
+  experiments instead of repeatedly recollecting trajectories.
+- **Confidence-aware label audit added:** added paired-CRN rollout confidence diagnostics in
+  `balatro_ai.ml.shop_candidate_dataset`, a standalone
+  `scripts/phase8_shop_confidence_audit.py`, and ranker example/filter fields for best-vs-runner-up
+  and best-vs-heuristic lower confidence bounds. Focused tests pass (`44 passed`). Auditing the
+  r8 16-state pool shows why one-best labels are failing: only `12.5%` of sampled
+  best-vs-runner-up choices have a positive lower bound, while `87.5%` are ambiguous
+  (`.data/phase8_capture_pool_v3_r8_16.confidence.json`). Best-vs-heuristic has more actionability
+  but is still sparse: only `25%` of states have a practical high-confidence override candidate.
+  R4 is similar (`18.75%` best-vs-runner-up high confidence; `81.25%` ambiguous). A confidence
+  filtered mean/`advantage_tie_mse` sweep that trained only on examples with
+  `best_vs_baseline_lcb >= 0.05` starved to 2-3 fit examples per split and still lost badly:
+  regret `0.6439` vs heuristic `0.4561`, mean lift `-0.1878`, harmful override `0.5833`
+  at threshold `0.0`
+  (`.data/phase8_ranker_sweep_capture_pool_v3_r8_16_mean_advantage_tie_m010_conf_baseline_lcb005.metrics.json`).
+  Conclusion: the right target is confidence-aware, but the current tiny pool does not contain
+  enough high-confidence baseline-vs-candidate examples to train a deployable neural shop model.
+- **Targeted state selection for efficient relabeling:** added
+  `scripts/phase8_select_shop_state_pool.py` to cheaply select snapshot records before expensive
+  rollout labeling. On the 64-state capture pool, the solver heuristic is `sell`/`reroll`/`end_shop`
+  on 27/64 states and outside the focused `buy/open_pack/end_shop` candidate set on 41/64, so
+  targeted selection is more sensible than random relabeling. The first targeted 16-state pool
+  (`.data/phase8_capture_pool_v3_64_targeted_16.jsonl`) is perfectly source/ante balanced and has
+  16/16 solver baselines outside the focused candidates, but it over-focuses on `sell` baselines.
+  A more diverse pool (`.data/phase8_capture_pool_v3_64_targeted_diverse_16.jsonl`) remains
+  source-balanced and spans heuristic actions (`buy=4`, `end_shop=4`, `open_pack=2`, `reroll=3`,
+  `sell=3`). A cheap 4-state r2/short-horizon probe of the sell-heavy pool found no confident
+  override signal. The diverse 4-state r2/short probe is better: best-vs-runner-up is still fully
+  ambiguous, but best-vs-heuristic has a `25%` practical high-confidence rate, driven by an ante-3
+  `end_shop` baseline where a pack-open line has a large positive paired lower bound. This suggests
+  the next labels should balance heuristic action type and then deepen only baseline-vs-candidate
+  promising states.
+- **Adaptive deepening selector and r2 false-positive check:** added
+  `scripts/phase8_select_deepening_states.py`, which reads shallow candidate labels and emits a
+  small state-snapshot pool ranked by paired candidate-minus-heuristic confidence. It records and
+  can require rollout count, so r2 probes can be treated as exploratory instead of accepted as
+  high-confidence data. Applied to the diverse r2/short smoke, it selected the one promising
+  ante-3 `end_shop` vs `open_pack` state
+  (`.data/phase8_targeted_diverse16_deepen_from_r2_smoke.jsonl`, LCB `1.7621`, only 2 rollouts).
+  The same gate with `--min-rollouts 4` correctly rejects the r2-only evidence. Deepening that
+  single state to r4/max_antes=8 took 231.47s for 16 continuations
+  (`.data/phase8_targeted_diverse_deepen1_r4_m8.jsonl`) and disproved the r2 confidence: mean
+  best-vs-heuristic advantage stayed positive (`0.7564`), but SEM was `1.5167` and the lower bound
+  fell to `-0.7602`, so the adaptive selector rejects it at `min_rollouts=4`. Conclusion: r2/short
+  can discover interesting candidates, but the training gate must require same-horizon r4+ paired
+  confidence or use sequential sampling until the lower bound stabilizes.
+- **Sequential baseline-vs-candidate probe:** added
+  `scripts/phase8_sequential_baseline_probe.py`, a multiworker paired baseline probe that samples
+  candidate-minus-heuristic rollouts sequentially and stops candidates once their paired LCB/UCB is
+  clearly positive or negative. It writes compatible candidate JSONL plus `sequential_*` audit
+  fields and has a per-state wall-clock budget to prevent one bad state from consuming the whole
+  run. Focused tests pass (`52 passed`). A first deep smoke
+  (`states=2`, `min_rollouts=4`, `max_rollouts=8`, `max_antes=8`) was stopped after exceeding the
+  15-minute tool timeout, confirming that the current deep continuation cost is still too high for
+  casual scale. A safer shallow smoke
+  `.data/phase8_sequential_baseline_probe_diverse2_r2to4_m4.jsonl` completed 2 states in 130.77s
+  with 2 workers and the 120s per-state budget; it returned partial 2-rollout records with
+  `state_timeout` stop reasons and no high-confidence overrides. Conclusion: sequential probing is
+  the right safety/efficiency wrapper, but the next blocker is rollout continuation speed/cost,
+  not model architecture.
+- **Rollout cost profile and two-stage confirmation lane:** added
+  `scripts/phase8_rollout_cost_profile.py`. On targeted diverse state 0/action 0/seed 1,
+  `solver_shop_basic_play_bot` spent `18.42s` per continuation with `99.1%` of wall time inside
+  `choose_action`; `basic_strategy_bot` spent `1.16s` on the same continuation and reached the same
+  terminal value. This points to a two-stage data lane: fast basic rollouts for exploration, then
+  focused solver confirmation. A 4-state basic-rollout sequential exploration
+  (`.data/phase8_sequential_baseline_probe_diverse4_basic_r4to8_m8.jsonl`) found practical
+  high-confidence best-vs-heuristic candidates on 3/4 states in 192.92s. Filtering with
+  `phase8_select_deepening_states.py --min-rollouts 4` produced one robust exploration candidate:
+  ante-2 `end_shop -> open_pack`, LCB `0.177`
+  (`.data/phase8_basic_explore_diverse4_deepen_candidates_minr4.jsonl`). Added
+  `--focus-deepening-candidate` to the sequential probe so confirmation samples only the chosen
+  candidate plus the heuristic. Focused solver confirmation of that one candidate used 8
+  continuations in 248.02s and kept a positive r4/max_antes=8 paired lower bound (`+0.320`);
+  the unfocused confirmation had used 13 continuations in 353.89s. This is the first clean
+  evidence for the efficient label recipe: cheap teacher explores, adaptive filter selects, strong
+  solver confirms one candidate before anything reaches training.
+- **Diverse-16 two-stage mini-funnel:** scaled the efficient lane from 4 exploratory states to
+  the full diverse 16-state pool. Basic-rollout exploration
+  (`.data/phase8_sequential_baseline_probe_diverse16_basic_r4to8_m8.jsonl`) ran 16 states with
+  8 workers in 391.82s, producing 245 candidate continuations and high-confidence practical
+  best-vs-heuristic signals on 8/16 states. Requiring at least 4 paired samples through
+  `phase8_select_deepening_states.py` narrowed this to two solver-confirmation candidates:
+  ante-2 `buy -> open_pack` and ante-3 `buy -> end_shop`
+  (`.data/phase8_basic_explore_diverse16_deepen_candidates_minr4.jsonl`). Focused solver
+  confirmation of both candidates
+  (`.data/phase8_solver_confirm_basic_explore_diverse16_top2_focused_r4_m8.jsonl`) finished in
+  206.73s with 2 workers and 16 total continuations. One candidate survived as a real
+  solver-confirmed r4/max_antes=8 positive label: ante-2 `buy -> open_pack`, mean advantage
+  `+1.425`, SEM `0.781`, LCB `+0.645`, positive sample rate `0.75`
+  (`.data/phase8_solver_confirmed_positive_labels_diverse16_top2_minr4.jsonl`). The ante-3
+  `buy -> end_shop` candidate stayed mean-positive but ambiguous (LCB `-0.843`). This funnel is
+  sparse but working: fast exploration found candidates cheaply, and focused solver confirmation
+  filtered false positives before training.
+- **Second non-overlapping diverse-16 funnel:** added `--exclude-records` to
+  `scripts/phase8_select_shop_state_pool.py` and selected
+  `.data/phase8_capture_pool_v3_64_targeted_diverse_16b.jsonl`, excluding the first diverse pool.
+  The second pool uses 48 remaining records, selects 16 states, and spans `buy=5`, `end_shop=4`,
+  `reroll=3`, `sell=4` heuristic actions. Basic-rollout exploration
+  (`.data/phase8_sequential_baseline_probe_diverse16b_basic_r4to8_m8.jsonl`) ran in 390.93s with
+  8 workers, producing 246 candidate continuations and practical high-confidence best-vs-heuristic
+  signals on 5/16 states. The r4/min-rollout adaptive filter selected 4 solver-confirmation
+  candidates (`.data/phase8_basic_explore_diverse16b_deepen_candidates_minr4.jsonl`). Focused
+  solver confirmation
+  (`.data/phase8_solver_confirm_basic_explore_diverse16b_top4_focused_r4_m8.jsonl`) completed all
+  4 in 258.77s with 4 workers. One candidate survived: ante-2 `end_shop -> buy`, mean advantage
+  `+2.151`, SEM `1.145`, LCB `+1.006`, positive sample rate `0.75`
+  (`.data/phase8_solver_confirmed_positive_labels_diverse16b_top4_minr4.jsonl`). Two candidates
+  were solver-rejected via negative UCB, and one was mean-positive but ambiguous. Combined
+  two-pool funnel so far: 32 fast-explored states -> 6 solver-confirmed candidates -> 2
+  solver-confirmed positive labels.
+- **Third non-overlapping diverse-16 funnel:** selected
+  `.data/phase8_capture_pool_v3_64_targeted_diverse_16c.jsonl`, excluding both prior diverse
+  pools. The third pool uses the remaining 32 records, selects 16 states, and spans `buy=8`,
+  `end_shop=1`, `reroll=2`, `sell=5` heuristic actions. Basic-rollout exploration
+  (`.data/phase8_sequential_baseline_probe_diverse16c_basic_r4to8_m8.jsonl`) ran in 399.16s with
+  8 workers, producing 230 candidate continuations across 15 labeled records; one selected state
+  (`0410021`, state 38) produced no probe output and should be treated as a data-hygiene miss for
+  future pool selection. Practical high-confidence best-vs-heuristic signals appeared on 6/15
+  labeled states. The r4/min-rollout adaptive filter selected 3 solver-confirmation candidates:
+  ante-3 `buy -> open_pack`, ante-2 `end_shop -> buy`, and ante-3 `sell -> buy`
+  (`.data/phase8_basic_explore_diverse16c_deepen_candidates_minr4.jsonl`). Focused solver
+  confirmation
+  (`.data/phase8_solver_confirm_basic_explore_diverse16c_top3_focused_r4_m8.jsonl`) completed all
+  3 in 262.94s with 3 workers. One candidate survived: ante-2 `end_shop -> buy`, mean advantage
+  `+0.912`, SEM `0.688`, LCB `+0.224`, positive sample rate `0.75`
+  (`.data/phase8_solver_confirmed_positive_labels_diverse16c_top3_minr4.jsonl`). The ante-3
+  `buy -> open_pack` candidate was solver-rejected (mean `-2.478`, LCB `-3.412`), and the ante-3
+  `sell -> buy` candidate stayed mean-positive but ambiguous (mean `+0.308`, LCB `-0.174`).
+  Combined three-pool funnel: 47 fast-explored records -> 9 solver-confirmed candidates -> 3
+  solver-confirmed positive labels.
+- **Confidence-aware ranker target wired:** extended `ShopRankerExample`/batches with
+  candidate-vs-baseline paired confidence fields (`advantage_lcbs`, `advantage_ucbs`,
+  positive rates, rollout counts) and added `confidence_advantage_tie_mse`. This loss keeps
+  confidence-supported positive/negative candidate-minus-baseline advantages but collapses
+  uncertain intervals to a zero/tie target, which matches the "several viable early paths"
+  problem better than mean-only advantage regression. Train and repeated-split scripts now accept
+  the loss and report `confidence_advantage_label_summary` counts. Auditing the 9 solver-confirmed
+  comparison records from the three diverse funnels gives a balanced tiny label set at margin
+  `0.10`: 3 positive, 3 negative, and 3 ambiguous candidate-vs-baseline labels. A tiny repeated
+  split smoke
+  (`.data/phase8_ranker_sweep_solver_confirm_9_confidence_advantage_tie_mse.metrics.json`) runs
+  end-to-end but is not deployable: attention still trails the heuristic on held-out regret
+  (`0.829` vs `0.543`) and has negative mean lift (`-0.286` at threshold `0.0`, `-0.211` at
+  threshold `0.10`). This confirms the target plumbing, not model strength. Focused tests pass
+  (`112 passed`).
+- **Fourth non-overlapping diverse-16 funnel and 15-label sweep:** selected the final non-overlap
+  slice of the 64-state capture pool,
+  `.data/phase8_capture_pool_v3_64_targeted_diverse_16d.jsonl`, excluding the prior three
+  diverse pools. The remaining states are less varied by necessity (`buy=12`, `sell=4` heuristic
+  actions) but remain ante-balanced (`8/8`). Basic exploration
+  (`.data/phase8_sequential_baseline_probe_diverse16d_basic_r4to8_m8.jsonl`) completed 16/16
+  records in 398.06s with 8 workers, produced 268 continuations, and had no skipped records. It
+  selected 6 r4-supported solver-confirmation candidates:
+  `buy -> open_pack` x2, `buy -> end_shop` x2, `sell -> end_shop`, and `sell -> open_pack`.
+  Focused solver confirmation
+  (`.data/phase8_solver_confirm_basic_explore_diverse16d_top6_focused_r4_m8.jsonl`) completed all
+  6 in 291.76s with 6 workers. One candidate survived: ante-2 `buy -> end_shop`, mean advantage
+  `+0.743`, SEM `0.546`, LCB `+0.198`, positive rate `0.75`
+  (`.data/phase8_solver_confirmed_positive_labels_diverse16d_top6_minr4.jsonl`). One candidate was
+  solver-rejected by negative UCB and four remained ambiguous. Combined four-pool funnel: 63
+  fast-explored records -> 15 solver-confirmed candidates -> 4 confirmed positives. The
+  confidence-aware label mix is now 4 positive, 4 negative, and 7 ambiguous candidate-vs-baseline
+  labels at margin `0.10`. A 15-example confidence-aware split sweep
+  (`.data/phase8_ranker_sweep_solver_confirm_15_confidence_advantage_tie_mse.metrics.json`)
+  improves over the 9-example smoke but still does not clear deployment gates: mean encoder regret
+  `0.578` vs heuristic `0.480`, attention regret `0.638` vs heuristic `0.480`; near-best/top-1
+  are higher than the heuristic, but mean lift remains negative (`-0.098` mean, `-0.158`
+  attention at threshold `0.0`) and harmful override rate is still too high (`0.333` mean,
+  `0.262` attention). Verdict: the target is shaped correctly, but the model is still data-starved.
+- **Fresh 128-state capture pool and selector balance fix:** generated
+  `.data/phase8_capture_pool_v3_128_fresh.jsonl` from a new seed range (`seed_offset=420000`,
+  `seed_count=256`) in 187.26s with 8 workers. It selected 128 capture-only shop states with exact
+  64/64 source and ante balance from 1,024 captured / 1,001 deduped states. The heuristic-action
+  distribution is much richer than the exhausted 64-state pool (`buy=52`, `sell=35`,
+  `end_shop=23`, `reroll=7`, `open_pack=6`, `use_consumable=5`) with 70/128 solver heuristic
+  actions outside the focused `buy/open_pack/end_shop` candidate set. While selecting the first
+  fresh subset, found that `phase8_select_shop_state_pool.py` balanced only full tuple groups,
+  which could still skew marginal fields such as ante. Replaced it with a greedy marginal-field
+  balancer and verified the selector test. The first fresh targeted slice
+  (`.data/phase8_capture_pool_v3_128_fresh_targeted_diverse_16a.jsonl`) is now exact 8/8 source,
+  exact 8/8 ante, and spans all six heuristic action types (`buy=2`, `end_shop=2`, `open_pack=3`,
+  `reroll=3`, `sell=3`, `use_consumable=3`). Fast basic exploration
+  (`.data/phase8_sequential_baseline_probe_fresh128_diverse16a_basic_r4to8_m8.jsonl`) completed
+  16/16 records in 393.99s with 8 workers and no skipped records. Only one r4-supported candidate
+  passed the adaptive filter (`use_consumable -> end_shop`), and focused solver confirmation
+  (`.data/phase8_solver_confirm_basic_explore_fresh128_diverse16a_top1_focused_r4_m8.jsonl`)
+  made it ambiguous: mean advantage `+0.025`, SEM `0.847`, LCB `-0.823`. Combined confidence label
+  pool is now 16 solver-confirmed comparisons: 4 positive, 4 negative, 8 ambiguous at margin
+  `0.10`. The 16-example confidence-aware sweep
+  (`.data/phase8_ranker_sweep_solver_confirm_16_confidence_advantage_tie_mse.metrics.json`) is
+  still not deployable, but trends better on the mean encoder: regret `0.486` vs heuristic
+  `0.408`, near-best@0.05 `0.624` vs heuristic `0.510`, top-1 `0.600` vs heuristic `0.371`, and
+  mean lift `-0.079`. Attention is worse on regret/lift. Next scale move: select additional
+  non-overlapping 16-state slices from the fresh 128 pool and keep accumulating solver-confirmed
+  positives/negatives/ambiguities before trusting the neural override.
+- **Fresh 128 slice B adds no-override supervision:** selected
+  `.data/phase8_capture_pool_v3_128_fresh_targeted_diverse_16b.jsonl`, excluding fresh slice A.
+  The improved selector again produced exact 8/8 source and ante balance and covered all six
+  heuristic action types (`buy=3`, `end_shop=3`, `open_pack=2`, `reroll=2`, `sell=4`,
+  `use_consumable=2`). Fast basic exploration
+  (`.data/phase8_sequential_baseline_probe_fresh128_diverse16b_basic_r4to8_m8.jsonl`) completed
+  16/16 records in 382.33s with 8 workers, producing 300 continuations and strong cheap evidence:
+  practical high-confidence best-vs-heuristic on 11/16 states. The adaptive r4 filter selected 8
+  solver-confirmation candidates across six heuristic action types. Focused solver confirmation
+  (`.data/phase8_solver_confirm_basic_explore_fresh128_diverse16b_top8_focused_r4_m8.jsonl`)
+  completed all 8 in 315.86s with 8 workers but produced zero confirmed positives: two candidates
+  were rejected via negative UCB, five were ambiguous/max-rollouts, and one timed out after three
+  paired samples. This is still useful data: combined confirmed comparisons are now 24 total with
+  4 positive, 6 negative, and 14 ambiguous labels at margin `0.10`. The 24-example confidence
+  sweep (`.data/phase8_ranker_sweep_solver_confirm_24_confidence_advantage_tie_mse.metrics.json`)
+  moved further toward safe behavior but still does not promote: mean encoder regret `0.328` vs
+  heuristic `0.286`, near-best@0.05 `0.630` vs `0.589`, top-1 `0.612` vs `0.571`, mean lift
+  `-0.042`, override rate `0.260`, harmful override rate `0.286`. Attention is worse. The key
+  takeaway is that cheap exploration is over-suggesting positives on some fresh states, and solver
+  confirmation is correctly turning those into negative/tie labels for the conservative override
+  model.
+- **Fresh 128 slice C adds one real positive and crosses small validation lift:** selected
+  `.data/phase8_capture_pool_v3_128_fresh_targeted_diverse_16c.jsonl`, excluding fresh slices A
+  and B. The improved selector again held exact 8/8 source and ante balance, with heuristic-action
+  coverage of `buy=4`, `end_shop=5`, `open_pack=1`, `reroll=2`, and `sell=4`; the remaining pool
+  has no `use_consumable` baseline states and only one `open_pack` baseline state left. Fast basic
+  exploration (`.data/phase8_sequential_baseline_probe_fresh128_diverse16c_basic_r4to8_m8.jsonl`)
+  completed 16/16 records in 463.52s with 8 workers but was slower/noisier than slice B, with 45
+  state timeouts and practical high-confidence best-vs-heuristic signals on 6/16 states. The
+  adaptive r4 filter selected 3 solver-confirmation candidates. Focused solver confirmation
+  (`.data/phase8_solver_confirm_basic_explore_fresh128_diverse16c_top3_focused_r4_m8.jsonl`)
+  completed all 3 in 212.54s with 3 workers and produced one confirmed positive: ante-3
+  `end_shop -> open_pack`, mean advantage `+1.493`, LCB `+1.124`, positive rate `1.0`
+  (`.data/phase8_solver_confirmed_positive_labels_fresh128_diverse16c_top3_minr4.jsonl`). The
+  combined solver-confirmed pool is now 27 candidate-vs-baseline records with 5 positive, 6
+  negative, and 16 ambiguous confidence labels at margin `0.10`. The 27-example sweep
+  (`.data/phase8_ranker_sweep_solver_confirm_27_confidence_advantage_tie_mse.metrics.json`) is the
+  first aggregate positive-lift result: mean encoder regret `0.302` vs heuristic `0.343`, mean
+  lift `+0.041`, near-best@0.05 `0.661` vs `0.556`, and top-1 `0.627` vs `0.474`. Attention is
+  barely positive on lift (`+0.004`). This is progress but not promotion-ready: mean encoder
+  harmful override rate is still `0.298` and attention harmful override rate is `0.255`.
+- **Fresh 128 slice D adds ambiguity/no-override calibration:** selected
+  `.data/phase8_capture_pool_v3_128_fresh_targeted_diverse_16d.jsonl`, excluding fresh slices A/B/C.
+  Source and ante stayed exact 8/8, but the remaining heuristic-action mix narrowed to `buy=5`,
+  `end_shop=5`, and `sell=6`. Fast basic exploration
+  (`.data/phase8_sequential_baseline_probe_fresh128_diverse16d_basic_r4to8_m8.jsonl`) completed
+  16/16 records in 394.31s with 8 workers and only 3/16 practical high-confidence
+  best-vs-heuristic states. The adaptive filter selected 2 candidates with strong cheap LCBs, but
+  focused solver confirmation
+  (`.data/phase8_solver_confirm_basic_explore_fresh128_diverse16d_top2_focused_r4_m8.jsonl`) made
+  both ambiguous/max-rollouts, producing zero confirmed positives
+  (`.data/phase8_solver_confirmed_positive_labels_fresh128_diverse16d_top2_minr4.jsonl`, empty by
+  design). The combined pool is now 29 records with 5 positive, 6 negative, and 18 ambiguous
+  labels at margin `0.10`. The 29-example sweep
+  (`.data/phase8_ranker_sweep_solver_confirm_29_confidence_advantage_tie_mse.metrics.json`) keeps
+  mean encoder aggregate lift barely positive (`+0.018` at threshold `0.0`, `+0.027` at threshold
+  `0.10`) but raises raw harmful override rate to `0.335`; the `0.10` threshold reduces harmful
+  override rate to `0.271`. Verdict: slice D improves no-override calibration evidence, but the
+  ranker is still not safe enough to deploy.
+- **Fresh 128 slice E adds another strong pack positive and better safety metrics:** selected
+  `.data/phase8_capture_pool_v3_128_fresh_targeted_diverse_16e.jsonl`, excluding fresh slices A-D.
+  Source and ante stayed exact 8/8; the selector saw only `buy=38`, `end_shop=8`, and `sell=18`
+  baselines remaining, and chose `buy=6`, `end_shop=5`, `sell=5`. Fast basic exploration
+  (`.data/phase8_sequential_baseline_probe_fresh128_diverse16e_basic_r4to8_m8.jsonl`) completed
+  16/16 records in 490.21s with 8 workers and found practical high-confidence best-vs-heuristic
+  signals on 6/16 states, but only one candidate survived the stricter r4 filter. Focused solver
+  confirmation (`.data/phase8_solver_confirm_basic_explore_fresh128_diverse16e_top1_focused_r4_m8.jsonl`)
+  completed in 147.10s and confirmed a strong positive: ante-3 `buy -> open_pack`, mean advantage
+  `+1.842`, LCB `+1.470`, positive rate `1.0`
+  (`.data/phase8_solver_confirmed_positive_labels_fresh128_diverse16e_top1_minr4.jsonl`). The
+  combined pool is now 30 records with 6 positive, 6 negative, and 18 ambiguous labels at margin
+  `0.10`. The 30-example sweep
+  (`.data/phase8_ranker_sweep_solver_confirm_30_confidence_advantage_tie_mse.metrics.json`) has
+  positive aggregate lift for both encoders (`+0.042` mean, `+0.048` attention), but raw override
+  behavior remains unsafe. Added absolute covered-state rates to the override metrics so we can
+  distinguish conditional harm among overrides from harm per shop state. The mean-only threshold
+  sweep (`.data/phase8_ranker_sweep_solver_confirm_30_mean_thresholds.metrics.json`) shows the
+  tradeoff clearly: threshold `0.0` gives lift `+0.042` but harmful covered rate `0.179`;
+  threshold `0.5` cuts harmful covered rate to `0.029` but turns lift negative (`-0.013`). Verdict:
+  the model is learning real signal, but calibration is not deployment-safe yet.
+- **Train-calibrated gate check:** added train-side threshold selection to
+  `scripts/phase8_ranker_split_sweep.py`, with a configurable harmful-covered-rate cap
+  (`--calibration-max-harmful-covered-rate`). This avoids picking an override threshold by peeking
+  at validation. On the 30-record mean-encoder sweep with cap `0.05`
+  (`.data/phase8_ranker_sweep_solver_confirm_30_mean_thresholds_calibrated.metrics.json`), the
+  train-selected thresholds averaged `0.093` and did not transfer safely: validation lift was only
+  `+0.007`, positive in 2/7 splits, and harmful covered rate stayed `0.163`. This is a useful
+  negative result: the ranker has signal, but its confidence scores are not calibrated enough for
+  a deployment gate chosen from current training labels.
+- **Fresh2 128-state pool and first slice:** generated
+  `.data/phase8_capture_pool_v3_128_fresh2.jsonl` from seed offset `430000` with 8 capture workers
+  and 8 collect workers. It selected 128 exact-balanced source/ante states from 1,024 captured /
+  986 deduped states in 270.25s. The first targeted slice
+  (`.data/phase8_capture_pool_v3_128_fresh2_targeted_diverse_16a.jsonl`) restored broad heuristic
+  action coverage: `buy=3`, `end_shop=3`, `open_pack=3`, `reroll=3`, `sell=3`, `use_consumable=1`,
+  with exact 8/8 source and ante balance. Fast basic exploration
+  (`.data/phase8_sequential_baseline_probe_fresh2_diverse16a_basic_r4to8_m8.jsonl`) completed
+  16/16 records in 385.00s with 8 workers and found practical high-confidence best-vs-heuristic
+  signals on 8/16 states. The r4 filter selected 4 solver-confirmation candidates. Focused solver
+  confirmation (`.data/phase8_solver_confirm_basic_explore_fresh2_diverse16a_top4_focused_r4_m8.jsonl`)
+  completed in 334.01s with 4 workers and produced one positive, one negative, one ambiguous, and
+  one partial/timed-out candidate. The confirmed positive was an ante-3 pack-target choice
+  (`open_pack -> open_pack`, likely a different pack index), mean advantage `+2.223`, LCB
+  `+0.831`, positive rate `0.75`
+  (`.data/phase8_solver_confirmed_positive_labels_fresh2_diverse16a_top4_minr4.jsonl`). The
+  combined pool is now 34 records with 7 positive, 7 negative, and 20 ambiguous labels. The
+  34-record sweep (`.data/phase8_ranker_sweep_solver_confirm_34_confidence_advantage_tie_mse.metrics.json`)
+  is the strongest yet: mean encoder raw lift `+0.143` with harmful covered rate `0.109`; attention
+  raw lift `+0.132` with harmful covered rate `0.071`. The train-calibrated mean gate under a
+  `0.05` train harmful-covered cap now transfers much better than the 30-record run: validation
+  lift `+0.126` and harmful covered rate `0.048`. Still do not deploy: calibrated mean is positive
+  in only 3/7 splits, attention calibrated lift is only `+0.055`, and the label count remains tiny.
+- **Fresh2 slice B adds no-override calibration and keeps neural lift positive:** selected a
+  second non-overlapping fresh2 targeted slice
+  (`.data/phase8_capture_pool_v3_128_fresh2_targeted_diverse_16b.jsonl`) with exact 8/8
+  source/ante balance and 10/16 heuristic actions outside the focused candidate family. Fast basic
+  exploration (`.data/phase8_sequential_baseline_probe_fresh2_diverse16b_basic_r4to8_m8.jsonl`)
+  completed 16/16 records in 402.21s with 8 workers and found practical high-confidence
+  best-vs-heuristic signals on 8/16 states. The r4 filter selected three ante-2 `end_shop`
+  candidates against buy/open-pack baselines, but focused solver confirmation
+  (`.data/phase8_solver_confirm_basic_explore_fresh2_diverse16b_top3_focused_r4_m8.jsonl`) made
+  all three ambiguous: zero high-confidence positives, zero high-confidence negatives, and all
+  stopped at max rollouts. Treat this as useful caution data: the cheap explorer still overvalues
+  early shop-skipping proposals. The combined pool is now 37 records with 7 positive, 7 negative,
+  and 23 ambiguous confidence labels at margin `0.10`. The 37-record sweep
+  (`.data/phase8_ranker_sweep_solver_confirm_37_confidence_advantage_tie_mse.metrics.json`) keeps
+  aggregate neural lift positive. Attention is strongest: regret `0.376` vs heuristic `0.523`,
+  raw lift `+0.146` positive in 6/7 splits, and threshold `0.25` gives lift `+0.114` with harmful
+  covered rate `0.079`. The train-calibrated attention gate is positive in 5/7 splits with lift
+  `+0.118`, but held-out harmful covered rate is still `0.102`; calibration is improving, not
+  deployment-safe.
+- **Fresh2 slice C plus build-forward filtering:** added `--candidate-action-types` and
+  `--exclude-candidate-action-types` to `scripts/phase8_select_deepening_states.py` so expensive
+  solver confirmation can avoid known-noisy cheap proposal families when desired. The selector
+  test now covers excluding an `end_shop` opportunity while retaining a build-forward candidate.
+  Slice C (`.data/phase8_capture_pool_v3_128_fresh2_targeted_diverse_16c.jsonl`) stayed exact 8/8
+  source/ante balanced, but the remaining fresh2 pool has narrowed to `buy/end_shop/open_pack/sell`
+  baselines. Fast exploration
+  (`.data/phase8_sequential_baseline_probe_fresh2_diverse16c_basic_r4to8_m8.jsonl`) labeled 15/16
+  records in 414.65s with 8 workers and had only 2/15 practical high-confidence override states.
+  The new build-only filter selected one ante-3 `end_shop -> buy` candidate. Solver confirmation
+  (`.data/phase8_solver_confirm_basic_explore_fresh2_diverse16c_top1_buildonly_focused_r4_m8.jsonl`)
+  made it mean-positive but ambiguous: mean advantage `+1.092`, SEM `1.295`, LCB `-0.204`. The
+  combined pool is now 38 records with 7 positive, 7 negative, and 24 ambiguous labels. The
+  38-record sweep (`.data/phase8_ranker_sweep_solver_confirm_38_confidence_advantage_tie_mse.metrics.json`)
+  keeps positive neural lift. Attention has regret `0.310` vs heuristic `0.465`, raw lift `+0.156`
+  positive in 5/7 splits, and train-calibrated lift `+0.124` positive in 5/7 splits with harmful
+  covered rate `0.081`. This is an improvement over the 37-record calibrated harm, but still not
+  below the desired `0.05` deployment cap.
+- **Fresh2 slice D shows cheap pack-open overconfidence:** selected
+  `.data/phase8_capture_pool_v3_128_fresh2_targeted_diverse_16d.jsonl`, excluding fresh2 slices
+  A-C. Source/ante balance stayed exact 8/8, but the remaining pool narrowed further to
+  `buy=45`, `end_shop=21`, and `sell=14` seen baselines. Fast basic exploration
+  (`.data/phase8_sequential_baseline_probe_fresh2_diverse16d_basic_r4to8_m8.jsonl`) completed
+  16/16 records in 385.55s with 8 workers and looked rich under the cheap proposer: practical
+  high-confidence best-vs-heuristic on 7/16 states. The build-only filter selected three
+  `open_pack` candidates against `end_shop`/`sell` baselines, with mean cheap LCB `+0.436`.
+  Focused solver confirmation
+  (`.data/phase8_solver_confirm_basic_explore_fresh2_diverse16d_top3_buildonly_focused_r4_m8.jsonl`)
+  made all three ambiguous: mean advantage `+0.435`, SEM `1.374`, LCB `-0.939`, zero
+  high-confidence positives. The combined pool is now 41 records with 7 positive, 7 negative, and
+  27 ambiguous labels. The 41-record sweep
+  (`.data/phase8_ranker_sweep_solver_confirm_41_confidence_advantage_tie_mse.metrics.json`) stayed
+  positive but weakened: mean encoder regret `0.322` vs heuristic `0.385`, raw lift `+0.062`, and
+  calibrated lift `+0.033`; attention regret `0.334` vs heuristic `0.385`, raw lift `+0.051`, and
+  calibrated lift `+0.008`. Harmful covered rates remain above cap. Conclusion: the cheap proposer
+  is overconfident on pack-open tempo too; these ambiguity labels improve caution but do not move
+  the deployment gate forward.
+- **Cheap-vs-solver proposal audit and SEM gate:** added
+  `scripts/phase8_deepening_confirmation_audit.py` to join cheap deepening proposals against
+  focused solver confirmations and report filter precision. Added optional `--max-sem` and
+  `--min-lcb-sem-ratio` filters to `phase8_select_deepening_states.py`; focused tests pass
+  (`7 passed`). The 41-record audit
+  (`.data/phase8_deepening_confirmation_audit_41.metrics.json`) shows why LCB alone wasted solver
+  time: solver-positive, solver-negative, and ambiguous proposals have overlapping cheap LCBs
+  (`0.749`, `0.656`, `0.610` means), while cheap SEM separates them better (`0.487`, `0.748`,
+  `0.842`). Retrospective filter precision: `max_sem=0.45` keeps 5 proposals with 4 positives,
+  0 negatives, and 1 ambiguous (`0.80` positive precision); `max_sem=0.55` drops to 4/8 positives,
+  and `max_sem=0.80` admits 5 negatives. Applying `max_sem=0.45` to fresh2 A-D build-forward
+  cheap slices selects zero candidates, which would have saved the recent wasted solver
+  confirmations. Use strict SEM gating for positive-label acquisition; relax it only when
+  deliberately collecting no-override/ambiguous calibration data.
+- **Retrospective SEM-gated confirmation and loader merge fix:** added `--exclude-records` to
+  `phase8_select_deepening_states.py` so already-confirmed focused candidates are not selected
+  again. Applying the strict `max_sem=0.45` build-forward filter across all paid cheap probes
+  found only 3 still-unconfirmed candidates
+  (`.data/phase8_allcheap_unconfirmed_buildonly_sem045_minr4.jsonl`): one `buy`, two
+  `open_pack`, all ante 3, with mean cheap LCB `+0.434`. Focused solver confirmation
+  (`.data/phase8_solver_confirm_allcheap_unconfirmed_buildonly_sem045_top3_focused_r4_m8.jsonl`)
+  finished in 149.13s with 3 workers and produced 1 confirmed positive, 2 ambiguous, and 0
+  negatives. The positive was seed `0420075`, state `39`, `sell -> open_pack`, mean advantage
+  `+1.145`, LCB `+0.603`, positive rate `0.75`. Fixed the ranker JSONL loader so multiple
+  focused confirmations for the same `(source_bot, seed, state_index)` merge new candidate
+  actions instead of silently dropping later rows; focused tests pass (`30 passed`). The merged
+  44-candidate-label sweep
+  (`.data/phase8_ranker_sweep_solver_confirm_44_merged_confidence_advantage_tie_mse.metrics.json`)
+  now has 8 positive, 7 negative, and 29 ambiguous candidate labels across 42 unique state
+  examples. Attention is best on raw validation lift (`+0.226`, 6/7 positive runs) and calibrated
+  lift (`+0.151`, 6/7), but calibrated harmful covered rate is still `0.149`, so the ranker remains
+  a data/search prior rather than a deployable shop override.
+- **Two more strict-SEM positives and the 46-label sweep:** re-ran the all-cheap strict-SEM
+  selector after excluding the 44-label confirmations. It found two additional alternate pack
+  choices on already-touched ante-3 states
+  (`.data/phase8_allcheap_unconfirmed_buildonly_sem045_after44.jsonl`), both weaker by cheap LCB
+  but still low-SEM. Focused solver confirmation
+  (`.data/phase8_solver_confirm_allcheap_unconfirmed_buildonly_sem045_after44_focused_r4_m8.jsonl`)
+  finished in 113.44s with 2 workers and confirmed both as positives: seed `0410006`, state `48`,
+  `end_shop -> open_pack` at mean advantage `+0.871`; and seed `0420020`, state `50`,
+  `sell -> open_pack` at mean advantage `+1.792`. Both stopped by `positive_lcb` at 4 paired
+  rollouts. The merged 46-candidate-label sweep
+  (`.data/phase8_ranker_sweep_solver_confirm_46_merged_confidence_advantage_tie_mse.metrics.json`)
+  now has 10 positive, 7 negative, and 29 ambiguous candidate labels across the same 42 unique
+  state examples. Mean encoder calibrated lift improved to `+0.199` and is positive in 7/7 split
+  runs, with calibrated harmful covered rate down to `0.115`. Attention raw lift is highest
+  (`+0.258`), but attention calibrated harm is worse (`0.170`). This is the strongest neural
+  ranker evidence so far, but still not a deployable override because the covered harm is more
+  than 2x the intended `0.05` cap.
+- **Fresh2 slice E and action-family split lesson:** after the 46-label confirmations, the old
+  paid cheap pool was exhausted under strict build-forward `max_sem=0.45` selection
+  (`.data/phase8_allcheap_unconfirmed_buildonly_sem045_after46.metrics.json` selected zero).
+  Selected a new balanced fresh2 slice E
+  (`.data/phase8_capture_pool_v3_128_fresh2_targeted_diverse_16e.jsonl`): exact 8/8 source,
+  exact 8/8 ante, heuristic mix `buy=5`, `end_shop=6`, `sell=5`. Fast basic exploration completed
+  16 records in 385.59s with 8 workers and found 5/16 practical high-confidence states
+  (`.data/phase8_sequential_baseline_probe_fresh2_diverse16e_basic_r4to8_m8.jsonl`), but strict
+  build-forward SEM selection found zero candidates. Allowing `end_shop` found one strong-looking
+  cheap candidate, seed `0430154` state `50`, `buy -> end_shop`, cheap mean `+1.550`, LCB `+1.154`;
+  focused solver confirmation rejected it cleanly: buy mean `7.518`, end_shop mean `5.414`,
+  candidate stopped by `negative_ucb`
+  (`.data/phase8_solver_confirm_fresh2_diverse16e_safe_sem045_top1_focused_r4_m8.jsonl`). The
+  resulting 47-label all-action sweep adds that as a negative label (10 positive, 8 negative,
+  29 ambiguous across 43 states) but weakens calibrated lift; the build-forward-filtered sweep
+  has 33 labels across 29 states and still leaves harmful covered rates around `0.106-0.149`.
+  Conclusion: strict SEM is useful for buy/open-pack positive acquisition, but `end_shop`/skip
+  economy proposals need a separate model/gate or a stronger confirmation filter.
+- **Fresh2 slice F adds one more build-forward positive:** selected another non-overlapping
+  fresh2 slice
+  (`.data/phase8_capture_pool_v3_128_fresh2_targeted_diverse_16f.jsonl`) from the remaining 48
+  states. Source and ante stayed exact 8/8; heuristic mix narrowed to `buy=6`, `end_shop=7`,
+  `sell=3`. Fast cheap exploration
+  (`.data/phase8_sequential_baseline_probe_fresh2_diverse16f_basic_r4to8_m8.jsonl`) completed 16
+  records in 385.71s with 8 workers and 269 estimated candidate continuations. The strict
+  build-forward SEM gate selected one ante-3 candidate, seed `0430019` state `38`,
+  `end_shop -> open_pack`, cheap mean `+0.475`, SEM `0.271`, LCB `+0.203`, 6 cheap paired
+  rollouts. Focused solver confirmation
+  (`.data/phase8_solver_confirm_fresh2_diverse16f_buildonly_sem045_top1_focused_r4_m8.jsonl`)
+  confirmed it as positive in 72.29s: mean advantage `+0.860`, SEM `0.402`, LCB `+0.458`,
+  positive rate `1.0`. The merged all-action sweep is now 48 candidate labels across 44 state
+  examples: 11 positive, 8 negative, 29 ambiguous
+  (`.data/phase8_ranker_sweep_solver_confirm_48_merged_confidence_advantage_tie_mse.metrics.json`).
+  It remains positive but unsafe: attention calibrated lift `+0.086` with harmful covered rate
+  `0.127`. The build-forward-filtered sweep has 34 labels across 30 states, 10 positive / 5
+  negative / 19 ambiguous
+  (`.data/phase8_ranker_sweep_solver_confirm_48_merged_buildforward_confidence_advantage_tie_mse.metrics.json`);
+  attention raw lift is `+0.249`, but calibrated lift is only `+0.064` with harmful covered rate
+  `0.121`. Verdict unchanged: strict SEM acquisition is working, but deployment still needs more
+  labels and better confidence calibration.
+- **Fresh2 slice G adds caution labels and improves all-action calibration:** selected slice G
+  from the final 32 fresh2 states
+  (`.data/phase8_capture_pool_v3_128_fresh2_targeted_diverse_16g.jsonl`). Balance stayed exact
+  8/8 source and ante, but the remaining pool was narrow (`buy=13`, `end_shop=3`). The 8-worker
+  cheap pass (`.data/phase8_sequential_baseline_probe_fresh2_diverse16g_basic_r4to8_m8.jsonl`)
+  completed 16 records in 428.08s with 225 estimated candidate continuations. The strict
+  build-forward SEM gate selected two ante-3 `buy` candidates
+  (`.data/phase8_basic_explore_fresh2_diverse16g_deepen_candidates_buildonly_sem045_minr4.jsonl`):
+  seed `0430217`, state `38`, alternate `buy -> buy`, cheap mean `+0.562`, LCB `+0.253`; and seed
+  `0430201`, state `41`, `end_shop -> buy`, cheap mean `+0.424`, LCB `+0.033`. Focused solver
+  confirmation (`.data/phase8_solver_confirm_fresh2_diverse16g_buildonly_sem045_top2_focused_r4_m8.jsonl`)
+  rejected the alternate buy as a negative label (candidate mean `7.386` vs heuristic mean
+  `8.457`, advantage `-1.071`, `negative_ucb`) and left the `end_shop -> buy` candidate
+  mean-positive but ambiguous (candidate mean `8.369` vs baseline `7.450`, advantage `+0.918`,
+  max-rollouts). The merged all-action sweep now has 50 candidate labels across 46 state examples:
+  11 positive, 9 negative, 30 ambiguous
+  (`.data/phase8_ranker_sweep_solver_confirm_50_merged_confidence_advantage_tie_mse.metrics.json`).
+  Despite no new confirmed positive, calibration improved: mean encoder calibrated lift `+0.150`
+  with harmful covered `0.092`; attention calibrated lift `+0.158` with harmful covered `0.102`.
+  The build-forward-filtered 50-label sweep is less stable
+  (`.data/phase8_ranker_sweep_solver_confirm_50_merged_buildforward_confidence_advantage_tie_mse.metrics.json`),
+  so the current best read is that caution labels help, but the dataset is still too small to hit
+  the `0.05` harmful-covered safety cap.
+- **Fresh2 slice H exhausted the pool; fresh3 pool started:** selected the final non-overlapping
+  fresh2 slice
+  (`.data/phase8_capture_pool_v3_128_fresh2_targeted_diverse_16h.jsonl`). Source and ante balance
+  stayed exact 8/8, but all 16 baselines were `buy`, confirming the tail of fresh2 had lost action
+  diversity. Cheap exploration
+  (`.data/phase8_sequential_baseline_probe_fresh2_diverse16h_basic_r4to8_m8.jsonl`) completed 16
+  records in 416.48s with 8 workers and looked tempting in aggregate, but strict build-forward
+  `max_sem=0.45` selection found zero candidates
+  (`.data/phase8_basic_explore_fresh2_diverse16h_deepen_candidates_buildonly_sem045_minr4.metrics.json`).
+  No solver confirmation was run. Generated the next capture-only pool,
+  `.data/phase8_capture_pool_v3_128_fresh3.jsonl`, from seed offset `440000`: 128 exact-balanced
+  source/ante states, 1,024 captured / 994 deduped, 219.12s with 8 collect workers. The first
+  targeted fresh3 slice
+  (`.data/phase8_capture_pool_v3_128_fresh3_targeted_diverse_16a.jsonl`) restores action-family
+  diversity: selected heuristic mix `buy=3`, `end_shop=3`, `open_pack=2`, `reroll=3`, `sell=3`,
+  `use_consumable=2`, with exact 8/8 source and ante balance. Next: run the standard 8-worker
+  cheap exploration on fresh3 slice A.
+- **Fresh3 slice A adds ambiguity and improves attention safety:** the 8-worker cheap pass on
+  fresh3 slice A (`.data/phase8_sequential_baseline_probe_fresh3_diverse16a_basic_r4to8_m8.jsonl`)
+  completed 14 usable records in 435.50s and produced a stronger aggregate cheap signal than the
+  exhausted fresh2 tail: mean best-vs-heuristic advantage `+1.367`, mean LCB `+0.671`, and
+  practical high-confidence rate `0.571`. The strict build-forward `max_sem=0.45` gate selected
+  two candidates
+  (`.data/phase8_basic_explore_fresh3_diverse16a_deepen_candidates_buildonly_sem045_minr4.jsonl`):
+  seed `0440085` state `22`, `open_pack -> buy`, cheap mean `+0.296`; and seed `0440204` state
+  `38`, `reroll -> open_pack`, cheap mean `+0.726`. Solver confirmation
+  (`.data/phase8_solver_confirm_fresh3_diverse16a_buildonly_sem045_top2_focused_r4_m8.jsonl`)
+  made both confidence-ambiguous under the current label rule: `0440085` was mean-negative
+  (`-0.569`) and `0440204` was mean-positive (`+0.840`), but neither cleared the interval gate.
+  Adding them to the all-action sweep yields 52 candidate labels across 48 state examples: 11
+  positive, 9 negative, 32 ambiguous
+  (`.data/phase8_ranker_sweep_solver_confirm_52_merged_confidence_advantage_tie_mse.metrics.json`).
+  Attention is now the safer deployment-style read: calibrated lift `+0.146`, positive in 6/7
+  splits, calibrated harmful-covered `0.065`, and override rate `0.263`. That is closer to the
+  `0.05` safety cap but still not below it. The build-forward-filtered sweep improved but remains
+  less safe (`.data/phase8_ranker_sweep_solver_confirm_52_merged_buildforward_confidence_advantage_tie_mse.metrics.json`):
+  attention calibrated lift `+0.177`, harmful-covered `0.119`. Net: fresh3 is producing useful
+  caution labels, but the next acquisition pass still needs more clean positives or a stricter
+  calibration rule before live shop overrides.
+- **Fresh3 slice B shows why the strict gate matters:** selected slice B from the same fresh3
+  pool while excluding slice A
+  (`.data/phase8_capture_pool_v3_128_fresh3_targeted_diverse_16b.jsonl`): 16 states, exact 8/8
+  source and ante balance, with heuristic mix `buy=3`, `end_shop=4`, `reroll=4`, `sell=4`,
+  `use_consumable=1`. The 8-worker cheap pass
+  (`.data/phase8_sequential_baseline_probe_fresh3_diverse16b_basic_r4to8_m8.jsonl`) completed
+  all 16 records in 417.37s, with mean best-vs-heuristic advantage `+1.241`, LCB `+0.620`, and
+  practical high-confidence rate `0.563`. But the strict build-forward `min_rollouts=4`,
+  `max_sem=0.45` selector found zero candidates
+  (`.data/phase8_basic_explore_fresh3_diverse16b_deepen_candidates_buildonly_sem045_minr4.metrics.json`):
+  the strong-looking candidates were mostly timed out at 2-3 cheap paired rollouts. A separate
+  min-3 near-miss pass found three open-pack candidates, then focused cheap deepening lifted all
+  three to at least 4 rollouts
+  (`.data/phase8_sequential_baseline_probe_fresh3_diverse16b_buildonly_sem045_minr3_focused_basic_r4to8_m8.jsonl`).
+  Only one relaxed-after-focused candidate was worth solver confirmation, seed `0440079` state
+  `43`, `end_shop -> open_pack`, cheap mean `+1.252`, LCB `+0.634`, SEM `0.618`
+  (`.data/phase8_basic_explore_fresh3_diverse16b_deepen_candidates_buildonly_after_focused_lcb050_sem065_top1.jsonl`).
+  Solver confirmation made it ambiguous rather than positive: mean advantage `+0.061`, SEM
+  `0.790`, LCB `-0.729`
+  (`.data/phase8_solver_confirm_fresh3_diverse16b_after_focused_lcb050_sem065_top1_focused_r4_m8.jsonl`).
+  Adding this caution label gives the 53-label all-action sweep: 49 examples, 11 positive, 9
+  negative, 33 ambiguous
+  (`.data/phase8_ranker_sweep_solver_confirm_53_merged_confidence_advantage_tie_mse.metrics.json`).
+  Mean encoder is now the closest deployment-style result so far: calibrated lift `+0.170`,
+  positive in 6/7 splits, calibrated harmful-covered `0.062`, and override rate `0.282`. This is
+  still above the `0.05` cap, but it is the best harm/lift tradeoff we have measured. The
+  53-label build-forward-filtered sweep remains worse
+  (`.data/phase8_ranker_sweep_solver_confirm_53_merged_buildforward_confidence_advantage_tie_mse.metrics.json`):
+  calibrated harmful-covered is about `0.121-0.122`. Keep the strict min-4/SEM gate as the primary
+  positive-acquisition rule; use relaxed-after-focused candidates only deliberately as caution data.
+- **Fresh3 slice C adds a solver-confirmed build-forward positive:** selected slice C while
+  excluding A/B (`.data/phase8_capture_pool_v3_128_fresh3_targeted_diverse_16c.jsonl`): 16
+  states, exact 8/8 source and ante balance, with heuristic mix `buy=4`, `end_shop=4`,
+  `reroll=4`, `sell=4`. The 8-worker cheap pass
+  (`.data/phase8_sequential_baseline_probe_fresh3_diverse16c_basic_r4to8_m8.jsonl`) completed
+  all 16 records in 404.98s. Aggregate cheap signal was weaker than B (mean best-vs-heuristic
+  advantage `+0.884`, LCB `+0.051`, practical high-confidence rate `0.313`), and the strict
+  `min_rollouts=4`, `max_sem=0.45` gate initially selected zero candidates. A single min-3
+  near-miss (`sell -> open_pack`) strengthened after focused cheap deepening
+  (`.data/phase8_sequential_baseline_probe_fresh3_diverse16c_buildonly_sem045_minr3_focused_basic_r4to8_m8.jsonl`):
+  mean `+0.852`, SEM `0.280`, LCB `+0.572`, positive rate `1.0`. Solver confirmation
+  (`.data/phase8_solver_confirm_fresh3_diverse16c_buildonly_after_focused_top1_focused_r4_m8.jsonl`)
+  kept it positive: mean advantage `+0.564`, SEM `0.493`, LCB `+0.071`, positive rate `0.5`.
+  Adding it gives the 54-label all-action sweep: 50 examples, 12 positive, 9 negative, 33
+  ambiguous
+  (`.data/phase8_ranker_sweep_solver_confirm_54_merged_confidence_advantage_tie_mse.metrics.json`).
+  Utility improved: attention calibrated lift `+0.231`, mean calibrated lift `+0.197`, both
+  positive in 7/7 splits. Harm is still above the cap: both encoders sit at calibrated
+  harmful-covered `0.070`, so this is stronger but not safer than the 53-label mean gate (`0.062`).
+  The 54-label build-forward-filtered sweep has high lift but high harm
+  (`.data/phase8_ranker_sweep_solver_confirm_54_merged_buildforward_confidence_advantage_tie_mse.metrics.json`):
+  calibrated harmful-covered `0.139-0.177`. Current read: more positives raise utility, while
+  caution labels help safety; we need both, plus a better calibration rule, before deployment.
+- **54-label calibration and conservative live A/B:** fixed threshold analysis on the 54-label
+  all-action/safe-action sweep showed that train-side calibration is too aggressive, but a fixed
+  baseline-margin threshold can clear the offline harm cap. At threshold `0.5`, attention keeps
+  lift `+0.149` with harmful-covered `0.026`; threshold `1.0` keeps lift `+0.111` with
+  harmful-covered `0.008`. Trained a full-data attention checkpoint
+  (`.data/phase8_shop_ranker_solver_confirm_54_attention_confidence_advantage_tie_mse_full.pt`);
+  in-sample all-label checks are clean at `0.5`, but this does not transfer online. On a held-out
+  24-seed lane (`offset=540000`, `solver_shop_basic_play_bot` vs
+  `solver_shop_basic_play_shop_ranker_bot`, safe actions, compare-baseline, ante 2-3, max 4
+  candidates, one neural action per shop), margin `0.5` is neutral on wins but worse on mean ante
+  (`2/24` vs `2/24`, mean ante `6.50 -> 6.38`, d_ante `-0.125`);
+  margin `1.0` is worse (`2/24 -> 1/24`, d_ante `-0.542`). A regression trace showed several
+  individually "safe" ante-2/3 overrides compounding across the run, so added
+  `BALATRO_SHOP_RANKER_MAX_ACTIONS_PER_RUN` to cap total neural overrides, with a focused wrapper
+  test (`python -m pytest -q tests\test_search_bot.py -k shop_ranker`, `11 passed`). The run cap
+  helps but does not solve deployment: margin `0.5`, run cap `1` gains one win and loses none
+  (`2/24 -> 3/24`) but still lowers mean ante (`6.50 -> 5.96`, d_ante `-0.542`);
+  margin `1.0`, run cap `1` is also negative (`2/24 -> 1/24`, d_ante `-0.417`). Verdict:
+  the ranker remains useful offline signal and a label-acquisition prior, but the current
+  checkpoint is not a live shop override. Next work should target label/action-distribution
+  mismatch, especially voucher/buy target kinds and repeated pack/economy overrides, before
+  another online promotion attempt.
+- **Action-kind filtering confirms target mismatch is real but not sufficient:** audited the
+  54-label non-heuristic candidate pool by action kind: only 2 `buy/voucher` labels exist,
+  compared with 14 `buy/card` and 24 `open_pack/pack`, so broad online `BUY` was under-supported.
+  Added live `BALATRO_SHOP_RANKER_ACTION_KINDS` filtering and matching offline
+  `--candidate-action-kinds` support in the ranker loader/train/sweep CLIs; focused tests pass
+  (`python -m pytest -q tests\test_shop_ranker.py tests\test_search_bot.py -k "shop_ranker or candidate_action_kind or parse_action_kinds"`,
+  `35 passed`). The exact card/pack safe-action offline sweep
+  (`.data/phase8_ranker_sweep_solver_confirm_54_merged_safeactions_cardpack_confidence_advantage_tie_mse.metrics.json`)
+  is more conservative: attention calibrated lift `+0.172`, harmful-covered `0.057`; at fixed
+  threshold `0.5`, attention lift `+0.091` with harmful-covered `0.038`. Live A/B with
+  `ACTION_KINDS=card,pack`, margin `0.5`, ante 2-3, one neural action per shop, and no run cap
+  was positive on the first 24 seeds (`2/24 -> 3/24`, mean ante `6.50 -> 6.58`) but failed on the
+  next 24 (`6/24 -> 2/24`, mean ante `6.54 -> 5.88`). Combined 48-seed read is negative:
+  wins `8 -> 5`, mean ante about `6.52 -> 6.23`, better/same/worse `16/10/22`. Conclusion:
+  excluding vouchers fixes one obvious mismatch but the model still does not generalize online.
+  Next labels should be collected from live override-disagreement states, not only fresh random
+  shop states: capture ranker-proposed `card/pack/end_shop` overrides that baseline would reject,
+  solver-confirm them, and train specifically against those deployment-distribution mistakes.
+- **Deployment-disagreement capture path is now wired:** added
+  `scripts/phase8_ranker_override_capture.py` to follow `solver_shop_basic_play_bot` trajectories,
+  ask the trained ranker for compare-baseline override proposals under the same live gates, and
+  write `deepening_candidate_action_key` records that can flow directly into
+  `phase8_sequential_baseline_probe.py --focus-deepening-candidate`. Also hardened the sequential
+  probe so a captured focus action is replayable even if the regenerated candidate budget would
+  omit it. Focused tests pass:
+  `python -m pytest -q tests\test_phase8_ranker_override_capture.py tests\test_phase8_sequential_baseline_probe.py tests\test_search_bot.py -k "ranker_override_capture or sequential_baseline_probe or shop_ranker"`
+  (`21 passed, 45 deselected`). A held-out 8-seed smoke at offset `560000` with the full 54-label
+  attention checkpoint, card/pack kinds, margin `0.5`, ante 2-3, max 4 candidates, one neural
+  action per shop/run captured 4 override disagreements in 53.89s
+  (`.data/phase8_ranker_override_capture_smoke.jsonl`): 2 `buy/card`, 2 `open_pack/pack`. Full
+  horizon solver confirmation with a 30s state cap was too expensive and skipped all 4; a shorter
+  2-ante smoke confirmed the pipeline in 53.75s
+  (`.data/phase8_ranker_override_capture_smoke_confirmed_h2.jsonl`) and joined all 4 proposals:
+  0 positive, 1 negative, 3 ambiguous
+  (`.data/phase8_ranker_override_capture_smoke_confirmed_h2_audit.metrics.json`). This is tiny and
+  short-horizon, so do not train from it as-is, but it validates the next label-acquisition lane
+  and shows the current ranker is confidently proposing deployment actions that solver
+  confirmation does not yet endorse.
+  Scaling the capture-only pass to 32 held-out seeds with 8 workers captured a 16-record queue in
+  75.39s (`.data/phase8_ranker_override_capture_560000_32s16.jsonl`): 15 ante-2 states and 1
+  ante-3 state, 6 `buy/card` proposals, 10 `open_pack/pack` proposals, and mean baseline margin
+  `0.913`. Short 2-ante confirmation for all 16 finished in 72.48s with 8 workers
+  (`.data/phase8_ranker_override_capture_560000_32s16_confirmed_h2.jsonl`) and joined as 2
+  positive, 1 negative, 13 ambiguous
+  (`.data/phase8_ranker_override_capture_560000_32s16_confirmed_h2_audit.metrics.json`). Treat
+  this as triage only; the next expensive gate is deeper confirmation of this queue, especially
+  the two short-horizon positives and any high-margin ambiguous pack overrides.
+- **Deployment-disagreement deep confirmation adds caution labels, not positives:** selected the
+  two h2-positive deployment-disagreement records for deeper confirmation
+  (`.data/phase8_ranker_override_capture_560000_32s16_deepen_h2_pos.jsonl`): seed `0560008`
+  `end_shop -> buy/card` and seed `0560006` `end_shop -> open_pack/pack`. The focused r4-to-r8,
+  max-ante-8 confirmation took 224.52s with 2 workers and completed all 8 paired rollouts for both
+  records
+  (`.data/phase8_ranker_override_capture_560000_32s16_deepen_h2_pos_confirmed_r4_m8.jsonl`).
+  Both became ambiguous/no-override caution labels: 0 positive, 0 negative, 2 ambiguous, with mean
+  solver LCB `-1.599`
+  (`.data/phase8_ranker_override_capture_560000_32s16_deepen_h2_pos_confirmed_r4_m8_audit.metrics.json`).
+  Adding those two labels to the merged sweep gives 52 examples / 56 labels: 12 positive, 9
+  negative, 35 ambiguous
+  (`.data/phase8_ranker_sweep_solver_confirm_56_merged_deployment_confidence_advantage_tie_mse.metrics.json`).
+  All-action calibration did not improve: attention calibrated lift `+0.111` with harmful-covered
+  `0.099`; mean calibrated lift `+0.096` with harm `0.108`. The matching deployment-safe card/pack
+  sweep (`.data/phase8_ranker_sweep_solver_confirm_56_merged_deployment_safeactions_cardpack_confidence_advantage_tie_mse.metrics.json`)
+  keeps lift but remains unsafe under train-calibrated thresholds: attention calibrated lift
+  `+0.129`, harmful-covered `0.097`; mean calibrated lift `+0.150`, harmful-covered `0.115`.
+  Fixed attention threshold `0.5` is close but still above the cap (lift `+0.065`, harm `0.062`);
+  threshold `1.0` clears harm (`0.018`) but is low-lift/unstable (`+0.029`, positive in 3/7
+  splits). Conclusion: deployment-disagreement labels are the right data lane, but two caution
+  labels are nowhere near enough. Scale this lane and prioritize deeper confirmations for
+  high-margin ranker overrides before training another full-data live checkpoint.
+- **58-label deployment sweep finds a plausible offline gate, but live A/B does not promote:**
+  selected the next two short-horizon mean-positive deployment disagreements
+  (`.data/phase8_ranker_override_capture_560000_32s16_deepen_h2_meanpos_next4.jsonl`) and ran the
+  same focused r4-to-r8, max-ante-8 confirmation. Both stopped early by positive LCB after 6
+  paired rollouts and became solver-confirmed positives: 2 positive, 0 negative, 0 ambiguous,
+  mean solver LCB `+0.177`
+  (`.data/phase8_ranker_override_capture_560000_32s16_deepen_h2_meanpos_next4_confirmed_r4_m8_audit.metrics.json`).
+  Merging those with the two prior caution labels gives 54 all-action examples / 58 labels:
+  14 positive, 9 negative, 35 ambiguous
+  (`.data/phase8_ranker_sweep_solver_confirm_58_merged_deployment_confidence_advantage_tie_mse.metrics.json`).
+  All-action attention recovers lift (`+0.207`) but validation harmful-covered is still high
+  (`0.079`). The exact deployment-safe card/pack sweep has 52 examples / 56 labels
+  (`.data/phase8_ranker_sweep_solver_confirm_58_merged_deployment_safeactions_cardpack_confidence_advantage_tie_mse.metrics.json`):
+  attention calibrated lift `+0.177`, harm `0.075`; fixed attention threshold `0.5` is the first
+  plausible offline gate, with lift `+0.133`, harmful-covered `0.025`, and 6/7 positive splits.
+  Trained a full-data safe attention checkpoint
+  (`.data/phase8_shop_ranker_solver_confirm_58_attention_safe_cardpack_confidence_advantage_tie_mse_full.pt`)
+  and tested it live with baseline comparison, card/pack kinds only, ante 2-3, max 4 candidates,
+  one neural action per shop/run, and baseline margin `0.5`. The first fresh 24-seed block
+  improved (`4/24 -> 6/24`, mean ante `+0.042` at offset `580000`), but the second regressed
+  (`3/24 -> 1/24`, mean ante `-0.208` at offset `590000`). Combined 48-seed read is not
+  promotable: wins tie `7 -> 7`, mean ante `-0.083`, better/worse/same `13/18/17`, and win flips
+  tie `5/5`. Verdict: labels are improving enough to generate useful proposals, but online
+  generalization is still unstable. Do not promote this checkpoint; use it as a proposal/label
+  acquisition model.
+- **New label lane to add next: winning-trajectory backward reanalysis:** generate or capture runs
+  that reach/win ante 8, keep full shop-state snapshots along the trajectory, then branch from the
+  last shop choice across all legal alternatives and roll forward from that snapshot. This gives
+  cheap, low-horizon late-game labels first, then can walk backward shop-by-shop into ante 7, 6,
+  and earlier. It is not a replacement for early-game labels because winning trajectories have
+  survivorship bias, so include near-wins/losses too, but it directly targets the late-game build
+  planning problem without paying ante-1-to-8 rollout cost for every candidate.
+- **Backward late-shop capture is now implemented and smoke-tested:** added
+  `scripts/phase8_backward_shop_state_capture.py`, a capture-only generator for the backward
+  reanalysis lane. It runs a bot on fresh seeds, stores real shop snapshots in memory, and writes
+  the last N late shops only for trajectories that win or reach a requested terminal ante. Caps now
+  prioritize winning and later-terminal records, covered by
+  `tests/test_phase8_backward_shop_state_capture.py` (`2 passed`). A relaxed smoke proved the
+  script writes records, then a real solver capture on 16 fresh seeds at offset `620000` produced
+  14 ante-8 shop snapshots from 7 qualifying trajectories in 225.25s with 8 workers
+  (`.data/phase8_backward_shops_solver_620000_16_late.jsonl`,
+  `.data/phase8_backward_shops_solver_620000_16_late.metrics.json`). A tiny end-to-end label
+  smoke on 2 of those snapshots completed in 54.70s with 2 workers and 26 candidate continuations
+  (`.data/phase8_backward_shops_solver_620000_16_late_label_smoke.jsonl`). The smoke labels are
+  not training quality (`r=2`, 1-ante horizon), but they prove the captured late shops flow through
+  the existing `phase8_shop_candidate_dataset.py --input-records` multiworker labeler.
+- **First backward late-shop labels and sweep:** labeled all 14 ante-8 snapshots from the
+  `620000` pool with `r=4`, one-ante horizon, max 8 actions, and 8 workers
+  (`.data/phase8_backward_shops_solver_620000_16_late_r4_h1_m8.jsonl`). The run completed 264
+  candidate continuations in 523.31s. This near-win-heavy pool has real override signal: mean
+  best-vs-heuristic advantage `+0.133`, mean LCB `+0.028`, high-confidence best-beats-heuristic
+  rate `0.429`, and practical high-confidence override-candidate rate `0.143`. A second fresh
+  capture on 32 seeds at offset `630000` produced 8 more ante-8 snapshots, all from winning
+  trajectories
+  (`.data/phase8_backward_shops_solver_630000_32_late.jsonl`), and labeling them took 181.40s for
+  164 continuations
+  (`.data/phase8_backward_shops_solver_630000_32_late_r4_h1_m8.jsonl`). Winning-run labels are
+  more split-half stable (`0.75`) but flatter: mean best-vs-heuristic LCB `+0.006`, practical
+  high-confidence overrides `0.0`. The combined 22-record backward-only sweep
+  (`.data/phase8_ranker_sweep_backward_late_22_r4_h1_m8_confidence_advantage_tie_mse.metrics.json`)
+  is learnable as regret supervision but not yet as a confident live policy: 85 candidate labels
+  are 3 positive, 6 negative, 76 ambiguous. Attention beats the heuristic on held-out regret
+  (`0.126` vs `0.164`) and near-best@0.05 (`0.643` vs `0.381`), but confidence calibration is
+  still sparse. Mean encoder at fixed threshold `0.1` shows a tiny safe gate (`+0.043` lift,
+  `0.0` harmful-covered, 6/7 positive splits); attention at threshold `0.1` is too suppressed
+  (`-0.002` lift). Verdict: backward reanalysis is a viable late-game label lane, especially from
+  near-wins, but needs a larger pool before training a checkpoint.
+- **Near-win targeting added and validated:** added `--exclude-wins` to
+  `scripts/phase8_backward_shop_state_capture.py` so the backward lane can deliberately collect
+  ante-8 losses/near-misses instead of already-winning trajectories. Focused tests now cover both
+  win-only and near-win qualification (`python -m pytest -q tests\test_phase8_backward_shop_state_capture.py`,
+  `4 passed`). A fresh 32-seed near-win capture at offset `640000` found 3 qualifying ante-8
+  losses and wrote 6 late-shop snapshots, while excluding 5 wins from the same block
+  (`.data/phase8_backward_shops_solver_640000_32_late_nearwin.jsonl`). Labeling those 6 snapshots
+  with the same `r=4`, h1, max-8 setup took 374.58s for 112 continuations
+  (`.data/phase8_backward_shops_solver_640000_32_late_nearwin_r4_h1_m8.jsonl`) and produced the
+  strongest backward signal yet: mean best-vs-heuristic advantage `+0.395`, mean LCB `+0.165`,
+  oracle practical-positive rate `0.667`, and practical high-confidence override-candidate rate
+  `0.333`. Adding these to the backward sweep gives 28 examples and 107 candidate labels: 7
+  positive, 12 negative, 88 ambiguous
+  (`.data/phase8_ranker_sweep_backward_late_28_r4_h1_m8_confidence_advantage_tie_mse.metrics.json`).
+  Mean encoder now clearly beats heuristic regret (`0.162` vs `0.207`, wins 6/7) and near-best@0.05
+  (`0.607` vs `0.357`), but confidence-gated overrides are not safe yet (`threshold=0.1` lift
+  `+0.023`, harmful-covered `0.125`; threshold `0.25` nearly suppresses all lift). Attention
+  regresses on the 28-record set (`0.213` vs `0.207`), so use the mean encoder for this late-game
+  lane until the pool is much larger. Next target: collect more `--exclude-wins` ante-8 pools and
+  then relabel selected high-signal states with deeper/r8 confirmation.
+- **Backward deepening funnel validated:** selected high-signal states from the 28-record backward
+  pool with `phase8_select_deepening_states.py` using candidate-minus-heuristic filters
+  (`mean >= 0.10`, LCB `>= 0.05`, positive rate `>= 0.75`, max SEM `0.80`). The selector found 5
+  actionable ante-8 states
+  (`.data/phase8_backward_late_28_deepen_select_m010_lcb005_pr075_sem080.jsonl`) with mean cheap
+  advantage `+0.628` and mean LCB `+0.325`. Deeper `r=8`, h1 confirmation completed all 5 in
+  745.93s
+  (`.data/phase8_backward_late_28_deepen_select_m010_lcb005_pr075_sem080_r8_h1_m8.jsonl`): every
+  selected state had a non-heuristic best action, best-vs-heuristic practical positives were 5/5
+  by mean, and 3/5 were practical high-confidence improvements. The exact cheap-selected
+  proposals audited as 3 positive, 0 negative, 2 ambiguous
+  (`.data/phase8_backward_late_28_deepen_select_m010_lcb005_pr075_sem080_r8_h1_m8.confirmation.json`).
+  Verdict: cheap `r=4` labels are not reliable enough to deploy, but they are good enough to
+  prioritize deeper late-game confirmations without poisoning the pool.
+- **Second near-win block is mostly calibration/no-override data:** a fresh 32-seed capture at
+  offset `650000` found 4 non-winning ante-8 trajectories and wrote 8 late-shop snapshots, while
+  excluding 7 wins
+  (`.data/phase8_backward_shops_solver_650000_32_late_nearwin.jsonl`). Cheap `r=4`, h1 labeling was
+  much faster than the prior near-win block (144 continuations in 117.64s) but had little override
+  signal: heuristic best rate `0.375`, heuristic within `0.10` on 7/8 states, mean
+  best-vs-heuristic advantage `+0.038`, mean LCB `-0.039`, and zero high-confidence override
+  candidates
+  (`.data/phase8_backward_shops_solver_650000_32_late_nearwin_r4_h1_m8.jsonl`). Adding this
+  calibration block gives a 36-record backward sweep
+  (`.data/phase8_ranker_sweep_backward_late_36_r4_h1_m8_confidence_advantage_tie_mse.metrics.json`):
+  135 candidate labels are 7 positive, 17 negative, 111 ambiguous. Mean encoder barely beats
+  heuristic regret (`0.086` vs `0.089`), attention near-best improves (`0.631` vs `0.607`) but
+  regret regresses (`0.091` vs `0.089`), and confidence-gated lift remains too small for live use.
+  After excluding the 5 already deepened states, the strict selector found 0 remaining unconfirmed
+  opportunities, so the next useful action is more fresh near-win/fringe capture, not more
+  deepening of this same pool.
+- **Third near-win block plus confirmed-label overlay:** a fresh 32-seed capture at offset
+  `660000` found 6 non-winning ante-8 trajectories and wrote 12 late-shop snapshots, excluding
+  3 wins (`.data/phase8_backward_shops_solver_660000_32_late_nearwin.jsonl`). Cheap `r=4`, h1
+  labels took 230.04s for 232 continuations
+  (`.data/phase8_backward_shops_solver_660000_32_late_nearwin_r4_h1_m8.jsonl`). This block has
+  candidate signal but noisy winners: heuristic best rate `0.0`, heuristic within `0.10` only
+  `0.25`, mean best-vs-heuristic advantage `+0.241`, but mean LCB `-0.071` and only `1/12`
+  practical high-confidence best-vs-heuristic states. The expanded 48-record cheap sweep
+  (`.data/phase8_ranker_sweep_backward_late_48_r4_h1_m8_confidence_advantage_tie_mse.metrics.json`)
+  is not promotable: 181 candidate labels are 9 positive, 20 negative, 152 ambiguous; mean encoder
+  regret regresses vs heuristic (`0.201` vs `0.193`), attention is nearly tied on regret
+  (`0.193` vs `0.193`) while improving near-best (`0.420` vs `0.330`), and confidence gates remain
+  harmful. The strict selector, after excluding the first 5 r8 confirmations, found one new
+  `open_pack` over `end_shop` opportunity with cheap advantage `+0.826` and LCB `+0.410`
+  (`.data/phase8_backward_late_48_deepen_select_unconfirmed_m010_lcb005_pr075_sem080.jsonl`).
+  Focused `r=8` confirmation completed in 45.87s and confirmed it cleanly: best-vs-heuristic
+  advantage `+0.786`, LCB `+0.501`, and exact proposal audit `1` positive / `0` negative / `0`
+  ambiguous
+  (`.data/phase8_backward_late_48_deepen_select_unconfirmed_m010_lcb005_pr075_sem080_r8_h1_m8.jsonl`).
+  Fixed `examples_from_jsonl_paths` candidate merging so deeper duplicate candidate labels replace
+  shallow duplicates instead of being skipped; the regression test is in
+  `tests/test_shop_ranker.py`. With the 6 r8 confirmations overlaid, the 48-state sweep
+  (`.data/phase8_ranker_sweep_backward_late_48_r4_plus_r8confirm_h1_m8_confidence_advantage_tie_mse.metrics.json`)
+  improves the read but still is not a checkpoint source: mean encoder regret `0.153` vs heuristic
+  `0.157` and attention `0.154` vs `0.157`, near-best improves to `0.438`/`0.446` vs heuristic
+  `0.330`, but fixed confidence gates still do not show useful safe lift. After excluding all 6
+  r8 confirmations, the strict selector finds zero remaining opportunities in the 48-state pool.
+  Next: collect more fresh near-win/fringe blocks; do not spend more deepening on this exhausted
+  pool unless the selection rule changes.
+- **Keep winning late shops in the backward lane:** after review, changed the acquisition stance:
+  do not filter out all wins. If a final shop turns a fragile ante-8 run into a win, those
+  snapshots are exactly the positive late-build examples the model needs. The `670000`
+  near-win-only block added 6 more ante-8 loss snapshots
+  (`.data/phase8_backward_shops_solver_670000_32_late_nearwin_r4_h1_m8.jsonl`); cheap selection
+  found 3 `open_pack` opportunities, but r8 confirmation made all three exact proposals
+  ambiguous (`0` positive, `0` negative, `3` ambiguous), so they are calibration, not positives.
+  The next block at offset `680000` intentionally omitted `--exclude-wins`, capturing 20 ante-8
+  snapshots from 10 qualifying trajectories: 12 records from 6 wins and 8 records from 4
+  near-wins
+  (`.data/phase8_backward_shops_solver_680000_32_late_mixed.jsonl`). Fixed
+  `phase8_shop_candidate_dataset.py` so backward metadata (`terminal_won`,
+  `selection_reason`, terminal score/money, shops-from-terminal) survives relabeling and appears
+  in metrics; the metadata-preserving relabel is
+  `.data/phase8_backward_shops_solver_680000_32_late_mixed_r4_h1_m8_meta.jsonl`.
+- **Mixed win/near-win selector found a clean winning-run positive:** extended
+  `phase8_select_deepening_states.py` to carry `terminal_won` / `selection_reason` and balance by
+  terminal outcome. Running the strict selector over the 74-state backward pool with
+  `--balance-fields terminal_won,heuristic_action_type` found two strong opportunities, one from
+  a win and one from a near-win
+  (`.data/phase8_backward_late_74_deepen_select_balanced_terminal_m010_lcb005_pr075_sem080.jsonl`).
+  Focused r8 confirmation kept both best actions clearly above the heuristic on mean
+  (mean best-vs-heuristic advantage `+0.678`, LCB `+0.557`), but exact proposal audit split
+  `1` positive / `0` negative / `1` ambiguous. The clean positive was from winning seed
+  `0680010`: `open_pack` over heuristic `sell`, r8 mean advantage `+1.194`, LCB `+1.070`.
+  This directly validates keeping wins in the lane. With all r8 confirmations overlaid, the
+  74-state backward sweep
+  (`.data/phase8_ranker_sweep_backward_late_74_mixed_r4_plus_r8confirm_h1_m8_confidence_advantage_tie_mse.metrics.json`)
+  has 14 positive, 31 negative, and 237 ambiguous labels. Mean encoder now beats heuristic regret
+  on every split (`0.070` vs `0.118`, 7/7 wins) and near-best@0.05 (`0.667` vs `0.536`), while
+  attention is weaker (`0.095` regret, 5/7 wins). Fixed-threshold gate lift is still too small and
+  harmful-covered is too high (`mean` threshold `0.1`: `+0.015` lift, `0.060` harm), so this is a
+  better label pool but not yet a live checkpoint.
+- **Second mixed block confirms winning-run positives but not deployable calibration:** after the
+  74-state pool was exhausted under the strict selector, captured another mixed block at offset
+  `690000` with wins included. The block produced 24 ante-8 snapshots from 12 qualifying
+  trajectories: 14 records from 7 wins and 10 records from 5 near-wins
+  (`.data/phase8_backward_shops_solver_690000_32_late_mixed.jsonl`). Cheap `r=4`, h1 labeling
+  preserved terminal metadata and took 507.70s for 452 continuations
+  (`.data/phase8_backward_shops_solver_690000_32_late_mixed_r4_h1_m8_meta.jsonl`). It was mostly
+  tied/calibration data (heuristic within `0.10` on 18/24 states), but the balanced selector found
+  two strong unconfirmed opportunities, both from winning trajectories and both `open_pack`
+  candidates over heuristic `buy`/`end_shop`
+  (`.data/phase8_backward_late_98_deepen_select_balanced_terminal_m010_lcb005_pr075_sem080.jsonl`).
+  Focused r8 confirmation made both exact proposals positive, 2 positive / 0 negative / 0
+  ambiguous, with mean best-vs-heuristic advantage `+0.507`, LCB `+0.255`
+  (`.data/phase8_backward_late_98_deepen_select_balanced_terminal_m010_lcb005_pr075_sem080_r8_h1_m8.jsonl`).
+  This is another direct win for keeping successful trajectories in the backward lane. The
+  98-state overlay sweep
+  (`.data/phase8_ranker_sweep_backward_late_98_mixed_r4_plus_r8confirm_h1_m8_confidence_advantage_tie_mse.metrics.json`)
+  now has 20 positive, 44 negative, and 307 ambiguous labels. It still beats the heuristic on
+  average regret (`mean` encoder `0.107` vs heuristic `0.131`; attention `0.112`), but the read is
+  less stable than the 74-state pool (only 4/7 regret wins) and fixed gates are not safe
+  (`mean` threshold `0.1`: lift `-0.004`, harm `0.071`). After excluding all r8 confirmations,
+  the strict selector finds zero remaining opportunities in the 98-state pool. Next data step:
+  keep mixed capture, but do not promote a checkpoint until gate calibration improves.
+- **Third mixed block strengthens the "keep wins too" lane:** offset `700000` captured 24 ante-8
+  snapshots from 12 qualifying trajectories, including 6 records from 3 wins and 18 records from
+  9 near-wins
+  (`.data/phase8_backward_shops_solver_700000_32_late_mixed.jsonl`). Cheap `r=4`, h1 labeling
+  was signal-rich: heuristic within `0.10` on only 12/24 states, mean best-vs-heuristic advantage
+  `+0.249`, mean LCB `+0.092`, and practical high-confidence best-vs-heuristic rate `0.25`
+  (`.data/phase8_backward_shops_solver_700000_32_late_mixed_r4_h1_m8_meta.jsonl`). Adding this
+  block to the prior pool and excluding all existing r8 confirmations left 5 strict unconfirmed
+  opportunities, balanced as 2 from wins and 3 from near-wins
+  (`.data/phase8_backward_late_122_deepen_select_balanced_terminal_m010_lcb005_pr075_sem080.jsonl`).
+  Focused r8 confirmation kept all 5 best actions above the heuristic by mean, with 4/5 practical
+  high-confidence, and exact proposal audit was 4 positive / 0 negative / 1 ambiguous
+  (`.data/phase8_backward_late_122_deepen_select_balanced_terminal_m010_lcb005_pr075_sem080_r8_h1_m8.jsonl`).
+  The 122-state overlay sweep now has 37 positive, 51 negative, and 376 ambiguous candidate
+  labels
+  (`.data/phase8_ranker_sweep_backward_late_122_mixed_r4_plus_r8confirm_h1_m8_confidence_advantage_tie_mse.metrics.json`).
+  Both encoders beat heuristic regret on all seven seed splits: mean encoder `0.123` vs heuristic
+  `0.156`, attention `0.119` vs heuristic `0.156`. Mean encoder is the safer current candidate:
+  near-best@0.05 `0.536` vs heuristic `0.404`, top-1 `0.282` vs `0.146`, calibrated lift `+0.011`
+  in 6/7 runs, and fixed threshold `0.1` lift `+0.017` in 7/7 runs. However, harmful covered rate
+  at threshold `0.1` is still `0.086`, so this is progress in label quality and split stability,
+  not a promotable live checkpoint yet.
+- **Fourth mixed block was mostly calibration, not new strength:** offset `710000` captured 14
+  ante-8 snapshots from 7 qualifying trajectories, including 4 records from 2 wins and 10 records
+  from 5 near-wins
+  (`.data/phase8_backward_shops_solver_710000_32_late_mixed.jsonl`). Cheap `r=4`, h1 labeling
+  showed a flat/tied block: heuristic within `0.10` on 11/14 states, mean best-vs-heuristic
+  advantage only `+0.058`, mean LCB `-0.058`, and zero practical high-confidence
+  best-vs-heuristic cases
+  (`.data/phase8_backward_shops_solver_710000_32_late_mixed_r4_h1_m8_meta.jsonl`). The expanded
+  136-state selector found one marginal near-win `open_pack` over `end_shop` opportunity
+  (`.data/phase8_backward_late_136_deepen_select_balanced_terminal_m010_lcb005_pr075_sem080.jsonl`),
+  but r8 confirmation made the exact proposal ambiguous, 0 positive / 0 negative / 1 ambiguous
+  (`.data/phase8_backward_late_136_deepen_select_balanced_terminal_m010_lcb005_pr075_sem080_r8_h1_m8.jsonl`).
+  The 136-state overlay sweep has 37 positive, 58 negative, and 426 ambiguous labels
+  (`.data/phase8_ranker_sweep_backward_late_136_mixed_r4_plus_r8confirm_h1_m8_confidence_advantage_tie_mse.metrics.json`).
+  Both encoders still beat heuristic regret on average, but only 5/7 splits now: mean `0.129` vs
+  heuristic `0.141`, attention `0.120` vs heuristic `0.141`. Calibration weakened (`mean`
+  calibrated lift `+0.002`, threshold `0.1` harmful-covered `0.134`; attention calibrated lift
+  `+0.006`, threshold `0.1` harmful-covered `0.087`). Conclusion: keep wins in the acquisition
+  lane, but treat flat mixed blocks as calibration/noise and do not assume every added block
+  improves the ranker.
+- **Block-quality audit added to prevent blind accumulation:** extended
+  `scripts/phase8_shop_confidence_audit.py` with a block-quality verdict that preserves win/near-win
+  metadata and classifies each labeled block as `strong_signal`, `weak_or_mixed`, or
+  `calibration_only` from paired rollout confidence metrics. Focused tests pass
+  (`python -m pytest -q tests\test_phase8_shop_confidence_audit.py tests\test_shop_candidate_dataset.py`,
+  `18 passed`). Real mixed-block audits match the manual reads: `680000` = `weak_or_mixed`,
+  `690000` = `weak_or_mixed`, `700000` = `strong_signal`, `710000` = `calibration_only`.
+  A quality-filtered sweep that kept the strong `700000` cheap block plus all r8 confirmations,
+  while excluding weak/calibration mixed cheap blocks, produced an 83-example pool with denser
+  labels (37 positive / 28 negative / 252 ambiguous, positive label rate `0.117` vs `0.071` in
+  the 136 all-in pool)
+  (`.data/phase8_ranker_sweep_backward_late_quality_filtered_700strong_plus_r8_h1_m8_confidence_advantage_tie_mse.metrics.json`).
+  Both encoders still beat the heuristic on average regret, with larger regret lift on the harder
+  filtered set: mean `0.135` vs heuristic `0.200` (6/7 wins), attention `0.132` vs `0.200` (6/7
+  wins). Attention has the best calibrated read here (`+0.012` calibrated lift, harmful-covered
+  `0.027`), but the dataset is smaller and less stable than the 122 all-in read. Use this as an
+  acquisition/training hygiene gate, not yet as a deployment rule.
+- **Fifth mixed block confirms win-heavy is not automatically signal-heavy:** offset `720000`
+  captured 18 ante-8 snapshots from 9 qualifying trajectories, with wins kept: 12 records from
+  6 wins and 6 records from 3 near-wins
+  (`.data/phase8_backward_shops_solver_720000_32_late_mixed.jsonl`). Cheap `r=4`, h1 labels were
+  win-heavy but flat: heuristic within `0.10` on 15/18 states, mean best-vs-heuristic advantage
+  `+0.065`, mean LCB `+0.011`, and practical high-confidence best-vs-heuristic rate `0.056`
+  (`.data/phase8_backward_shops_solver_720000_32_late_mixed_r4_h1_m8_meta.jsonl`). The new block
+  audit classified it as `weak_or_mixed`
+  (`.data/phase8_backward_shops_solver_720000_32_late_mixed_r4_h1_m8_meta.confidence_audit.json`).
+  The expanded strict selector found one near-win `open_pack` over `end_shop` candidate, but r8
+  confirmation made the exact proposal ambiguous, 0 positive / 0 negative / 1 ambiguous, with
+  solver LCB only `+0.012`
+  (`.data/phase8_backward_late_154_deepen_select_balanced_terminal_m010_lcb005_pr075_sem080_r8_h1_m8.jsonl`).
+  No full 154-state sweep was run because the block gate and r8 audit do not warrant spending that
+  compute yet. This reinforces the current rule: keep wins eligible, but require action-level
+  signal before treating a winning block as training strength.
+- **Quality-filtered checkpoints trained, but live override gate failed:** trained two final
+  shop-ranker checkpoints on the quality-gated pool (`84` examples, `44` seeds, strong `700000`
+  cheap block plus all r8 confirmations, weak/calibration mixed cheap blocks excluded):
+  `.data/phase8_shop_ranker_quality_filtered_attention_v1.pt` and
+  `.data/phase8_shop_ranker_quality_filtered_mean_v1.pt`. Training-pool metrics look strong but
+  are not deployment evidence: attention final regret `0.087` vs heuristic `0.185`, mean final
+  regret `0.077` vs heuristic `0.185`. Probed both checkpoints on fresh offset `730000`, ante-8
+  only, conservative baseline-margin gate `0.25`, one ranker action per run. Attention produced
+  3 `open_pack` overrides
+  (`.data/phase8_ranker_override_attention_qf_v1_730000_32_ante8_m025.jsonl`); mean produced 3
+  `open_pack` overrides
+  (`.data/phase8_ranker_override_mean_qf_v1_730000_32_ante8_m025.jsonl`). R8 confirmation rejected
+  both as deployment candidates: exact proposal audits were `0` positive / `0` negative / `3`
+  ambiguous for attention and `0` positive / `0` negative / `3` ambiguous for mean, with no
+  high-confidence best-vs-heuristic states. Enhanced `phase8_deepening_confirmation_audit.py` to
+  report ranker margins for override-capture records; the ambiguous attention proposals had mean
+  ranker baseline margin `0.354`, and mean proposals had `0.397`, so current model margins are not
+  calibrated enough for live use. Therefore no live A/B was run. The checkpoints are useful
+  proposal/acquisition models, not shop overrides.
+- **2026-06-07 action-family separation (buy/card) is the first confirmable override family:** audited
+  the override-capture/r8 pipeline (no join bug; CRN pairing valid) and found the 730000 "100%
+  open_pack" read was an artifact. A held-out, no-rollout scoring sweep of the attention QF checkpoint
+  (offset `740000`, 24 seeds, antes 2-8, gate 0) produced 819 disagreements: 69% open_pack but also
+  200 buy/card proposals, and buy/card carried *higher* mean baseline margin (`0.254`) than open_pack
+  (`0.181`). open_pack is also nearly unconfirmable at r8 (pack RNG -> wide CIs). Ran a buy/card-only
+  override capture on fresh seeds (offset `750000`, 48 seeds, antes 4-6, gate `0.25`, 60 records),
+  took the 16 most-confident (margin `0.42`-`0.70`), and r8-confirmed each proposed card vs the
+  recomputed heuristic, CRN-paired, **rolled to terminal** via the focus probe
+  (`.data/phase8_ranker_override_attn_buycard_750000_top16_r8focus_term.jsonl`). Exact proposal audit:
+  **5 positive / 4 negative / 7 ambiguous** (2 of the ambiguous are true ties with identical CRN
+  outcomes). The 5 positives are real and large (mean advantage `+0.6`..`+1.6`, LCB `+0.17`..`+0.35`,
+  seeds 0750001/0750014/0750023/0750034/0750035). BUT calibration is still broken: positive vs
+  ambiguous ranker margins are indistinguishable (`0.530` vs `0.523`), several high-margin proposals
+  are strongly negative (LCB to `-1.08`), and the single highest-margin proposal (`0.705`) was a wash.
+  Mean realized advantage across all 16 most-confident card-buys is only `+0.065` (within noise), so a
+  self-gated override would still net ~neutral. Clean anti-pattern: overriding `end_shop` with a
+  card-buy was negative 2/2 (the heuristic is right to stop). Saved the 16-record deployment-
+  disagreement block (`.data/phase8_deploy_disagree_block_buycard_750000_r8term.jsonl`) and the 5
+  positives (`..._POS5.jsonl`). Verdict: action-family separation yields the project's first
+  confirmable positive override labels, but the blocker is now precisely characterized as
+  **uncalibrated confidence** (the model learns *which actions can be good*, not *whether they are good
+  in this state*), which is a data-scale problem, not a join/labeling bug.
+- **2026-06-08 SHOP DEFINITIVELY CLOSED via on-policy value-leaf (the distribution-shift fix did not
+  rescue it):** the June-3 conclusion was that prior value heads went flat on deployment shop states
+  because they trained off-policy (basic_strategy/bootstrap). Tested the fix head-on: captured 384
+  runs FROM THE SOLVER ITSELF (`solver_shop_basic_play_bot`, held-out seeds 2,000,001+, shop-audit
+  off; `scripts/phase8_onpolicy_value.py` -> `.data/onpolicy_solver_caps_384.jsonl`, capture winrate
+  68/384 = 17.7%), and trained an ATTENTION value net on-policy
+  (`.data/value_onpolicy_attn_v1.pt`): val win AUC `0.708`, val ante_corr `0.393` -- real
+  whole-state signal. But the smoking-gun check (neural ante_value std on 80 real solver shop states)
+  came back **0.053 -- FLATTER than the prior off-policy failure (~0.073)**. So on-policy capture
+  did NOT make the value discriminate shop states. This FALSIFIES distribution-shift as the fixable
+  cause: the real reason is that eventual outcome barely depends on shop-choice differences (shop
+  selection is already near-optimal; cross-candidate variance within one shop is even smaller than
+  the 0.053 cross-state std, and the override-ranker independently found only ~1/30 reproducible shop
+  disagreements). The winrate A/B was correctly SKIPPED (a flat leaf cannot move the search argmax).
+  Conclusion: every shop-value form is now closed -- standalone V(state), rollout, TD(lambda),
+  action-ranker override, AND on-policy value-leaf. The trained value net is NOT wasted: AUC 0.708
+  means it discriminates winning vs losing whole-run states -- a PLAY/META-level signal, not a
+  shop-micro signal. NEXT: stop all shop work; test the only remaining levers (endgame PLAY depth,
+  META decisions: skips/tags/vouchers/packs), the work deferred since 2026-06-03.
+- **2026-06-08 build-construction localized + first real winrate lever + big efficiency win:**
+  - **Out-test (build-ceiling vs play):** for ante-8 losses, replayed each to the failing blind,
+    forked the sim, and grafted every affordable offered joker. **42/57 (73.7%) of ante-8 losses
+    had >=1 affordable, offered joker that clears the failing blind** (mean ~5 outs each); only ~26%
+    were RNG-dead. The bot already plays near-optimally (best-play reaches median 74% of the ante-8
+    wall; Violet Vessel only 32%). Conclusion: losses are **build CONSTRUCTION** (reaches the wall
+    one affordable-available joker short), not RNG and not play. Scripts: `endgame_play_audit.py`,
+    `endgame_out_test.py`.
+  - **Economy lever (FIRST confirmed winrate gain):** economy-by-ante audit showed winners diverge
+    on money from ante 3 and hold the $25 interest cap far more (0.79 vs 0.62). Added an env-gated
+    `BALATRO_ECON_W` interest-discipline multiplier in `shop_search._shop_money_value` (default 1.0
+    = inert). A/B (seeds 1..100 then 1..200): `ECON_W=1.5` replicated **+2..+4 winrate, +0.1 mean
+    ante, +8 runs to ante 8**, both seed sets, all metrics concordant; `2.0` regresses (over-saves).
+    The econ-joker de-saturation term (`BALATRO_ECON_INVEST_W`, mirrors scaling-invest) did NOT
+    stack (combo ~= interest-alone). Small but real first lever (~19.5% -> ~21.5%).
+  - **Archetype planner Phase 0 (oracle gate):** the archetype system already exists
+    (`solver/archetypes.py`: 4 archetypes + fit-score + `ArchetypeAwareLeaf`); the live bot never
+    commits (`archetype=None`). Oracle (best-of baseline+4 archetypes per seed, deployed basic-play)
+    = 33.3% vs baseline 27.1% on 48 seeds (**+6.2% ceiling, +0.46 mean ante**). But every standalone
+    archetype underperforms baseline (12-15%) -> wrong commit hurts; flush is the only strong one.
+    So a planner needs a CONSERVATIVE selector (commit margin + hysteresis). Design in
+    `ARCHETYPE_PLANNER_PLAN.md`; the neural's right niche is the 4-way archetype SELECTION (learnable),
+    not per-card value. **Phase 1 A/B** (`phase8_archetype_planner_ab.py`, live selector via
+    `SolverPolicy.archetype` per-decision, 100 seeds, rust on): winrate-NEUTRAL -- aggressive
+    `flush_t1` (commit on 1 joker) HURTS (17 vs 22, the wrong-commit penalty); conservative
+    `flush_t2`/`general_t2` neutral (23 vs 22). Committing only after the build already owns >=2
+    archetype jokers is too late to capture the +6% ceiling, but earlier commit over-commits and
+    hurts -- a commit-timing precision problem the joker-count selector can't solve. Would need
+    deck-suit-concentration / early flush detection (deferred); modest ceiling makes ROI uncertain.
+  - **"Try neural better" (clear-capacity):** reframed the failed win-value leaf to a LOCAL
+    clear-capacity target (per-blind build->cleared). It learns build strength (held-out clear-AUC
+    0.90; graft gate 0.567 -> 0.698, correct direction) -- a real non-flat neural signal. But
+    deployed as a shop leaf it HURTS winrate (5.8% -> 3.3% with weight): it rates overall build
+    strength, not which candidate, so it injects noise into the near-optimal shop argmax. Neural can
+    MEASURE build strength, not IMPROVE near-optimal shop decisions. Scripts: `phase8_clearcap_train.py`,
+    `value_buildgate.py`, `phase8_clearcap_ab.py`.
+  - **EFFICIENCY: flipped Rust best-play default ON** (`hand_evaluator._RUST_BESTPLAY_ENABLED`).
+    It was fixed/validated 2026-06-05 but left default-OFF, so every run not setting the env
+    (winrate benches, diagnostics, the deployed bot) paid full Python subset-enumeration (cProfile:
+    `evaluate_played_cards` 362K calls, ~56% of CPU in play). Validated winrate-NEUTRAL (39/200
+    IDENTICAL, rust ON vs OFF, seeds 1..200) at ~1.5x faster (1424s -> 919s); 180 rust parity unit
+    tests + 345 play/sim/solver tests pass with the new default. Profilers added:
+    `profile_deployed.py`, `profile_play.py`. Remaining cost after the flip: shop (`reroll_ev` ~20%,
+    `shop_leaf` ~17%).
+
+- **2026-06-08 (cont.) two more BEHAVIOR-IDENTICAL efficiency wins (~12-15% faster, deployed bot):**
+  Re-profiled the deployed bot after the rust-default-ON + fast-knob shifts (`profile_deployed.py`
+  16/8 = 414s CPU baseline). cProfile (tottime + caller attribution) found two expensive REDUNDANT
+  work sources; both fixed with zero behavior change (proven, not just A/B-neutral):
+  1. **`hand_draw_odds` deck-rebuild memoization** (`search/hand_viability.py`). The exact draw-odds
+     DP was already `lru_cache`d, but `DeckModel.from_cards` + `_deck_signature` (the key-build, ~8%
+     of CPU: rebuild the 52-card Counter + rank/suit signature) ran on EVERY call (~78K/run on a deep
+     seed). The deck multiset is identity-stable across the thousands of leaf/play evals between card
+     acquisitions (measured 99.94% id-repeat on the heavy seed, 46 unique decks / 78K calls). Added a
+     bounded (`OrderedDict`, max 256) cache keyed on `id(known_deck)` + the 3 flags (Smeared/Four
+     Fingers/Shortcut) + draw size, with the deck tuple PINNED in the value + an `is` guard so an
+     id-reuse-after-GC collision is impossible. Equivalence-checked 78,103 calls = 0 mismatch.
+  2. **best-play tie-break: stop re-evaluating every tied subset in Python** (`rules/hand_evaluator.
+     _fast_winner` + `search/rust_bridge.rust_best_play_scores`). With rust-bestplay ON, the batch
+     scores all subsets in Rust, but `_fast_winner` then rebuilt the FULL Python `evaluate_played_cards`
+     for EVERY subset tied at the top score (to break ties on `(score,chips,mult)`) -- avg **25 tied
+     subsets per call**, ~37K Python evals/seed, the single biggest play cost. Added `with_tiebreak`
+     to `rust_best_play_scores`: it now also returns Rust `(score,chips,mult)` for the tied-at-top
+     subsets (via the already-exposed `evaluate_simple_with_levels`, reusing parsed joker data; cheap,
+     tie-set only; consistency-guarded that detail score == batch top). `_fast_winner` picks the
+     `(score,chips,mult)` argmax in enumeration order from Rust detail and builds the Python
+     HandEvaluation for ONLY the winner, falling back to the full Python tie-break if detail is
+     missing. **Divergence vs the old Python tie-break: 0 / 16,449 tied calls across 15 seeds** (Rust
+     == Python chips/mult on the safe path), so plays -- hence winrate -- are unchanged by construction.
+  3. **`_pool_records` availability-filter memoization** (`search/shop_sampler.py`). reroll-EV
+     sampling calls `_pool_records(pool_type, state)` ~5K/run, each re-filtering the static pool
+     (~60 records) via `_record_available` (~280K calls). But `_record_available` reads only fixed
+     state.modifiers fields (banned/unlocked/pool_flags/voucher/enhancement), so the ~4 pool lists are
+     constant per (state, pool_type) within a decision (measured 79% repeat). Memoized into a per-state,
+     identity-pinned, decision-scoped bucket via the existing `_state_scoped_cache` (lazy bots import;
+     graceful fallback when no scope). Returned list is read-only at every call site. 0 mismatch /
+     10,239 calls. reroll_ev CPU 52s -> 46s (-12%).
+  - Net: play CPU 198s->~158s (-20%), reroll_ev -12%; total 414s -> ~360s (~12-15% faster, run-to-run
+    var ~4%). 608 tests pass (rust bestplay/hand-eval/viability/odds/deck/search/sim/discard/pack/
+    basic-strategy/rng-shop/shop-sampler/solver-policy/solver-play).
+  - **Dead ends (reverted, documented so they aren't re-tried):** (a) id-caching
+    `_joker_is_disabled_for_build` (350K calls) was perf-NEUTRAL -- the id-cache-lookup + lambda
+    overhead cancels the cheap metadata iteration it saves (micro-memoizing cheap-but-frequent fns
+    doesn't pay; only eliminating EXPENSIVE redundant work does). (b) Reducing the ~5% best-play
+    Rust bails: 100% are boss blinds. The House/Tooth/Fish LOOK safe (0% mismatch on 10 seeds) but
+    `rust_bridge` comments document a prior deeper audit -- Tooth's $1/card feeds money-scaling jokers
+    (Bull/Bootstraps), House/Fish face-down HELD cards interact with held-card jokers -- so they
+    diverge with specific jokers my sample missed; left bailed. Adding Psychic to the batch path
+    (zero !=5-card) diverged 8.93% (stateful jokers on 5-card plays); reverted. The author's
+    `RUST_BLIND_SAFE` exclusions are correct.
+  - Remaining cost profile: shop 55% (`shop_leaf_terms` 30% = build-scoring, mostly content-cached
+    Rust evals -- near-irreducible without changing sample count / beam knobs, which need an A/B;
+    `reroll_ev` 14%), play 44%. Further free wins look exhausted; bigger gains need behavior changes
+    (A/B-gated) or Rust-core work.
+
+- **2026-06-08 (cont.) META blind-SKIP lever TESTED -> net-negative (the one "untested" surface):**
+  The pivot memory flagged META (skips/tags/vouchers) as genuinely untested. Found the deployed bot
+  **never skips blinds** (`_blind_select_action` always SELECTs; only ever considers a boss reroll).
+  Confirmed the sim fully models skip -> tag -> effects in `local_runner` (all 24 tags, incl. pack
+  tags Buffoon/Charm/Meteor/Standard, money tags Investment/Economy/Top-up, Rare/Negative/Coupon/D6),
+  and `SKIP_BLIND` is legal at every Small/Big blind with the tag visible at decision time
+  (`current_blind["tag"]`). So the lever is real and testable.
+  - **Paired A/B (100 seeds, each run both ways), skip Small on free-value tags (Buffoon/Charm/
+    Meteor/Standard/Negative/Investment/Economy/Voucher/Top-up): winrate 21 -> 11 (-10 net, lost 15 /
+    gained 5), mean ante 6.36 -> 6.16.** Strong regression.
+  - **Why (flip diagnostic on the 20 changed seeds):** NO static tag/ante pattern separates good from
+    bad skips -- the *same* tag (Negative, Economy, Charm, Voucher) at the *same* ante helps on some
+    seeds and hurts on others. A skip's value depends on the SPECIFIC forgone shop + build state, so a
+    static heuristic can't decide it. Mechanism: skipping forgoes a shop (the bot is build-limited ->
+    needs shops) + early blind money/interest (economy matters, cf. ECON_W), and tags add RESOURCES
+    not FORESIGHT -- and foresight (which joker clears the future wall) is the actual bottleneck (out-
+    test). So META-skip would require counterfactual shop evaluation (sample the would-be shop via the
+    existing ShopSampler and compare to the tag), i.e. the same whole-run planning lever -- not a
+    heuristic. Code reverted (worktree clean); finding documented. Conclusion stands: every static /
+    per-decision lever (shop, economy, flush, neural, META-skip) is now explored; the only remaining
+    winrate lever is whole-run build FORESIGHT (search/RL over the forward model -- the PLAN.md /
+    PHASE8 end-goal), which the ~13-15% sim speedup this session directly makes cheaper.
+
+- **2026-06-09 S0 FORESIGHT GATE RUN -> FAILS. The archetype-commitment lever is empirically capped
+  (~26%) AND not learnable from early state -- the decisive go/no-go for the superhuman build,
+  settled for ~1.5hr compute instead of a quarter's engine.** S0 (designed via the multi-agent
+  path-design workflow) tested the load-bearing assumption of the AlphaZero-style path: *can early
+  visible state predict which build basin the run should commit to?* Pipeline:
+  `scripts/phase8_archetype_oracle.py` (+rows), `s0_early_state_capture.py`, `s0_foresight_classifier.py`;
+  artifacts `.data/s0_oracle_white_200.json`, `.data/s0_early_features_white_200.json`.
+  - **Oracle @ 200 held-out white seeds (deployed backend) REPLICATES +6.5%** (baseline 39/200=19.5%
+    -> best-of-4-archetypes 52/200=26.0%, +0.54 mean ante) -- the ceiling is real but **flush-
+    dominated**: best_archetype = flush 72 / baseline 124 / scaling+high_card+pair ~1 each; the other
+    3 archetypes never help and standalone win ~11-12% (wrong commit hurts, confirms D1).
+  - **The hypothesized headline signal -- deck-suit-concentration / "early flush detection" (the
+    named-but-deferred fix, PROGRESS.md:2459) -- is EMPIRICALLY NULL.** Deck stays perfectly balanced
+    through ante 3 (suit_max_smeared_pair mean 0.500, std 0.0007@a2 / 0.0036@a3): the baseline never
+    stacks suits, so suit concentration is a CONSEQUENCE of the flush commit, not a PREDICTOR. Only
+    joker-availability + hand-levels + money have early variance.
+  - **No early signal predicts the flush basin.** "flush helps this seed" held-out AUC = **0.41-0.51
+    across logreg AND MLP, ante2 / ante3 / ante2+3** -- at/below chance (machinery validated: AUC 0.65
+    on synthetic planted data). 5-way basin top-1 is BELOW predict-always-baseline. A confidence-gated
+    conservative selector captures **0% to NEGATIVE** of the +6.5% gap at every threshold.
+  - **Root cause (fundamental):** flush viability is set by the WHOLE RUN's RNG-offered pieces (which
+    flush jokers/tarots appear antes 4-8), not observable at the ante-2/3 commit. The +6.5% is a
+    perfect-HINDSIGHT artifact; at commit time that knowledge does not exist. A reactive policy/value
+    head maps state->action, so absent the deciding info in-state it cannot learn it (AUC-at-chance
+    confirms). Steps 4 (live smoke) + 5 (red-stake) are moot -- only meaningful if offline passes.
+  - **VERDICT: FAIL -> do NOT build the engine on the archetype lever.** Even a perfect forward-search
+    oracle of archetype commitment caps at ~26% (not superhuman); the reactive route is at chance. The
+    one measured winrate headroom (+6.2% oracle) is closed as a realizable live lever. ~22-26% is
+    at/near the white-stake ceiling for this heuristic architecture; every other surface
+    (shop/play/economy/META) is near-optimal/closed. (Caveat: ceiling is for the 4 BUILT-IN
+    archetypes; finer build taxonomy = the combinatorial surface that already failed B1/B3.)
+
+- **2026-06-09 from-scratch core investigation -> the construction premise is NOT supported (and is
+  not cleanly testable without ante-8 RNG). ~22-26% is at/near this architecture's ceiling.**
+  After S0-foresight failed, designed a from-scratch play+build core (NEW_CORE_PLAN.md) on the thesis
+  that losses are mid-game build-CONSTRUCTION failures the myopic next-boss leaf misprices. Ran the
+  plan's cheap gates:
+  - **S-pre (200 deployed runs, winners-vs-losers Cohen's d at matched antes):** the win/loss lever
+    is overall BUILD POWER, driven by a COMBINATION the bot already partly handles -- economy
+    (money d ~+0.5), more leveling (sum_levels d +0.38), avoiding decay jokers (d -0.49), modestly
+    more compounders (d only +0.20). Thesis B (economy/leveling/quality) > thesis A (scaling basin).
+    Build-capacity growth: winners sustain ~1.55x/ante; losers collapse 1.55x->1.26x late. Scripts:
+    s_pre_out_classify.py, s_pre_winloss_capture.py, s_pre_winloss_analyze.py.
+  - **Decay-joker penalty A/B (BALATRO_DECAY_W=1.6, paired 128 seeds):** NEUTRAL (+1/128). The bot
+    already handles decay (`_joker_late_durability_factor`); the S-pre decay signal was correlational.
+    Knob reverted. -> no cheap heuristic knob left; heuristics are mature.
+  - **S0 mid-game CONSTRUCTION kill-switch (s0_midgame_construction.py, 120 seeds) -> NEGATIVE,
+    contamination-free.** Fork the sim at antes 3/4/5 shops, force every realizable BUY/SWAP (slots
+    are full mid-game), roll to terminal, with NULL + REROLL controls. First run was GENERIC (sampler)
+    mode -> contaminated (intervention 8.5% ~= reroll 9.3% per-attempt, all wins from the
+    action-dependent sampler). **Re-ran in FAITHFUL mode (balatro_seed -> keyed, action-INDEPENDENT
+    shops) and partitioned rollouts by `_rng_diverged`.** v1 faithful run was only ~61% clean and on
+    that biased subset showed intervention 1.7%/attempt vs reroll 5.6%/attempt. **DEFINITIVE v2 run
+    (`s0_midgame_faithful_v2.json`, after the two source-validated RNG fixes): clean fraction jumped to
+    ~100% (intervention 1187/1191, reroll 269/271 stayed seed-faithful), and on that contamination-free
+    AND unbiased subset intervention wins 5.0%/attempt (59/1187) vs neutral reroll 4.8%/attempt (13/269)
+    -- statistically indistinguishable. The 1.7%-vs-5.6% v1 gap was a bias artifact of the ~61%-clean
+    subset, not a real effect.** Only 27/102 losses (26.5%) had ANY clean seed-faithful perturbation
+    that flips them, and a forced build buy is no better than a blind reroll at finding it; ~73% of
+    losses are unrecoverable mid-game. **Verdict: the bot's mid-game build SELECTION is near-optimal;
+    the construction premise is REFUTED -- now contamination-free AND unbiased. ~22-26% is robustly the
+    ceiling for build selection.** (Key methodology lesson: always run S0/S-pre-style fork tests in
+    FAITHFUL mode (balatro_seed) + partition on `_rng_diverged`; generic mode's action-dependent
+    sampler contaminates any fork-intervention test, and a partially-clean faithful subset can still be
+    biased -- get the clean fraction near 100% before trusting the magnitudes.)
+  - **Bottom line:** every lever this session converges -- S0-foresight (archetype unlearnable, +6.5%
+    capped), S-pre (mature heuristics, no cheap knob), decay (neutral), S0-construction (REFUTED
+    contamination-free; forced builds < neutral rerolls). ~22-26% is robustly at/near the ceiling for
+    THIS architecture -- the bot extracts near-optimally per decision; the gap to human ~80% is
+    whole-run POLICY quality, addressable only by large-scale RL self-play (+ validated ante-8 RNG),
+    a multi-month program with a robustly-discouraging prior. Banked this session: the ~13-15%
+    permanent sim speedup + a definitive ceiling map. The v2 intervention~=reroll parity also closes
+    the lone faint hint: "reroll-more-when-behind" (BALATRO_REROLL_BEHIND) was A/B-tested and REGRESSED
+    (21->14/128, lost 7 / gained 0) -> reverted; the bot's reroll/economy discipline is near-optimal
+    too. EVERY testable per-decision lever is now closed/negative; the bot is at its architecture
+    ceiling.
+
+- **2026-06-09 RNG-faithfulness foundation: Bug 2 FIXED (ground-truth-validated), the one remaining
+  path is now de-risked from "multi-week + fixtures" to "two bounded fixes, one done."** The "RNG
+  unvalidated past ante 5" that blocks deep-search/RL is really just shop-reroll prediction failing
+  (the bot rerolls late-ante, `seed_faithful_reroll` returns None -> sampler fallback -> ~35% of
+  faithful-mode runs diverge at antes 6-8). Read the decompiled Balatro source (`.data/balatro-source/`)
+  and pinpointed TWO bounded bugs. **Bug 2 (planet/consumable exhaustion) FIXED:** the Python
+  predictor was missing `get_current_pool`'s empty-pool fallback (common_events.lua:2038-2050 -- when
+  all entries UNAVAILABLE, Balatro substitutes ONE default item c_pluto/c_strength/c_incantation/
+  j_joker instead of resampling-and-crashing). Added `_pool_or_default` in `rng/surfaces.py`; the
+  1-item default yields exactly one rng roll (matches `pseudorandom_element` over [default]).
+  **Bug 1 (pool flags) ALSO FIXED:** threaded `state.modifiers['pool_flags']` through the predict
+  chain (predict_shop_cards->predict_card->_current_pool->joker_pool_for_rarity, all defaulted) and
+  gated the only two flagged jokers (Gros Michel / Cavendish on `gros_michel_extinct`, common_events.
+  lua:2027-2028); the default-empty case correctly makes Cavendish UNAVAILABLE pre-extinction (the
+  27 wrong predictions). **NET (both fixes): faithful-mode shop divergence 35% -> 18% -> 2%; coverage
+  65% -> ~98%; 292 RNG/sim tests pass incl. `test_rng_against_bridge`.** The RNG-foundation blocker
+  for deep-search/RL is essentially CLOSED. Files: rng/pools.py, rng/surfaces.py, sim/seed_faithful_
+  shop.py. Minor non-blocking residual: ~8 VOUCHER keys mis-predicted in the cash-out voucher path
+  (predict `_voucher_pool` vs sampler `_record_available` gating disagree; per-slot fallback, NOT run
+  divergence). See [[project_sim_correctness_baseline]].
+
+- **2026-06-09 PERMANENT SPEED WIN: deployed winrate bot 8.9% faster, behaviour-PRESERVING (parity-
+  proven -> winrate provably unchanged).** Re-profiled both workloads with process_time (ground truth,
+  8-day-old memory confirmed stable): WINRATE-RUN bot (solver_shop_basic_play_bot, the constant A/B
+  workload) = shop 54.5% [shop_leaf_terms 30.9%/69.5K calls, reroll_ev 13.4%], play 43.9%, sim.step
+  only 1.0% (so optimizing "the sim step" itself is a non-lever); DATA-GEN (SolverPolicy) = play 87%
+  [python rollout 31.5%, enum 16%, headroom 14%]. Ran a 36-agent workflow (6 subsystem finders +
+  per-candidate adversarial vetters) -> 30 candidates (1 ship / 14 prototype / 15 reject). SHIPPED
+  (all parity-verified, combined-signature IDENTICAL to baseline at PYTHONHASHSEED=0):
+  (1) `shop_leaf_terms` memoized in the decision-cache (pure fn of owned state, keyed on
+  `_sample_build_score_cache_key`+baseline); (2) `_play_candidates` decision-cache memo (identity-
+  guarded on state + frozen _BlindContext); (3) lazy `_build_profile`/`_run_plan` in
+  `_shop_action_value` (the BUY-card branch — every reroll_ev item — never used them); (4) `reroll_ev`
+  hoists `_shop_pressure` to compute ONCE per reroll instead of per sampled item (each item builds a
+  fresh temp_state that defeats the id-cache); (5) Rust `scorer.rs` per-action `HashSet<usize>` ->
+  stack `[bool;16]` mask in `score_play_actions_batch` (the deployed play scorer — biggest single
+  contributor ~2.4%); (6) Rust `evaluate.rs` borrow joker editions/metadata on the length-match path
+  instead of `.to_vec()` + skip the `scoring_cards` alloc on the no-joker path; (7) `_cached_simulate_buy`
+  decision-scoped memo of the BUY transition (each BUY's `simulate_buy` is otherwise run 2-3x/action — two
+  penalty calcs + the real expansion; +0.9%, parity-safe — base buy is deterministic, the overstock rng
+  refill stays outside the memo). 1373 tests + 101 Rust
+  tests pass. **NEGATIVES (measured, not assumed):** `target-cpu=native` REFUTED — 0% speed AND breaks
+  parity (float-reduction reorder flips knife-edge seeds; Balatro scoring is INTEGER chips*mult so
+  there's no float SIMD to gain; the win came from removing an *allocation*, not raw compute). Two
+  data-gen rollout micro-opts were each PARITY-SAFE but NEUTRAL (~0%) -> reverted: DeckModel-per-
+  iteration dedupe, and reusing the best-play score in _should_rollout_discard (score==_score_action
+  confirmed on 202/202 probed states). FINDING: the data-gen Python rollout (31.5%) has no cheap
+  Python-side win — its cost is already Rust-compute-bound (evaluate/score), which the scorer.rs +
+  evaluate.rs changes above DO accelerate. A per-Card RustCard conversion cache (hoist_held_rustcards)
+  was also parity-safe but NEUTRAL (+0.1%): both the deployed bot and data-gen use the BATCHED
+  `score_play_actions_batch`, not the per-subset `rust_evaluate_score_and_hand_type` path it targeted,
+  so the conversion churn isn't on either hot path -> reverted. Correctly-rejected by the vetters: removing the
+  `_payload_from_record` deepcopy (it's the only isolation from the shared lru_cache'd pool). **KEY
+  METHODOLOGY:** parity A/Bs MUST fix `PYTHONHASHSEED=0` — knife-edge seeds (e.g. seed 10) flip under
+  hash randomization regardless of the change, producing spurious 1-seed mismatches; a behaviour-
+  preserving (signature-identical) change has provably-unchanged winrate so NO separate winrate A/B is
+  needed. Agent speedup estimates ran ~3-5x optimistic vs measured (18%->3%, 9%->~0%) — always measure.
+  New reusable tools: `scripts/bot_parity_speed.py` (trajectory-signature + process_time A/B for the
+  deployed bot), `scripts/deployed_bot_timing.py` (winrate-bot phase breakdown), `scripts/datagen_
+  parity.py` (SolverPolicy parity). Files: search/shop_search.py, search/shop_sampler.py,
+  bots/basic_strategy/play_scoring.py + shop_values.py, botlatro-core/src/search/scorer.rs +
+  hand_eval/evaluate.rs. See [[project_datagen_speed]].
+
 ## Next Steps
 
-> **Top priority (2026-05-31): the Phase 8 neural build** — `PHASE8_NEURAL_PLAN.md`.
-> Next concrete work is Stage 0.2 (data pipeline: extract `(encoded_state, action,
-> outcome)` per step by re-simulating action logs) → Stage 0.3 (minimal torch
-> trainer) → Stage 1 (learned value leaf, bootstrapped from `basic_strategy_bot`).
-> The numbered items below are now secondary solver/RNG threads.
+> **Top priority:** improve the general unseeded bot through the neural candidate-ranker/search
+> path, not seed-known selectors or more local heuristic tuning. Use the portfolio diagnostic
+> only to expose complementarity.
 
-1. Continue Phase 4 toward the native solver. Target: `solver_beam_play_action_native(state, depth, width) -> Action` that runs the whole beam in Rust. See `RUST_PORT_PLAN.md` §6 (Phase 4 spec).
-2. Close the remaining narrow RNG edge if needed: Illusion-generated shop playing cards carry global `math.random` into first Buffoon pack selection; optional Overstock slot-count fixtures can be added afterward. Current validation commands are `python -m balatro_ai.rng.validate_surfaces --all`, `python -m balatro_ai.rng.validate_shop_sequence --all`, `python -m balatro_ai.rng.validate_spectral_helpers --all`, and `python -m unittest discover -s tests -p "test_rng*.py"`.
-3. **Raise the `SolverPolicy` data-gen winrate** (the active priority — see "In Progress" and memory `project_datagen_speed.md`). The solver is built (`solver/policy.py`, M1-M5.5 in `SOLVER_PLAN.md`) and generating data; it's at ~8% after the churn fix. Next: hunt more systematic leaf/action-value mis-valuations with `scripts/shop_decision_trace.py` (the method that found the churn + play-value wins), and improve build SCALING (xmult/synergy valuation). Do NOT chase leveling-term tuning or deeper shop search (both measured inert/negative). Paired A/Bs (`shop_paired_ab.py`, ≥80 seeds, `play_width=1` to match data-gen) are the validation gate.
-4. Once the solver winrate is acceptable, do a 10k+ seed data-generation run (prototype on ~10 seeds first). The Rust core makes this far cheaper — a 10k-seed run estimated at ~50 hours becomes ~10-15 hours once Phase 4 lands.
-5. Once a trajectory dataset exists, pivot to Phase 8: imitation learning on policy + outcome-based value head.
-6. The two deferred minor sim bugs (Drunkard sell, Credit Card reroll) can be fixed any time — they take the audit from 99.9% to 100%.
-7. Live-bot improvement (`basic_strategy_bot` tuning, `search_bot_v2` experiments) is de-prioritized but not banned; treat it as the second-class path. Same-seed A/Bs still required if any change lands.
+1. Stop treating deep shop labels as a one-winner classification problem. Acceptable-set,
+   pairwise, and confidence-aware diagnostics now exist; `confidence_advantage_tie_mse` is wired
+   but needs a much larger solver-confirmed comparison set before it can be trusted. The current
+   merged 54-candidate-label set shows positive validation lift, but not safe calibration. Judge by
+   held-out regret, near-best/acceptable-set accuracy, confidence-gated lift, and both conditional
+   and covered-state harmful override rates, not top-1 alone.
+2. Use the 64-state capture-only pool for label-design experiments. Prefer the diverse targeted
+   subset path (`phase8_select_shop_state_pool.py`) before relabeling, and avoid selecting states
+   that fail to produce at least two executable probe actions. Fresh2 is exhausted; continue on
+   `.data/phase8_capture_pool_v3_128_fresh3.jsonl`, selecting non-overlapping 16-state slices with
+   the marginal balance selector. Relabel subsets through `--input-records`; avoid scaling r8
+   blindly because the 16-state r8 gate cost 47.6 minutes and still had split-half agreement
+   `0.25`.
+3. Keep the ranker as a prior or conservative override unless the uncertainty-aware gate proves
+   safe. The current mean/attention models can learn some ordering, but train-side threshold
+   calibration does not transfer yet, so confidence calibration is not safe enough to replace the
+   shop heuristic.
+4. Prioritize deployment-disagreement labels before more generic pool labels: scale
+   `phase8_ranker_override_capture.py` on fresh held-out seeds, then solver-confirm the captured
+   ranker-vs-baseline actions with enough wall time/horizon to be meaningful. Keep strict SEM-gated
+   positive acquisition (`max_sem=0.45` first) for build-forward `buy`/`open_pack` choices, and
+   treat `end_shop`/skip-economy proposals as a separate action family until their cheap labels
+   stop producing solver-confirmed false positives.
+5. Add winning-trajectory backward reanalysis as the next late-game label source: capture shop
+   snapshots from ante-8 wins and near-wins, branch late shops across legal alternatives, roll
+   forward with paired RNG, label by win/ante margin/economy, then gradually move the branch point
+   earlier only after late-shop labels are clean.
+6. Use `phase8_shop_confidence_audit.py` after every cheap mixed block before spending r8/sweep
+   time. Keep wins eligible, but treat `calibration_only` and weak mixed cheap blocks as
+   calibration/holdout unless they produce r8-confirmed positives; do not blindly append them to
+   training pools.
+7. For trained shop-ranker checkpoints, run override-capture plus r8 exact-proposal audit before
+   any live A/B. Only spend A/B compute if the checkpoint produces positive, not merely ambiguous,
+   deployment-disagreement labels on fresh seeds.
+8. Run paired unseeded holdout A/Bs against `solver_shop_basic_play_bot` and `basic_strategy_bot`
+   on contiguous seed ranges only after the r8 override gate passes. Promote nothing until
+   held-out winrate or regret improves at comparable compute.
+9. Scale only after the above gates: larger candidate datasets, batched inference, then iterative
+   search-improvement targets where ranker-guided search creates better labels for the next model.
+10. Keep sim/RNG validation as the regression gate. The two deferred minor sim bugs (Drunkard sell,
+   Credit Card reroll) can be fixed any time, but they are not blocking the current neural probe.

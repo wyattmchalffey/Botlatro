@@ -40,7 +40,7 @@ class BotConfigDefaultsTests(unittest.TestCase):
         self.assertEqual(cfg.calibrated_shop_reserve_risk_weight, 0.0)
         self.assertEqual(cfg.calibrated_shop_slot_risk_weight, 1.0)
         self.assertEqual(cfg.calibrated_shop_boss_risk_weight, 1.0)
-        self.assertEqual(cfg.shop_target_safety_base, 1.15)
+        self.assertEqual(cfg.shop_target_safety_base, 1.30)
         self.assertEqual(cfg.hand_pace_safety_base, 1.05)
         self.assertEqual(cfg.shop_safety_ante3_bonus, 0.10)
         self.assertEqual(cfg.shop_safety_ante4_bonus, 0.10)

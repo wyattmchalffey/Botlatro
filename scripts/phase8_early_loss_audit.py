@@ -1,7 +1,7 @@
 """Audit early-losing seeds: find runs that die by ante <= N and dump the decision
 stream (shop buys/skips + reasons, plays, the death blind) to spot bad decisions.
 
-    PYTHONPATH=src python scripts/phase8_early_loss_audit.py --seeds 40 --max-ante 3 --show 4
+    PYTHONPATH=src python scripts/phase8_early_loss_audit.py --bot solver_policy_bot --seed 0000013 --max-ante 4
 """
 
 from __future__ import annotations
@@ -38,12 +38,26 @@ def _shop_offer(state):
     return names, packs
 
 
-def _summarize_step(state, action):
+def _summarize_step(state, action, *, shop_only=False):
     from balatro_ai.api.actions import ActionType
     from balatro_ai.api.state import GamePhase
 
     p = state.phase
     reason = (action.metadata or {}).get("reason", "")
+    search_value = (action.metadata or {}).get("search_value")
+    search_path = (action.metadata or {}).get("search_path")
+    if search_value is not None:
+        reason = f"{reason} search_value={search_value} path={search_path}".strip()
+    shop_ranker = (action.metadata or {}).get("shop_ranker")
+    if isinstance(shop_ranker, dict):
+        ranker_detail = (
+            f"ranker_score={shop_ranker.get('score')} "
+            f"ranker_margin={shop_ranker.get('margin')} "
+            f"baseline_score={shop_ranker.get('baseline_score')} "
+            f"baseline_margin={shop_ranker.get('baseline_margin')} "
+            f"baseline_key={shop_ranker.get('baseline_key')}"
+        )
+        reason = f"{reason} {ranker_detail}".strip()
     at = action.action_type
     jok = "[" + ",".join(j.name for j in state.jokers) + "]"
     if p == GamePhase.SHOP:
@@ -51,6 +65,8 @@ def _summarize_step(state, action):
         head = f"  a{state.ante} SHOP ${state.money} jok={jok} offer={offer} packs={packs}"
         act = f"-> {at.value}:{_item_label(state, action)}"
         return f"{head}\n      {act}  [{reason}]"
+    if shop_only:
+        return None
     if p == GamePhase.SELECTING_HAND:
         return (f"  a{state.ante} PLAY {state.blind} {state.current_score}/{state.required_score} "
                 f"hands={state.hands_remaining} disc={state.discards_remaining} jok={jok} "
@@ -65,9 +81,14 @@ def _summarize_step(state, action):
 
 def main() -> int:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--bot", default="basic_strategy_bot")
+    ap.add_argument("--seed", action="append", default=[])
     ap.add_argument("--seeds", type=int, default=40)
+    ap.add_argument("--offset", type=int, default=0)
     ap.add_argument("--max-ante", type=int, default=3)
     ap.add_argument("--show", type=int, default=4)
+    ap.add_argument("--all", action="store_true", help="show selected seeds even if they win or die after --max-ante")
+    ap.add_argument("--shop-only", action="store_true", help="only print shop decisions")
     args = ap.parse_args()
 
     from balatro_ai.api.actions import ActionType
@@ -77,12 +98,12 @@ def main() -> int:
     from balatro_ai.solver.seed_game import SeedGame
     from balatro_ai.solver.trajectory import _stable_seed_int
 
+    seeds = args.seed or [f"{i:07d}" for i in range(args.offset + 1, args.offset + args.seeds + 1)]
     early = []
-    for i in range(1, args.seeds + 1):
-        seed = f"{i:07d}"
+    for seed in seeds:
         sim = LocalBalatroSimulator(seed=_stable_seed_int(seed), stake="white")
         sim.state = SeedGame(seed, stake="white").initial_state()
-        bot = create_bot("basic_strategy_bot", seed=0)
+        bot = create_bot(args.bot, seed=0)
         steps = []
         for _ in range(2000):
             st = sim.state
@@ -91,17 +112,19 @@ def main() -> int:
             a = bot.choose_action(st)
             if a.action_type == ActionType.NO_OP:
                 break
-            line = _summarize_step(st, a)
+            line = _summarize_step(st, a, shop_only=args.shop_only)
             if line is not None:
                 steps.append(line)
             sim.step(a)
         final = sim.state
-        if not final.won and final.ante <= args.max_ante:
+        if args.all or (not final.won and final.ante <= args.max_ante):
             early.append((seed, final, steps))
 
-    print(f"[early-loss] {len(early)}/{args.seeds} seeds died by ante {args.max_ante}\n")
+    mode = "trace" if args.all else f"early-loss <= ante {args.max_ante}"
+    print(f"[{mode}] {args.bot}: showing {len(early)}/{len(seeds)} seeds\n")
     for seed, final, steps in early[:args.show]:
-        print(f"===== seed {seed}: DIED ante {final.ante}, "
+        result = "WON" if final.won else "DIED"
+        print(f"===== seed {seed}: {result} ante {final.ante}, "
               f"final {final.current_score}/{final.required_score} "
               f"({final.current_score / max(1, final.required_score):.0%}), "
               f"jokers={[j.name for j in final.jokers]} money=${final.money} =====")

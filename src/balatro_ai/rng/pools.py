@@ -198,19 +198,31 @@ def planet_pool_for_ante(
     )
 
 
+# Pool-flag-gated jokers (Balatro common_events.lua:2027-2028). The only two: Gros
+# Michel disappears once it has gone extinct; Cavendish only appears AFTER it does.
+# Keyed on the run pool flag ``gros_michel_extinct``. Default (no flags set = the
+# common pre-extinction state) correctly makes Cavendish UNAVAILABLE and Gros Michel
+# available -- which is exactly the case the predictor previously got wrong (it
+# predicted Cavendish, which `_record_available` then excluded -> reroll divergence).
+_JOKER_NO_POOL_FLAG: dict[str, str] = {"j_gros_michel": "gros_michel_extinct"}
+_JOKER_YES_POOL_FLAG: dict[str, str] = {"j_cavendish": "gros_michel_extinct"}
+
+
 def joker_pool_for_rarity(
     rarity: int,
     *,
     unlocked: frozenset[str] | None = None,
     used: frozenset[str] = frozenset(),
     available_enhancements: frozenset[str] = frozenset(),
+    pool_flags: frozenset[str] = frozenset(),
 ) -> tuple[str, ...]:
-    """Return the rarity pool with locked/used entries marked UNAVAILABLE.
+    """Return the rarity pool with locked/used/flag-gated entries marked UNAVAILABLE.
 
     ``unlocked`` is the set of joker keys the player's profile has unlocked
     (None = treat everything as unlocked, matching most active profiles).
     ``used`` is the set of keys already drawn this run (Showman bypasses
-    this; not modeled here yet).
+    this; not modeled here yet). ``pool_flags`` is the set of SET run pool flags
+    (G.GAME.pool_flags), used to gate Gros Michel / Cavendish.
     """
 
     pool = JOKER_POOL_BY_RARITY[rarity]
@@ -220,5 +232,10 @@ def joker_pool_for_rarity(
         is_used = key in used
         gate = ENHANCEMENT_GATED_JOKERS.get(key)
         is_gated = gate is not None and gate not in available_enhancements
-        out.append("UNAVAILABLE" if (is_locked or is_used or is_gated) else key)
+        no_flag = _JOKER_NO_POOL_FLAG.get(key)
+        yes_flag = _JOKER_YES_POOL_FLAG.get(key)
+        is_flag_gated = (no_flag is not None and no_flag in pool_flags) or (
+            yes_flag is not None and yes_flag not in pool_flags
+        )
+        out.append("UNAVAILABLE" if (is_locked or is_used or is_gated or is_flag_gated) else key)
     return tuple(out)

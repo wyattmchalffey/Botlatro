@@ -1074,16 +1074,19 @@ def _cached_joker_data(state: GameState):
         float(_obelisk_xmult_gain(a)) if a.name == "Obelisk" else 0.0
         for a in ability
     ]
-    # Swashbuckler precompute: the active Swashbuckler's contribution
-    # is the SUM of OTHER jokers' sell_value. Python's ability arm
-    # uses `current_plus_mult` when not active and the sum when active;
-    # we always store the sum-of-others into current_plus_mult for
-    # Swashbuckler so Rust just reads `meta.current_plus_mult`.
+    # Swashbuckler precompute mirrors Python's ability arm: a physical
+    # Swashbuckler uses the sum of other physical jokers' sell values;
+    # a Blueprint/Brainstorm copying Swashbuckler uses the copied
+    # joker's current_plus_mult metadata.
     if "Swashbuckler" in names:
         total_sell = sum(sell_value)
         for i, n in enumerate(names):
             if n == "Swashbuckler":
-                plus_mult[i] = total_sell - sell_value[i]
+                ability_index = ability_indices[i]
+                if ability_index == i:
+                    plus_mult[i] = total_sell - sell_value[i]
+                else:
+                    plus_mult[i] = int(_joker_current_plus(jokers[ability_index], suffix="mult"))
     result = (names, editions, plus_mult, plus_chips, xmult,
               loyalty_ready, drivers_active,
               leading_plus_mult, leading_plus_chips,

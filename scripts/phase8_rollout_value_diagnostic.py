@@ -14,7 +14,9 @@ data => noise => relabel+retrain works. If flat, it's bias => need a stronger
 rollout policy. Parallel over states. Compares against the NET's (flat) delta.
 
     PYTHONPATH=src python scripts/phase8_rollout_value_diagnostic.py \
-        --states 12 --samples 5 --max-antes 2 --jobs 8 --metrics .data/phase8_rollout_value_diag.json
+        --states 12 --samples 5 --max-antes 2 --jobs 8 \
+        --ckpt .data/phase8_value_v3_bootstrap.pt \
+        --metrics .data/phase8_rollout_value_diag.json
 """
 
 from __future__ import annotations
@@ -118,7 +120,7 @@ def main() -> int:
     ap.add_argument("--min-ante", type=int, default=4)
     ap.add_argument("--jobs", type=int, default=8)
     ap.add_argument("--rollout-bot", default="basic_strategy_bot")
-    ap.add_argument("--ckpt", default=".data/phase8_value_v0.pt")
+    ap.add_argument("--ckpt", default=".data/phase8_value_v3_bootstrap.pt")
     ap.add_argument("--metrics", required=True)
     args = ap.parse_args()
 

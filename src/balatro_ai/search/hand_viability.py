@@ -8,7 +8,7 @@ multiset.
 
 from __future__ import annotations
 
-from collections import Counter
+from collections import Counter, OrderedDict
 from dataclasses import dataclass
 from functools import lru_cache
 from math import comb
@@ -46,21 +46,32 @@ class HandDrawOdds:
         return float(self.probabilities.get(hand_type, 0.0))
 
 
-def hand_draw_odds(state: GameState, *, draw_size: int | None = None) -> HandDrawOdds:
-    """Return exact hand-pattern probabilities for a fresh draw from ``state``."""
+# Hot path: hand_draw_odds is called ~tens of thousands of times per run (shop
+# leaf eval + play viability), but the deck multiset is identity-stable across
+# the thousands of evals between card acquisitions (measured ~99.9% repeat on the
+# exact-deck path). Building the DeckModel (DeckModel.from_cards) and the rank/suit
+# _deck_signature was ~8% of total bot CPU. Memoize the whole result keyed by the
+# deck tuple's identity (O(1), no per-card scan) plus the flags/size that affect
+# the answer. The deck tuple is PINNED in the cache value so its id cannot be
+# reused by a freshly-allocated deck while cached, and an `is` guard on lookup
+# makes a stale id-collision hit impossible. Falls back to the uncached path when
+# there is no exact known_deck (standard-deck inference).
+_HDO_CACHE: "OrderedDict[tuple, tuple[tuple, HandDrawOdds]]" = OrderedDict()
+_HDO_CACHE_MAX = 256
 
-    model = DeckModel.from_state(state)
-    size = max(0, min(_hand_size(state) if draw_size is None else int(draw_size), model.total_cards))
-    joker_names = frozenset(joker.name for joker in state.jokers)
+
+def _odds_from_model(model: DeckModel, size_in: int, joker_names: frozenset[str]) -> HandDrawOdds:
+    size = max(0, min(size_in, model.total_cards))
     suit_keys = SMEARED_SUITS if "Smeared Joker" in joker_names else SUITS
     signature = _deck_signature(model, suit_keys=suit_keys)
+    four_fingers = "Four Fingers" in joker_names
     probabilities = _cached_draw_probabilities(
         signature.rank_counts,
         signature.suit_rank_counts,
         signature.dead_count,
         size,
-        4 if "Four Fingers" in joker_names else 5,
-        4 if "Four Fingers" in joker_names else 5,
+        4 if four_fingers else 5,
+        4 if four_fingers else 5,
         "Shortcut" in joker_names,
     )
     return HandDrawOdds(
@@ -69,6 +80,38 @@ def hand_draw_odds(state: GameState, *, draw_size: int | None = None) -> HandDra
         deck_size=model.total_cards,
         exact=model.exact,
     )
+
+
+def hand_draw_odds(state: GameState, *, draw_size: int | None = None) -> HandDrawOdds:
+    """Return exact hand-pattern probabilities for a fresh draw from ``state``."""
+
+    size_in = _hand_size(state) if draw_size is None else int(draw_size)
+    joker_names = frozenset(joker.name for joker in state.jokers)
+    known = state.known_deck
+    if known:
+        smeared = "Smeared Joker" in joker_names
+        size = max(0, min(size_in, len(known)))
+        key = (
+            id(known),
+            size,
+            smeared,
+            "Four Fingers" in joker_names,
+            "Shortcut" in joker_names,
+        )
+        entry = _HDO_CACHE.get(key)
+        if entry is not None and entry[0] is known:
+            _HDO_CACHE.move_to_end(key)
+            return entry[1]
+        model = DeckModel.from_cards(known, exact=len(known) == state.deck_size)
+        result = _odds_from_model(model, size_in, joker_names)
+        _HDO_CACHE[key] = (known, result)
+        _HDO_CACHE.move_to_end(key)
+        if len(_HDO_CACHE) > _HDO_CACHE_MAX:
+            _HDO_CACHE.popitem(last=False)
+        return result
+
+    model = DeckModel.from_state(state)
+    return _odds_from_model(model, size_in, joker_names)
 
 
 def hand_type_draw_probability(state: GameState, hand_type: HandType, *, draw_size: int | None = None) -> float:

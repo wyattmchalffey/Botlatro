@@ -12,6 +12,7 @@ Near-zero agreement/correlation => wiring/alignment bug. Positive-but-imperfect
 
 from __future__ import annotations
 
+import argparse
 import os
 import sys
 
@@ -65,6 +66,10 @@ def _rank_corr(order_a, order_b):
 
 
 def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--ckpt", default=".data/phase8_playpolicy_v3.pt")
+    args = ap.parse_args()
+
     from balatro_ai.api.actions import ActionType
     from balatro_ai.api.state import GamePhase
     from balatro_ai.ml.neural_search import PolicyCandidateProvider
@@ -74,7 +79,7 @@ def main() -> int:
     from balatro_ai.solver.seed_game import SeedGame
     from balatro_ai.solver.trajectory import _stable_seed_int
 
-    provider = PolicyCandidateProvider(load_checkpoint(".data/phase8_playpolicy_v0.pt"))
+    provider = PolicyCandidateProvider(load_checkpoint(args.ckpt))
     driver = SolverPolicy(play_backend="v2", play_depth=1, play_width=1, seed=0)
 
     samples, agree1, agree3, corrs = 0, 0, 0, []

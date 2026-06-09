@@ -17,6 +17,7 @@ persistent per-run RNG state that isn't wired yet.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -137,9 +138,16 @@ def _shop_card_payloads(
         return None
     try:
         n_slots = sampler.shop_slot_count(state)
+        # Run pool flags (G.GAME.pool_flags) gate a few items (Gros Michel / Cavendish).
+        # Pass the SET flag names so predict_shop_cards mirrors get_current_pool's gating
+        # (common_events.lua:2027-2028); without this it predicted gated items that the
+        # sampler excludes -> reroll fallback / divergence.
+        _flags_raw = state.modifiers.get("pool_flags") if isinstance(state.modifiers, Mapping) else None
+        pool_flags = frozenset(k for k, v in _flags_raw.items() if v) if isinstance(_flags_raw, Mapping) else frozenset()
         predicted_cards = predict_shop_cards(
             rng, ante=state.ante, n_slots=n_slots,
             used_jokers=used_jokers, used_consumables=used_consumables,
+            pool_flags=pool_flags,
         )
     except Exception:  # noqa: BLE001 — never crash the sim path
         return None

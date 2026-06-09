@@ -321,6 +321,7 @@ def predict_shop_cards(
     enable_perishables: bool = False,
     enable_rentals: bool = False,
     edition_rate: float = 1.0,
+    pool_flags: frozenset[str] = frozenset(),
 ) -> tuple[PredictedCard, ...]:
     """Predict rerollable shop-card slots."""
 
@@ -355,6 +356,7 @@ def predict_shop_cards(
             enable_perishables=enable_perishables,
             enable_rentals=enable_rentals,
             edition_rate=edition_rate,
+            pool_flags=pool_flags,
         )
         if card.set == "Joker":
             used_joker_set.add(card.key)
@@ -542,6 +544,7 @@ def predict_card(
     enable_perishables: bool = False,
     enable_rentals: bool = False,
     edition_rate: float = 1.0,
+    pool_flags: frozenset[str] = frozenset(),
 ) -> PredictedCard:
     """Predict ``create_card`` enough for solver-visible RNG surfaces."""
 
@@ -570,6 +573,7 @@ def predict_card(
             unlocked_jokers=unlocked_jokers,
             played_hand_types=played_hand_types,
             used_consumables=set(used_consumables),
+            pool_flags=pool_flags,
         )
         center_key = _pick_available(rng, pool, pool_key)
         center_set = _set_for_center(center_key, fallback=effective_type)
@@ -737,6 +741,25 @@ def predict_ouija_rank(seed_or_rng: str | BalatroRNG) -> str:
     return _pick_from_pool(_rng(seed_or_rng), ("2", "3", "4", "5", "6", "7", "8", "9", "T", "J", "Q", "K", "A"), "ouija")
 
 
+# Mirror get_current_pool (Balatro common_events.lua:2038-2050): when EVERY entry in
+# the culled pool is UNAVAILABLE (e.g. all consumables of a type already used with no
+# Showman, common at late antes), Balatro replaces the whole pool with a SINGLE default
+# item rather than letting the pick resample -- otherwise the resample loop exhausts.
+# Validated against the decompiled source. Without this, predict_shop_cards raised
+# "Unable to pick available item from Planet" on late-ante shops with many used
+# consumables and fell back to the (non-faithful) generic sampler (~35% of faithful-mode
+# runs diverged here, concentrated at antes 6-8). The 1-item default pool yields exactly
+# one rng roll on the pick, matching Balatro's pseudorandom_element over [default].
+_POOL_EMPTY_DEFAULT = {"Tarot": "c_strength", "Tarot_Planet": "c_strength",
+                       "Planet": "c_pluto", "Spectral": "c_incantation", "Joker": "j_joker"}
+
+
+def _pool_or_default(pool: tuple[str, ...], default: str) -> tuple[str, ...]:
+    if any(k != "UNAVAILABLE" for k in pool):
+        return pool
+    return (default,)
+
+
 def _current_pool(
     rng: BalatroRNG,
     card_type: str,
@@ -750,6 +773,7 @@ def _current_pool(
     unlocked_jokers: frozenset[str] | None,
     played_hand_types: frozenset[str],
     used_consumables: set[str],
+    pool_flags: frozenset[str] = frozenset(),
 ) -> tuple[tuple[str, ...], str, int | None]:
     if card_type == "Joker":
         if legendary:
@@ -760,22 +784,26 @@ def _current_pool(
             rarity_poll = float(rarity) if rarity is not None else _pseudorandom_float(rng, "rarity" + str(ante) + key_append)
             rarity_int = 3 if rarity_poll > 0.95 else 2 if rarity_poll > 0.7 else 1
         return (
-            joker_pool_for_rarity(
-                rarity_int,
-                unlocked=unlocked_jokers,
-                used=frozenset(used_jokers),
-                available_enhancements=available_enhancements,
+            _pool_or_default(
+                joker_pool_for_rarity(
+                    rarity_int,
+                    unlocked=unlocked_jokers,
+                    used=frozenset(used_jokers),
+                    available_enhancements=available_enhancements,
+                    pool_flags=pool_flags,
+                ),
+                "j_joker",
             ),
             "Joker" + str(rarity_int) + (key_append if not legendary else "") + (str(ante) if not legendary else ""),
             rarity_int,
         )
     if card_type == "Tarot":
-        return (_without_used(TAROT_POOL, used_consumables), "Tarot" + key_append + str(ante), None)
+        return (_pool_or_default(_without_used(TAROT_POOL, used_consumables), "c_strength"), "Tarot" + key_append + str(ante), None)
     if card_type == "Planet":
-        return (_without_used(planet_pool_for_ante(played_hand_types), used_consumables), "Planet" + key_append + str(ante), None)
+        return (_pool_or_default(_without_used(planet_pool_for_ante(played_hand_types), used_consumables), "c_pluto"), "Planet" + key_append + str(ante), None)
     if card_type == "Spectral":
         pool = tuple("UNAVAILABLE" if key in {"c_soul", "c_black_hole"} else key for key in _record_keys("spectrals"))
-        return (_without_used(pool, used_consumables), "Spectral" + key_append + str(ante), None)
+        return (_pool_or_default(_without_used(pool, used_consumables), "c_incantation"), "Spectral" + key_append + str(ante), None)
     if card_type == "Enhanced":
         return (ENHANCED_POOL, "Enhanced" + key_append + str(ante), None)
     if card_type == "Base":

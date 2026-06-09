@@ -10,7 +10,7 @@ Re-running after the captures already exist skips generation and just retrains.
     PYTHONPATH=src python scripts/phase8_bootstrap_train.py \
         --seeds 512 --workers 14 --epochs 20 \
         --out .data/phase8-bootstrap-basic.jsonl \
-        --ckpt .data/phase8_value_v0.pt --metrics .data/phase8_stage1_metrics.json
+        --ckpt .data/phase8_value_v3_bootstrap.pt --metrics .data/phase8_stage1_metrics.json
 """
 
 from __future__ import annotations

@@ -10,6 +10,14 @@ from balatro_ai.bots.basic_strategy.data import DANGEROUS_BOSS_BLINDS, FINAL_BOS
 from balatro_ai.bots.basic_strategy.shop_forecast import _upcoming_boss_blind_name
 from balatro_ai.bots.basic_strategy.shop_pressure import _shop_pressure
 
+# NOTE: a static blind-SKIP policy was tested 2026-06-08 and REVERTED as
+# net-negative (see PROGRESS.md). The bot never skips Small/Big blinds; skipping
+# trades a blind's cash-out + the following shop for a skip tag. A static
+# tag/ante rule (skip Small on free-value tags) regressed winrate 21->11/100
+# because the same tag at the same ante helps on some seeds and hurts on others
+# -- the value of a skip depends on the specific forgone shop + build state, i.e.
+# it needs counterfactual foresight (the whole-run-planning gap), not a heuristic.
+
 
 def _first_action_of_type(state: GameState, action_type: ActionType) -> Action | None:
     for action in state.legal_actions:

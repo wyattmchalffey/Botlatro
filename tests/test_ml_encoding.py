@@ -191,6 +191,18 @@ class TestRealCardFormat(unittest.TestCase):
         full = enc.encode_state(GameState(phase=GamePhase.SELECTING_HAND, hand=(Card("10", "Hearts"),)))
         self.assertEqual(short.hand[0], full.hand[0])
 
+    def test_exact_suit_aliases_without_first_letter_guessing(self) -> None:
+        s = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            hand=(Card("a", "spade"), Card("K", "heart"), Card("Q", "Stone")),
+        )
+        e = enc.encode_state(s)
+        self.assertEqual(e.hand[0].rank_index, enc._RANK_INDEX["A"])
+        self.assertEqual(e.hand[0].suit_index, enc._SUIT_INDEX["Spades"])
+        self.assertEqual(e.hand[1].suit_index, enc._SUIT_INDEX["Hearts"])
+        # Unknown/suitless labels must not be inferred from their first letter.
+        self.assertEqual(e.hand[2].suit_index, enc.SUIT_NONE)
+
     def test_deck_counts_capture_short_suits(self) -> None:
         s = GameState(
             phase=GamePhase.SELECTING_HAND,
@@ -260,6 +272,12 @@ class TestJokerScalingCounter(unittest.TestCase):
 
     def test_current_xmult_metadata_drives_counter(self) -> None:
         self.assertGreater(self._counter(current_xmult=4.0), 0.0)
+
+    def test_current_xmult_baseline_is_visible_value(self) -> None:
+        # XMult metadata is an absolute visible multiplier. X1.0 is lower than a
+        # ramped X4.0 joker, but it is not missing metadata.
+        self.assertGreater(self._counter(current_xmult=1.0), self._counter())
+        self.assertGreater(self._counter(current_xmult=4.0), self._counter(current_xmult=1.0))
 
     def test_nested_metadata_source(self) -> None:
         self.assertGreater(self._counter(ability={"current_mult": 12}), 0.0)

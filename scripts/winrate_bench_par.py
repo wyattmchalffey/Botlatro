@@ -14,12 +14,14 @@ import sys
 import time
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
+from dataclasses import replace
 
 
 def run_seed(args) -> dict:
     bot_name, seed, faithful = args
     # Imports inside the worker so each process initializes cleanly.
     from balatro_ai.api.state import with_derived_legal_actions
+    from balatro_ai.bots.config import DEFAULT_CONFIG, bot_config_scope
     from balatro_ai.bots.registry import create_bot
     from balatro_ai.sim.local_runner import LocalBalatroSimulator
     from balatro_ai.solver.seed_game import SeedGame
@@ -31,14 +33,15 @@ def run_seed(args) -> dict:
     sim = LocalBalatroSimulator(**kw)
     sim.state = with_derived_legal_actions(SeedGame(seed, stake="white").initial_state())
     bot = create_bot(bot_name, seed=0)
-    for _ in range(4000):
-        st = sim.state
-        if st.run_over:
-            break
-        a = bot.choose_action(st)
-        if a.action_type.value == "no_op":
-            break
-        sim.step(a)
+    with bot_config_scope(replace(DEFAULT_CONFIG, shop_audit_enabled=False)):
+        for _ in range(4000):
+            st = sim.state
+            if st.run_over:
+                break
+            a = bot.choose_action(st)
+            if a.action_type.value == "no_op":
+                break
+            sim.step(a)
     s = sim.state
     return {"won": bool(s.won), "ante": s.ante, "frac": s.current_score / max(1, s.required_score)}
 
@@ -57,6 +60,8 @@ def main() -> int:
     print(f"{bot_name} ({'faithful' if faithful else 'generic'}, {jobs} jobs): "
           f"winrate {wins}/{len(rows)} ({wins/len(rows):.1%}) in {dt:.1f}s ({dt/len(rows):.2f}s/seed wall)", flush=True)
     print("ante reached:", dict(sorted(Counter(r["ante"] for r in rows).items())), flush=True)
+    import statistics as _st
+    print(f"mean ante: {_st.mean(r['ante'] for r in rows):.3f}", flush=True)
     losses = [r for r in rows if not r["won"]]
     if losses:
         import statistics

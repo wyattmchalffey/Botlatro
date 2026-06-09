@@ -6,7 +6,7 @@ from math import ceil
 
 from balatro_ai.api.actions import Action, ActionType
 from balatro_ai.api.state import Card, GameState
-from balatro_ai.bots.basic_strategy.cache import _identity_cached_value
+from balatro_ai.bots.basic_strategy.cache import _identity_cached_value, _state_scoped_cache
 from balatro_ai.bots.basic_strategy.cards import _is_face_card_for_state
 from balatro_ai.bots.basic_strategy.data import CARD_SHARP_REPEATABILITY_WEIGHTS
 from balatro_ai.bots.basic_strategy.hand_models import _BlindContext, _PlayCandidate
@@ -69,13 +69,29 @@ def _best_play_action(state: GameState, context: _BlindContext | None = None) ->
 
 def _play_candidates(state: GameState, context: _BlindContext | None = None) -> list[_PlayCandidate]:
     context = context or _BlindContext()
+    # Memoized within the active decision_cache_scope: _play_candidates is a
+    # deterministic function of (state, context) but is re-invoked several times
+    # per decision (_best_play_action, _solve_blind, joker_ordering,
+    # preferred_hunt, discard_policy), each re-enumerating the ~play-subset
+    # candidates and re-scoring every one through Rust. The bucket is
+    # identity-guarded on the state object (so no id-reuse risk) and keyed by the
+    # frozen _BlindContext (hashable; captures played_hand_types + discards_taken,
+    # the only context inputs to scoring). Behaviour-identical to recomputation.
+    bucket = _state_scoped_cache("play_candidates", state)
+    if bucket is not None:
+        cached = bucket.get(context)
+        if cached is not None:
+            return cached
     play_actions = [
         action
         for action in state.legal_actions
         if action.action_type == ActionType.PLAY_HAND and action.card_indices
     ]
     joker_context = _prepare_joker_evaluation_context(state.jokers)
-    return [_play_candidate(state, action, context, joker_context=joker_context) for action in play_actions]
+    result = [_play_candidate(state, action, context, joker_context=joker_context) for action in play_actions]
+    if bucket is not None:
+        bucket[context] = result
+    return result
 
 
 def _play_candidate(

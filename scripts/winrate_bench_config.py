@@ -29,7 +29,7 @@ def run_seed(args) -> dict:
     from balatro_ai.solver.seed_game import SeedGame
     from balatro_ai.solver.trajectory import _stable_seed_int
 
-    cfg = replace(DEFAULT_CONFIG, **overrides) if overrides else DEFAULT_CONFIG
+    cfg = replace(DEFAULT_CONFIG, shop_audit_enabled=False, **overrides)
 
     kw = {"seed": _stable_seed_int(seed), "stake": "white"}
     if faithful:

@@ -124,7 +124,7 @@ def main() -> int:
             dropout=args.dropout, encoder=mode), val_examples=val_ex)
         corr, std = _ante_corr_std(res.model, val_ex)
         jmean, jstd, jpos, jn = _joker_removal_delta(res.model, test_states)
-        ckpt = f".data/phase8_value_{mode}_v0.pt"
+        ckpt = f".data/phase8_value_{mode}_v3.pt"
         save_checkpoint(res.model, ckpt)
         results[mode] = {
             "val_ante_corr": round(corr, 4), "val_pred_std": round(std, 4),

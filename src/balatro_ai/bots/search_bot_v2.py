@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import os
 
 from balatro_ai.api.actions import Action, ActionType
 from balatro_ai.api.state import GamePhase, GameState
@@ -20,6 +21,13 @@ from balatro_ai.search.pack_search import PackSearchConfig, best_pack_action
 from balatro_ai.search.shop_sampler import ShopSampler
 from balatro_ai.search.shop_search import ShopSearchConfig, ShopSearchContext, best_shop_action
 from balatro_ai.search.state_value import state_value_cache_scope
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, str(default)))
+    except ValueError:
+        return default
 
 
 @dataclass(slots=True)
@@ -56,7 +64,7 @@ class SearchBotV2:
                 max_play_actions=4,
                 max_discard_actions=3,
                 beam_depth=3,
-                beam_width=2,
+                beam_width=_env_int("BALATRO_SEARCH_V2_HAND_BEAM_WIDTH", 2),
                 beam_draw_samples=1,
                 beam_leaf_samples=1,
             )

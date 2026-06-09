@@ -22,17 +22,18 @@ from typing import Callable
 from balatro_ai.api.state import Card, Joker
 from balatro_ai.rules.joker_compat import is_blueprint_compatible
 
-# best_play_from_hand enumerates every 1..5-card subset and scores each in
-# pure Python — the single hottest loop in the bot's play-search (~333K
-# evals/game). Setting BALATRO_RUST_BESTPLAY=1 routes per-subset scoring
-# through the Rust batched scorer (2.1x faster) and builds the full Python
-# HandEvaluation only for the chosen winner. OFF by default: the Rust simple
-# evaluator diverges from the Python evaluator on a handful of stateful jokers
-# (Ride the Bus, Bull, Banner, Blue Joker, The Family — Rust models the
-# play-content reset that Python's projection ignores), which shifts ~1.5% of
-# play decisions and moved a 100-seed winrate 14->11. Kept as an opt-in for
-# speed-tolerant bulk work; the canonical bot stays bit-for-bit pure-Python.
-_RUST_BESTPLAY_ENABLED = os.environ.get("BALATRO_RUST_BESTPLAY", "0") == "1"
+# best_play_from_hand enumerates every 1..5-card subset and scores each -- the
+# single hottest loop in the bot's play-search (~333K evals/game). The Rust batched
+# scorer scores all subsets at once and builds the full Python HandEvaluation only
+# for the chosen winner.
+# DEFAULT ON (2026-06-08): validated winrate-neutral -- 39/200 wins, IDENTICAL to
+# pure-Python on seeds 1..200, at ~1.5x faster (1424s -> 919s, same seeds/jobs).
+# A few stateful/scaling jokers (Hologram/Blue Joker/Crafty/Acrobat) take slightly
+# different plays, but the differences are winrate-neutral and Rust actually models
+# the play-content reset the Python projection approximates. Set BALATRO_RUST_BESTPLAY=0
+# to force the pure-Python loop (parity tooling: scripts/bestplay_parity_check.py).
+# Falls back to Python automatically if balatro_core is unavailable.
+_RUST_BESTPLAY_ENABLED = os.environ.get("BALATRO_RUST_BESTPLAY", "1") != "0"
 
 # Parity-validation mode: when BALATRO_BESTPLAY_PARITY=1, every call computes
 # BOTH paths, records whether the chosen play matches, and returns the Python
@@ -460,16 +461,35 @@ def best_play_from_hand(
                 deck_size=deck_size, money=money,
                 played_hand_types=tuple(played_hand_types_this_round),
                 max_cards=max_cards,
+                with_tiebreak=True,
             )
         except Exception:  # noqa: BLE001 — never let the fast path break scoring
             return None
         if fast is None:
             return None
-        action_list, scores = fast
+        action_list, scores, detail = fast
         top = max(scores)
         tied = [idxs for idxs, sc in zip(action_list, scores) if sc == top]
         if len(tied) == 1:
             return _eval_subset(tied[0])
+        # Fast tie-break: pick the (score, chips, mult) argmax from the Rust
+        # detail (enumeration order, strict-greater keep-first — identical to the
+        # Python loop's _evaluation_sort_key), then build the full Python
+        # HandEvaluation only for that one winner. Falls back to evaluating every
+        # tied subset in Python if detail is unavailable/incomplete.
+        if detail is not None:
+            best_idxs: tuple[int, ...] | None = None
+            best_key: tuple[int, int, int] | None = None
+            for idxs in tied:  # enumeration order preserved by rust_best_play_scores
+                key = detail.get(tuple(idxs))
+                if key is None:
+                    best_idxs = None
+                    break
+                if best_key is None or key > best_key:
+                    best_key = key
+                    best_idxs = idxs
+            if best_idxs is not None:
+                return _eval_subset(best_idxs)
         best_tie: HandEvaluation | None = None
         for idxs in tied:  # enumeration order preserved by rust_best_play_scores
             ev = _eval_subset(idxs)

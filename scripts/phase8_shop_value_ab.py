@@ -6,7 +6,7 @@ calibrated to the heuristic leaf scale) via `SolverPolicy(shop_leaf_value_fn=...
 mean ante + shop-decision CPU. Play config is fixed + identical across conditions.
 
     PYTHONPATH=src python scripts/phase8_shop_value_ab.py \
-        --ckpt .data/phase8_value_v0.pt --seeds 24 --jobs 6 \
+        --ckpt .data/phase8_value_v3_bootstrap.pt --seeds 24 --jobs 6 \
         --metrics .data/phase8_shop_value_ab.json
 """
 
@@ -105,7 +105,7 @@ def _agg(rows, name):
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ckpt", default=".data/phase8_value_v0.pt")
+    ap.add_argument("--ckpt", default=".data/phase8_value_v3_bootstrap.pt")
     ap.add_argument("--seeds", type=int, default=24)
     ap.add_argument("--jobs", type=int, default=1)
     ap.add_argument("--depth", type=int, default=3)

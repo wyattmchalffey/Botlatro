@@ -6,7 +6,7 @@ compares trajectory quality (final ante / wins) and the fair speed metric
 code is touched — `SolverPolicy(play_policy=...)` injects a `SearchV2PlayPolicy`
 built with the chosen leaf.
 
-    PYTHONPATH=src python scripts/phase8_leaf_ab.py --ckpt .data/phase8_value_v0.pt \
+    PYTHONPATH=src python scripts/phase8_leaf_ab.py --ckpt .data/phase8_value_v3_bootstrap.pt \
         --seeds 16 --depth 3 --width 2 --metrics .data/phase8_leaf_ab.json
 """
 

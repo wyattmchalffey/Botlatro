@@ -10,7 +10,8 @@ check, vs the old single-traj net, whether:
 
     PYTHONPATH=src python scripts/phase8_value_relabel_retrain.py \
         --states 400 --rollouts 6 --max-antes 3 --epochs 40 --jobs 8 \
-        --ckpt-out .data/phase8_value_relabel_v0.pt --metrics .data/phase8_relabel.json
+        --old-ckpt .data/phase8_value_v3_bootstrap.pt \
+        --ckpt-out .data/phase8_value_relabel_v3.pt --metrics .data/phase8_relabel.json
 """
 
 from __future__ import annotations
@@ -147,8 +148,8 @@ def main() -> int:
     ap.add_argument("--batch-size", type=int, default=128)
     ap.add_argument("--jobs", type=int, default=8)
     ap.add_argument("--rollout-bot", default="basic_strategy_bot")
-    ap.add_argument("--old-ckpt", default=".data/phase8_value_v0.pt")
-    ap.add_argument("--ckpt-out", default=".data/phase8_value_relabel_v0.pt")
+    ap.add_argument("--old-ckpt", default=".data/phase8_value_v3_bootstrap.pt")
+    ap.add_argument("--ckpt-out", default=".data/phase8_value_relabel_v3.pt")
     ap.add_argument("--metrics", required=True)
     args = ap.parse_args()
 

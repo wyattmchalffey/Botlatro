@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+from collections import Counter
 from dataclasses import replace
 
 from balatro_ai.api.state import GameState, Joker
@@ -29,6 +31,7 @@ from balatro_ai.bots.basic_strategy.cards import (
     _joker_would_overfill_slots,
     _normal_joker_open_slots,
     _normal_joker_slots_used,
+    _uses_normal_joker_slot,
 )
 from balatro_ai.bots.basic_strategy.data import (
     ANTE_SMALL_BLIND_SCORES,
@@ -42,6 +45,7 @@ from balatro_ai.bots.basic_strategy.data import (
     JOKER_SCALING_VALUES,
     LOW_PRIORITY_JOKERS,
     RARE_HAND_JOKER_TARGETS,
+    RARE_HAND_SUPPORT_TAROTS,
     ROLE_MISSING_BONUSES,
     TEMPORARY_SCORE_JOKERS,
     TWO_PAIR_SUPPORT_JOKERS,
@@ -75,6 +79,13 @@ from balatro_ai.bots.basic_strategy.shop_pressure import _shop_hand_realism_fact
 from balatro_ai.bots.basic_strategy.shop_safety import _hand_has_natural_support, _has_real_scoring_joker
 from balatro_ai.bots.config import active_config
 from balatro_ai.rules.hand_evaluator import HandType
+
+_RARE_HAND_COMMITMENT_RELIABILITY_WEIGHT: float = float(
+    os.environ.get("BALATRO_RARE_HAND_COMMITMENT_RELIABILITY_W", "1.0")
+)
+_STENCIL_SLOT_DISCIPLINE_WEIGHT: float = float(
+    os.environ.get("BALATRO_STENCIL_SLOT_DISCIPLINE_W", "0.0")
+)
 
 
 def _replacement_upgrade_threshold(pressure: _ShopPressure, state: GameState | None = None) -> float:
@@ -211,7 +222,13 @@ def _joker_card_value(state: GameState, card: object, pressure: _ShopPressure | 
     if preview is not None:
         raw_sample_delta, relevance = preview
     relevance *= _joker_state_relevance_factor(state, joker)
-    sample_delta = raw_sample_delta * _joker_sample_reliability(score_state, joker) * durability
+    commitment_reliability = _rare_hand_commitment_reliability(score_state, joker)
+    sample_delta = (
+        raw_sample_delta
+        * _joker_sample_reliability(score_state, joker)
+        * commitment_reliability
+        * durability
+    )
     value = sample_delta * active_config().joker_sample_coefficient
     value += _normal_joker_open_slots(state) * 6 * relevance
     value += max(0, 4 - state.ante) * _early_power_bonus(name) * relevance
@@ -219,6 +236,7 @@ def _joker_card_value(state: GameState, card: object, pressure: _ShopPressure | 
     value += _joker_role_bonus(state, joker, pressure=pressure) * relevance
     value -= _unsupported_two_pair_joker_penalty(state, name)
     value -= _unsupported_rare_joker_extra_penalty(state, name)
+    value -= _stencil_slot_discipline_penalty(state, joker)
     value += _edition_bonus(joker.edition)
     value -= _boss_inactive_joker_penalty(pressure, relevance)
 
@@ -227,6 +245,8 @@ def _joker_card_value(state: GameState, card: object, pressure: _ShopPressure | 
     if _normal_joker_slots_used(state) == 0 and value < 35:
         value += 10
     value = _capped_red_card_candidate_value(state, joker, value)
+    if commitment_reliability < 1.0:
+        value *= max(0.05, commitment_reliability)
     return value
 
 
@@ -245,7 +265,13 @@ def _candidate_joker_value_for_replacement(
     if preview is not None:
         raw_sample_gain, relevance = preview
     relevance *= _joker_state_relevance_factor(state, joker)
-    sample_gain = raw_sample_gain * _joker_sample_reliability(score_state, joker) * durability
+    commitment_reliability = _rare_hand_commitment_reliability(score_state, joker)
+    sample_gain = (
+        raw_sample_gain
+        * _joker_sample_reliability(score_state, joker)
+        * commitment_reliability
+        * durability
+    )
     value = sample_gain * active_config().joker_sample_coefficient
     value += _joker_heuristic_value(state, joker, pressure=pressure) * relevance
     value += _joker_role_bonus(state, joker, pressure=pressure) * relevance
@@ -256,6 +282,8 @@ def _candidate_joker_value_for_replacement(
     value = _capped_red_card_candidate_value(state, joker, value)
     if any(existing.name == joker.name for existing in state.jokers):
         value -= 18
+    if commitment_reliability < 1.0:
+        value *= max(0.05, commitment_reliability)
     return value
 
 
@@ -278,7 +306,13 @@ def _owned_joker_value(
         score_loss, relevance = preview
     relevance *= _joker_state_relevance_factor(state, joker)
     durability = _joker_late_durability_factor(state, joker)
-    value = score_loss * active_config().joker_sample_coefficient * durability
+    commitment_reliability = _rare_hand_commitment_reliability(score_state, joker)
+    value = (
+        score_loss
+        * active_config().joker_sample_coefficient
+        * durability
+        * commitment_reliability
+    )
     value += _joker_heuristic_value(state, joker, pressure=pressure) * 0.75 * relevance
     value += _owned_role_value(state, joker, remove_index=remove_index) * relevance
     value += _edition_bonus(joker.edition)
@@ -287,6 +321,8 @@ def _owned_joker_value(
         value -= 20
     if joker.name in TWO_PAIR_SUPPORT_JOKERS and not _has_dedicated_two_pair_plan(state):
         value -= 45
+    if commitment_reliability < 1.0:
+        value *= max(0.05, commitment_reliability)
     return value
 
 
@@ -539,6 +575,25 @@ def _joker_stencil_would_fill_slots(state: GameState, joker: Joker) -> bool:
     return joker.name == "Joker Stencil" and _normal_joker_open_slots(state) <= 1
 
 
+def _stencil_slot_discipline_penalty(state: GameState, joker: Joker) -> float:
+    weight = _STENCIL_SLOT_DISCIPLINE_WEIGHT
+    if weight <= 0.0:
+        return 0.0
+    if joker.name == "Joker Stencil" or not _uses_normal_joker_slot(joker):
+        return 0.0
+    if not any(existing.name == "Joker Stencil" for existing in state.jokers):
+        return 0.0
+
+    remaining_open_slots = max(0, _normal_joker_open_slots(state) - 1)
+    penalty = 10.0 + max(0, 3 - remaining_open_slots) * 18.0
+    roles = _contextual_joker_roles(state, joker)
+    if roles & {"xmult", "scaling"}:
+        penalty *= 0.55
+    elif roles & {"mult", "chips"}:
+        penalty *= 0.75
+    return min(80.0, max(0.0, weight) * penalty)
+
+
 def _joker_sample_reliability(state: GameState, joker: Joker) -> float:
     primary = JOKER_PRIMARY_HAND.get(joker.name)
     if primary == HandType.TWO_PAIR and not _has_dedicated_two_pair_plan(state):
@@ -548,6 +603,51 @@ def _joker_sample_reliability(state: GameState, joker: Joker) -> float:
         if not _hand_has_natural_support((*state.hand, *state.known_deck), wanted):
             return 0.35 if state.ante >= 3 else 0.55
     return 1.0
+
+
+def _rare_hand_commitment_reliability(state: GameState, joker: Joker) -> float:
+    weight = _RARE_HAND_COMMITMENT_RELIABILITY_WEIGHT
+    if weight <= 0.0:
+        return 1.0
+    target = RARE_HAND_JOKER_TARGETS.get(joker.name)
+    if target is None:
+        return 1.0
+    if state.ante <= 2:
+        return 1.0
+
+    support = 0.0
+    try:
+        support += max(0.0, float(state.hand_levels.get(target.value, 1)) - 1.0) * 0.45
+    except (TypeError, ValueError, AttributeError):
+        pass
+    support += sum(1 for name in state.consumables if name in RARE_HAND_SUPPORT_TAROTS) * 0.35
+    support += _extra_duplicate_support_for_rare_hand(state, target)
+    if support >= 1.0:
+        return 1.0
+
+    base = 0.03
+    reliability = base + support * (1.0 - base)
+    reliability = max(0.05, min(1.0, reliability))
+    return 1.0 - min(1.0, weight) * (1.0 - reliability)
+
+
+def _extra_duplicate_support_for_rare_hand(state: GameState, hand_type: HandType) -> float:
+    cards = (*state.hand, *state.known_deck)
+    if not cards:
+        return 0.0
+    rank_counts = Counter(card.rank for card in cards)
+    exact_counts = Counter((card.rank, card.suit) for card in cards)
+    max_rank = max(rank_counts.values(), default=0)
+    max_exact = max(exact_counts.values(), default=0)
+    if hand_type == HandType.FOUR_OF_A_KIND:
+        return max(0.0, max_rank - 4.0) * 0.35
+    if hand_type == HandType.FIVE_OF_A_KIND:
+        return max(0.0, max_rank - 4.0) * 0.45
+    if hand_type == HandType.FLUSH_FIVE:
+        return max(0.0, max_exact - 1.0) * 0.45
+    if hand_type == HandType.FLUSH_HOUSE:
+        return max(0.0, max_exact - 1.0) * 0.30
+    return 0.0
 
 
 def _joker_role_bonus(state: GameState, joker: Joker, pressure: _ShopPressure | None = None) -> float:
