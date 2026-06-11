@@ -132,6 +132,12 @@ def summarize(rows: list[dict], *, bot_a: str, bot_b: str, faithful: bool, wall_
         for r in rows
         if r["a"]["loss_frac"] is not None and r["b"]["loss_frac"] is not None
     ]
+    from balatro_ai.bench_stats import mcnemar_exact_p, paired_delta_ci
+
+    flips_for_b = sum(1 for r in rows if not r["a"]["won"] and r["b"]["won"])
+    flips_for_a = sum(1 for r in rows if r["a"]["won"] and not r["b"]["won"])
+    better = sum(1 for d in d_ante if d > 0)
+    worse = sum(1 for d in d_ante if d < 0)
     return {
         "bot_a": bot_a,
         "bot_b": bot_b,
@@ -145,11 +151,17 @@ def summarize(rows: list[dict], *, bot_a: str, bot_b: str, faithful: bool, wall_
             "d_ante_median": _median(d_ante),
             "d_score_same_ante_loss_mean": _mean(d_score_same_ante_losses),
             "d_loss_frac_mean": _mean(d_loss_frac),
-            "better": sum(1 for d in d_ante if d > 0),
-            "worse": sum(1 for d in d_ante if d < 0),
+            "better": better,
+            "worse": worse,
             "same": sum(1 for d in d_ante if d == 0),
-            "win_flips_for_b": sum(1 for r in rows if not r["a"]["won"] and r["b"]["won"]),
-            "win_flips_for_a": sum(1 for r in rows if r["a"]["won"] and not r["b"]["won"]),
+            "win_flips_for_b": flips_for_b,
+            "win_flips_for_a": flips_for_a,
+            "win_mcnemar_exact_p": round(mcnemar_exact_p(flips_for_b, flips_for_a), 5),
+            "d_winrate": round((flips_for_b - flips_for_a) / max(1, len(rows)), 4),
+            "d_winrate_ci95": [
+                round(x, 4) for x in paired_delta_ci(flips_for_b, flips_for_a, len(rows))
+            ],
+            "d_ante_sign_p": round(mcnemar_exact_p(better, worse), 5),
         },
         "rows": rows,
     }
@@ -327,9 +339,13 @@ def _run_pairs_serial(
 def _arm_summary(rows: list[dict]) -> dict:
     losses = [r for r in rows if not r["won"]]
     aborts = [r for r in rows if not r["won"] and not r["run_over"]]
+    from balatro_ai.bench_stats import wilson_ci
+
+    wins = sum(1 for r in rows if r["won"])
     return {
-        "wins": sum(1 for r in rows if r["won"]),
-        "winrate": round(sum(1 for r in rows if r["won"]) / max(1, len(rows)), 4),
+        "wins": wins,
+        "winrate": round(wins / max(1, len(rows)), 4),
+        "winrate_ci95": [round(x, 4) for x in wilson_ci(wins, len(rows))],
         "mean_ante": _mean([r["ante"] for r in rows]),
         "median_ante": _median([r["ante"] for r in rows]),
         "ante_hist": dict(sorted(Counter(r["ante"] for r in rows).items())),
@@ -431,7 +447,10 @@ def main() -> int:
           f"(better {p['better']} / worse {p['worse']} / same {p['same']})")
     if p["d_loss_frac_mean"] is not None:
         print(f"  paired d_loss_frac mean={p['d_loss_frac_mean']:+.3f} (non-win pairs; higher is closer to clear)")
-    print(f"  win flips for {args.bot_b}: {p['win_flips_for_b']} | for {args.bot_a}: {p['win_flips_for_a']}")
+    print(f"  win flips for {args.bot_b}: {p['win_flips_for_b']} | for {args.bot_a}: {p['win_flips_for_a']} "
+          f"| McNemar exact p={p['win_mcnemar_exact_p']:.4f}")
+    lo, hi = p["d_winrate_ci95"]
+    print(f"  d_winrate {p['d_winrate']:+.4f} (95% CI {lo:+.4f}..{hi:+.4f}) | d_ante sign-test p={p['d_ante_sign_p']:.4f}")
 
     return 0
 

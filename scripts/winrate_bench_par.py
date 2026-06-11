@@ -57,8 +57,11 @@ def main() -> int:
         rows = list(ex.map(run_seed, [(bot_name, s, faithful) for s in seeds]))
     dt = time.perf_counter() - t0
     wins = sum(r["won"] for r in rows)
+    from balatro_ai.bench_stats import wilson_ci
+    lo, hi = wilson_ci(wins, len(rows))
     print(f"{bot_name} ({'faithful' if faithful else 'generic'}, {jobs} jobs): "
-          f"winrate {wins}/{len(rows)} ({wins/len(rows):.1%}) in {dt:.1f}s ({dt/len(rows):.2f}s/seed wall)", flush=True)
+          f"winrate {wins}/{len(rows)} ({wins/len(rows):.1%}, 95% CI {lo:.1%}..{hi:.1%}) "
+          f"in {dt:.1f}s ({dt/len(rows):.2f}s/seed wall)", flush=True)
     print("ante reached:", dict(sorted(Counter(r["ante"] for r in rows).items())), flush=True)
     import statistics as _st
     print(f"mean ante: {_st.mean(r['ante'] for r in rows):.3f}", flush=True)

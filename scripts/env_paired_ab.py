@@ -64,6 +64,10 @@ def main():
     print(f"  baseline : {bw}/{n} ({bw/n:.1%})  mean ante {st.mean(r['base']['ante'] for r in rows):.3f}", flush=True)
     print(f"  treat    : {tw}/{n} ({tw/n:.1%})  mean ante {st.mean(r['treat']['ante'] for r in rows):.3f}", flush=True)
     print(f"  net wins : {tw-bw:+d}   gained {len(gained)} {gained}   lost {len(lost)} {lost}", flush=True)
+    from balatro_ai.bench_stats import mcnemar_exact_p, paired_delta_ci
+    pval = mcnemar_exact_p(len(gained), len(lost))
+    lo, hi = paired_delta_ci(len(gained), len(lost), n)
+    print(f"  McNemar exact p={pval:.4f}   d_winrate {(len(gained)-len(lost))/n:+.4f} (95% CI {lo:+.4f}..{hi:+.4f})", flush=True)
 
 
 if __name__ == "__main__":

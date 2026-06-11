@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 
 from balatro_ai.api.actions import Action, ActionType
 from balatro_ai.api.state import GamePhase, GameState
+from balatro_ai.bots.no_foresight import blind_known_deck
 from balatro_ai.bots.basic_strategy.actions import (
     _action_index_for_strategy,
     _annotated_action,
@@ -706,6 +707,7 @@ class BasicStrategyBot:
         self._fallback = RandomBot(seed=self.seed)
 
     def choose_action(self, state: GameState) -> Action:
+        state = blind_known_deck(state)
         with bot_config_scope(self.config), decision_cache_scope():
             return self._choose_action_uncached(state)
 

@@ -12,6 +12,7 @@ from balatro_ai.bots.base import Bot
 from balatro_ai.bots.config import BotConfig, bot_config_scope
 from balatro_ai.bots.greedy_bot import GreedyBot
 from balatro_ai.bots.neural_shop import RankerGuidedShopBot
+from balatro_ai.bots.no_foresight import blind_known_deck
 from balatro_ai.bots.random_bot import RandomBot
 from balatro_ai.bots.search_bot import SearchBot
 from balatro_ai.bots.search_bot_v2 import SearchBotV2
@@ -31,7 +32,7 @@ class SolverPolicyBot:
         self._policy = SolverPolicy(seed=self.seed or 0)
 
     def choose_action(self, state: GameState) -> Action:
-        return self._policy.choose_action(state)
+        return self._policy.choose_action(blind_known_deck(state))
 
 
 @dataclass(slots=True)
@@ -72,6 +73,7 @@ class SolverShopBasicPlayBot:
         )
 
     def choose_action(self, state: GameState) -> Action:
+        state = blind_known_deck(state)
         with bot_config_scope(self.config):
             if (
                 self.fallback_shop_through_ante > 0
