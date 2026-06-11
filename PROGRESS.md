@@ -2913,6 +2913,26 @@
   peeks with the hand_viability draw-odds DP / K-sample averaging) and the P1.5 late-ante play
   search are now the top two winrate levers, ahead of META work.**
 
+- **2026-06-11 PERF HUNT CONCLUDED (4 resumes across session-limit windows; final 8.9h run's
+  vets landed).** Everything actionable is shipped, gated, or backlogged with verdicts:
+  SHIPPED = the 8 parity-proven fixes. GATED-CLOSED = all 3 shop knobs. The independent vets
+  re-verified the shipped items line-by-line (rejecting their own finders' candidates as
+  "already implemented in the working tree" — confirms the fixes match what fresh analysis
+  prescribes) and CORRECTED one causal story: the empty-deck rollout bug does NOT explain the
+  hide-mode bench anomaly (the deployed bot has zero clear_probability consumers — matches my
+  instrumentation; the anomaly was the hand_draw_odds cliff, already fixed+measured).
+  **Surviving prototype-and-measure backlog (hot paths verified by vets):**
+  (1) Rust shop kernel STEP 1 — batch the per-sample build-score FFI (~11-13 samples x ~22
+  marshaled kwargs per call inside shop_leaf_terms 30.9% + reroll_ev 13.4%; archetype samples
+  also miss the card cache); revised est ~1-3% deployed bot, full kernel port behind it.
+  (2) Derive-only legal-actions at hand_search.py:862-864 (`_state_after_beam_action` runs
+  sanitize+augment on every beam child BEFORE the memo; data-gen's 42% expand bucket; ~0.5-1.5%
+  data-gen; bnb.py:266 confirmed dead code; search_v2/play.py:374 only live under the P1.5 knob).
+  (3) Unvetted leftovers (limit killed their vets, mostly subsumed by #1): reroll_ev skip-when-
+  rule-blocked, shared sample-score vector, money-conditional cache key, hunt/draw-eval memos.
+  The datagen-rollout finder never completed in any attempt; its ground was largely covered by
+  plans-miner + vets.
+
 - **2026-06-11 P1.5 EXPERIMENT IN FLIGHT: endangered-blind deep-play delegation
   (`BALATRO_DEEP_PLAY_ANTE/DEPTH/WIDTH`, registry.py `_deep_play_action`).** Routes
   SELECTING_HAND decisions to a deep v2 beam when the basic bot's own redraw-aware pace model
