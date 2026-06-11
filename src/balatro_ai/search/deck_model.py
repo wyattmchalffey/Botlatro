@@ -90,14 +90,13 @@ class DeckModel:
         if state.known_deck:
             return cls.from_cards(state.known_deck, exact=len(state.known_deck) == state.deck_size)
 
-        standard = cls.from_cards(_standard_deck(), exact=False)
         visible_out_of_deck = (
             state.hand
             + _zone_cards(state.modifiers, "played_pile")
             + _zone_cards(state.modifiers, "discard_pile")
             + _zone_cards(state.modifiers, "destroyed_cards")
         )
-        return standard.remove_seen(visible_out_of_deck, strict=False)
+        return _standard_model().remove_seen(visible_out_of_deck, strict=False)
 
     @property
     def total_cards(self) -> int:
@@ -227,6 +226,20 @@ def main(argv: list[str] | None = None) -> int:
 
 def _standard_deck() -> tuple[Card, ...]:
     return tuple(Card(rank, suit) for suit in STANDARD_SUITS for rank in STANDARD_RANKS)
+
+
+# The 52-card standard model is immutable in practice (remove_seen copies its
+# Counters), so building it once saves a 52-Card allocation + Counter build on
+# every inferred-deck DeckModel.from_state call — a hot path whenever
+# known_deck is empty (the bridge, and BALATRO_NO_FORESIGHT=hide).
+_STANDARD_MODEL: "DeckModel | None" = None
+
+
+def _standard_model() -> "DeckModel":
+    global _STANDARD_MODEL
+    if _STANDARD_MODEL is None:
+        _STANDARD_MODEL = DeckModel.from_cards(_standard_deck(), exact=False)
+    return _STANDARD_MODEL
 
 
 def _zone_cards(modifiers: dict[str, object], key: str) -> tuple[Card, ...]:

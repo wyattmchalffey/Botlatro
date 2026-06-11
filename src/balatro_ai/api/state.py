@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
+from functools import lru_cache
 from itertools import combinations
 import re
 from typing import Any
@@ -247,7 +248,14 @@ class JokerEffect:
 
     @classmethod
     def from_text(cls, text: object) -> "JokerEffect":
-        raw_text = str(text or "")
+        # Pure function of the text and JokerEffect is frozen, so cached
+        # instances are safe to share. Joker.__post_init__ runs this parse on
+        # EVERY Joker construction (incl. per-transition metadata updates in
+        # forward_sim), and the distinct effect-text population is tiny.
+        return _joker_effect_from_text(str(text or ""))
+
+    @classmethod
+    def _from_text_uncached(cls, raw_text: str) -> "JokerEffect":
         lower_text = raw_text.lower()
         normalized_text = raw_text.replace("$", " ").replace("(", " ").replace(")", " ")
         current_plus = tuple(
@@ -304,6 +312,11 @@ class JokerEffect:
             if key == suffix_key:
                 return value
         return 0
+
+
+@lru_cache(maxsize=4096)
+def _joker_effect_from_text(raw_text: str) -> "JokerEffect":
+    return JokerEffect._from_text_uncached(raw_text)
 
 
 def _joker_effect_text_from_metadata(metadata: dict[str, Any]) -> str:

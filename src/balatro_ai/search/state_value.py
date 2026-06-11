@@ -168,6 +168,13 @@ def _try_rust_clear_probability(state: GameState, samples: int, seed: int) -> fl
         return None
     if state.blind not in _RUST_ROLLOUT_BLIND_SAFE:
         return None
+    if not state.known_deck and state.deck_size > 0:
+        # The Rust rollout draws only from known_deck; with an empty belief
+        # (the live bridge, BALATRO_NO_FORESIGHT=hide) it would simulate ZERO
+        # redraws while the Python twin infers standard-52-minus-visible and
+        # samples real draws — a silently biased-low clear estimate. Bail to
+        # Python so honest/bridge estimates keep Python semantics.
+        return None
     hand_rust = _cached_hand_as_rust_cards(state, balatro_core)
     if hand_rust is None:
         try:

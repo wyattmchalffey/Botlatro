@@ -5,7 +5,11 @@ from __future__ import annotations
 from collections import Counter
 
 from balatro_ai.api.state import Card, GameState
-from balatro_ai.bots.basic_strategy.cache import _freeze_for_cache, _state_scoped_cache
+from balatro_ai.bots.basic_strategy.cache import (
+    _freeze_for_cache,
+    _identity_cached_value,
+    _state_scoped_cache,
+)
 from balatro_ai.bots.basic_strategy.cards import _is_face_card_for_state, _normalize_suit, _rank_matches
 from balatro_ai.bots.basic_strategy.data import FLUSH_ARCHETYPE_HANDS
 from balatro_ai.bots.basic_strategy.hand_preferences import _dominant_suit, _preferred_hand_type
@@ -141,6 +145,24 @@ def _held_effect_multiplier(state: GameState) -> float:
 
 
 def _card_keep_scores(
+    hand: tuple[Card, ...],
+    preferred: HandType | None = None,
+    *,
+    state: GameState | None = None,
+) -> tuple[float, ...]:
+    # All hot callers pass (state.hand, preferred, state=state) with identical
+    # args for every candidate in a decision (~150-200x per play decision via
+    # _cycle_value_for_play alone) — dedupe in the decision cache.
+    if state is not None and hand is state.hand:
+        return _identity_cached_value(
+            f"card_keep_scores:{preferred}",
+            state,
+            lambda: _card_keep_scores_uncached(hand, preferred, state=state),
+        )
+    return _card_keep_scores_uncached(hand, preferred, state=state)
+
+
+def _card_keep_scores_uncached(
     hand: tuple[Card, ...],
     preferred: HandType | None = None,
     *,

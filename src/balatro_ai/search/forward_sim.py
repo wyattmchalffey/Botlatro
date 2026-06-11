@@ -3848,12 +3848,25 @@ def _known_full_deck_cards(state: GameState) -> tuple[Card, ...]:
     )
 
 
+# The only jokers whose metadata depends on deck/zone state; everything below
+# the early-exit in _jokers_with_dynamic_state_values exists solely to feed
+# these five branch arms.
+_DYNAMIC_STATE_JOKER_NAMES = frozenset(
+    {"Joker Stencil", "Stone Joker", "Steel Joker", "Driver's License", "Erosion"}
+)
+
+
 def _state_with_dynamic_joker_values(state: GameState) -> GameState:
-    return replace(state, jokers=_jokers_with_dynamic_state_values(state))
+    jokers = _jokers_with_dynamic_state_values(state)
+    if jokers is state.jokers:
+        return state
+    return replace(state, jokers=jokers)
 
 
 def _jokers_with_dynamic_state_values(state: GameState) -> tuple[Joker, ...]:
     if not state.jokers:
+        return state.jokers
+    if not any(joker.name in _DYNAMIC_STATE_JOKER_NAMES for joker in state.jokers):
         return state.jokers
 
     full_deck = _known_full_deck_cards(state)

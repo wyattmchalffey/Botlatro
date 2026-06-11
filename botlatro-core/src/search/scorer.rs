@@ -128,7 +128,11 @@ fn scorer_straight_support(cards: &[Card]) -> f64 {
 /// - `action_indices_list`: per-action card-index lists
 /// - shared joker + ctx data (matching `evaluate_simple_with_levels`'s
 ///   signature)
-/// Returns a Vec<i64> of scores (one per action).
+/// Returns a Vec<i64> of scores (one per action), or — when
+/// `with_hand_types` is set — a Vec of (score, hand_type_str) pairs so
+/// callers that need the hand type (e.g. building play candidates) can
+/// batch instead of paying one FFI call per action. The hand type was
+/// always computed internally; this just stops discarding it.
 ///
 /// Bails to Python (returns None) for any action whose hand type
 /// can't be identified by the simple path (Wild cards, etc.).
@@ -153,9 +157,11 @@ fn scorer_straight_support(cards: &[Card]) -> f64 {
                     played_hand_types=None,
                     played_count_this_hand_type=0,
                     hand_type_played_before=false,
-                    deck_size=0))]
+                    deck_size=0,
+                    with_hand_types=false))]
 #[allow(clippy::too_many_arguments)]
 pub fn py_score_play_actions_batch(
+    py: Python<'_>,
     hand: Vec<Card>,
     action_indices_list: Vec<Vec<usize>>,
     hand_levels: &Bound<'_, PyDict>,
@@ -182,7 +188,8 @@ pub fn py_score_play_actions_batch(
     played_count_this_hand_type: u32,
     hand_type_played_before: bool,
     deck_size: u32,
-) -> PyResult<Vec<Option<u64>>> {
+    with_hand_types: bool,
+) -> PyResult<PyObject> {
     let suits: Vec<Suit> = debuffed_suits.iter()
         .filter_map(|s| Suit::from_str(s))
         .collect();
@@ -260,7 +267,7 @@ pub fn py_score_play_actions_batch(
     };
 
     // Iterate actions, building (played, held) slices per action.
-    let mut scores: Vec<Option<u64>> = Vec::with_capacity(action_indices_list.len());
+    let mut scores: Vec<Option<(u64, &'static str)>> = Vec::with_capacity(action_indices_list.len());
     for indices in &action_indices_list {
         // Build played + held card lists.
         let played: Vec<Card> = indices.iter().filter_map(|&i| hand.get(i).copied()).collect();
@@ -303,9 +310,14 @@ pub fn py_score_play_actions_batch(
             &jokers, &editions, &metadata,
             &held, &played_types_vec, ctx,
         );
-        scores.push(r.map(|(_chips, _mult, score, _ht)| score));
+        scores.push(r.map(|(_chips, _mult, score, ht)| (score, ht)));
     }
-    Ok(scores)
+    if with_hand_types {
+        Ok(scores.into_py(py))
+    } else {
+        let plain: Vec<Option<u64>> = scores.into_iter().map(|s| s.map(|(score, _)| score)).collect();
+        Ok(plain.into_py(py))
+    }
 }
 
 /// Best play action across all legal 1..=5 card combinations of the

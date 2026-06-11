@@ -87,10 +87,57 @@ def _play_candidates(state: GameState, context: _BlindContext | None = None) -> 
         for action in state.legal_actions
         if action.action_type == ActionType.PLAY_HAND and action.card_indices
     ]
-    joker_context = _prepare_joker_evaluation_context(state.jokers)
-    result = [_play_candidate(state, action, context, joker_context=joker_context) for action in play_actions]
+    result = _play_candidates_batched(state, context, play_actions)
+    if result is None:
+        joker_context = _prepare_joker_evaluation_context(state.jokers)
+        result = [_play_candidate(state, action, context, joker_context=joker_context) for action in play_actions]
     if bucket is not None:
         bucket[context] = result
+    return result
+
+
+def _play_candidates_batched(
+    state: GameState,
+    context: _BlindContext,
+    play_actions: list[Action],
+) -> list[_PlayCandidate] | None:
+    """Score all play actions through ONE Rust batch call instead of one
+    FFI call per action (~218/decision). Entries the batch bails on fall
+    back to the per-action path, preserving its exact semantics (Rust
+    per-action, then Python evaluator). Returns None to use the pure
+    per-action loop (balatro_core unavailable / blind-unsafe / conversion
+    failure — the same wholesale-bail set as the per-action Rust path)."""
+
+    from balatro_ai.search.rust_bridge import rust_play_action_evals
+
+    evals = rust_play_action_evals(
+        state, play_actions, played_hand_types=context.played_hand_types
+    )
+    if evals is None:
+        return None
+    result: list[_PlayCandidate] = []
+    joker_context = None
+    for action, entry in zip(play_actions, evals):
+        evaluation = None
+        if entry is not None:
+            score, ht_str = entry
+            try:
+                hand_type = HandType(ht_str)
+            except ValueError:
+                hand_type = None
+            if hand_type is not None:
+                evaluation = _synthesize_partial_hand_evaluation(
+                    cards=tuple(state.hand[index] for index in action.card_indices),
+                    hand_type=hand_type,
+                    score=score,
+                    jokers=state.jokers,
+                )
+        if evaluation is None:
+            if joker_context is None:
+                joker_context = _prepare_joker_evaluation_context(state.jokers)
+            result.append(_play_candidate(state, action, context, joker_context=joker_context))
+            continue
+        result.append(_candidate_from_evaluation(state, action, context, evaluation))
     return result
 
 
@@ -103,6 +150,15 @@ def _play_candidate(
 ) -> _PlayCandidate:
     context = context or _BlindContext()
     evaluation = _evaluate_play_action(state, action, context, joker_context=joker_context)
+    return _candidate_from_evaluation(state, action, context, evaluation)
+
+
+def _candidate_from_evaluation(
+    state: GameState,
+    action: Action,
+    context: _BlindContext,
+    evaluation,
+) -> _PlayCandidate:
     scoring_card_indices = tuple(action.card_indices[index] for index in evaluation.scoring_indices)
     cycle_value = _cycle_value_for_play(state, action, scoring_card_indices)
     cycle_count = sum(1 for index in action.card_indices if index not in scoring_card_indices)

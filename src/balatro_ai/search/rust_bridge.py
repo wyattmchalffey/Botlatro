@@ -292,7 +292,7 @@ def rust_best_play_scores(
         import balatro_core
     except ImportError:
         return None
-    if blind_name not in RUST_BLIND_SAFE or blind_name == "The Psychic":
+    if blind_name not in RUST_BLIND_SAFE:
         return None
     rust_hand = _rust_cards_from_tuple(tuple(cards))
     if rust_hand is None:
@@ -352,6 +352,15 @@ def rust_best_play_scores(
         return None
     if scores is None or len(scores) != len(action_indices_list):
         return None
+    if blind_name == "The Psychic":
+        # Python's evaluator zeroes !=5-card plays under The Psychic (must
+        # play 5). Same post-batch adjustment shape as Eye/Mouth below; the
+        # tie-break consistency guard already degrades detail to a Python
+        # tie-break if a zeroed subset ever ties at top.
+        scores = [
+            0 if len(idxs) != 5 else sc
+            for idxs, sc in zip(action_indices_list, scores)
+        ]
     if blind_name in {"The Eye", "The Mouth"}:
         try:
             from balatro_ai.rules.hand_evaluator import (
@@ -617,3 +626,109 @@ def rust_evaluate_score_and_hand_type(
         return None
     _chips, _mult, score, ht_str = result
     return int(score), ht_str
+
+
+def rust_play_action_evals(
+    state: "GameState",
+    play_actions: list,
+    *,
+    played_hand_types: tuple = (),
+) -> list | None:
+    """Batched twin of `rust_evaluate_score_and_hand_type` for a list of
+    PLAY_HAND actions over `state.hand`: ONE FFI call scoring every action
+    instead of one call per action (~218/decision in `_play_candidates`).
+
+    Returns a list parallel to `play_actions` of `(score, hand_type_str)`
+    or None per entry (per-action Rust bail — caller falls back per-action,
+    which bails to the Python evaluator exactly as before), or None
+    wholesale to signal the caller to use its existing per-action loop.
+
+    Semantics mirror the per-action wrapper exactly: same RUST_BLIND_SAFE
+    bail, The Psychic's !=5-card plays short-circuit to (0, "High Card")
+    Python-side, and `played_hand_types` is only forwarded when a joker
+    that reads it is owned (Card Sharp / Supernova / Obelisk)."""
+
+    if not play_actions:
+        return []
+    try:
+        import balatro_core
+    except ImportError:
+        return None
+    if state.blind not in RUST_BLIND_SAFE:
+        return None
+    rust_hand = _rust_cards_from_tuple(state.hand)
+    if rust_hand is None:
+        return None
+    joker_data = rust_joker_data(tuple(state.jokers))
+    if joker_data is None:
+        return None
+    (joker_names, joker_editions, joker_plus_mult, joker_plus_chips,
+     joker_xmult, joker_loyalty_ready, joker_drivers_active,
+     joker_leading_plus_mult, joker_leading_plus_chips,
+     joker_sell_value, joker_rarity, joker_target_suit,
+     joker_target_rank, joker_obelisk_gain) = joker_data
+
+    if any(n in {"Card Sharp", "Supernova", "Obelisk"} for n in joker_names):
+        played_types_strs = [
+            ht.value if hasattr(ht, "value") else str(ht)
+            for ht in played_hand_types
+        ]
+    else:
+        played_types_strs = []
+
+    psychic = state.blind == "The Psychic"
+    batch_positions: list[int] = []
+    indices_list: list[list[int]] = []
+    for pos, action in enumerate(play_actions):
+        if psychic and len(action.card_indices) != 5:
+            continue
+        batch_positions.append(pos)
+        indices_list.append(list(action.card_indices))
+
+    batch_result: list = []
+    if indices_list:
+        from balatro_ai.rules.hand_evaluator import debuffed_suits_for_blind
+        debuffed = [s for s in debuffed_suits_for_blind(state.blind) if len(s) == 1]
+        slot_limit_raw = state.modifiers.get("joker_slot_limit", 5)
+        try:
+            joker_slot_limit = int(slot_limit_raw) if slot_limit_raw is not None else 5
+        except (TypeError, ValueError):
+            joker_slot_limit = 5
+        try:
+            batch_result = balatro_core.score_play_actions_batch(
+                rust_hand, indices_list, state.hand_levels,
+                debuffed_suits=debuffed,
+                joker_names=joker_names, joker_editions=joker_editions,
+                joker_current_plus_mult=joker_plus_mult,
+                joker_current_plus_chips=joker_plus_chips,
+                joker_current_xmult=joker_xmult,
+                joker_loyalty_ready=joker_loyalty_ready,
+                joker_drivers_active=joker_drivers_active,
+                joker_leading_plus_mult=joker_leading_plus_mult,
+                joker_leading_plus_chips=joker_leading_plus_chips,
+                joker_sell_value=joker_sell_value, joker_rarity=joker_rarity,
+                joker_target_suit=joker_target_suit,
+                joker_target_rank=joker_target_rank,
+                joker_obelisk_gain=joker_obelisk_gain,
+                money=int(state.money), joker_slot_limit=joker_slot_limit,
+                discards_remaining=int(max(0, state.discards_remaining)),
+                hands_remaining=int(max(1, state.hands_remaining)),
+                played_hand_types=played_types_strs,
+                deck_size=int(max(0, state.deck_size)),
+                with_hand_types=True,
+            )
+        except Exception:  # noqa: BLE001
+            return None
+        if batch_result is None or len(batch_result) != len(indices_list):
+            return None
+
+    out: list = [None] * len(play_actions)
+    if psychic:
+        for pos, action in enumerate(play_actions):
+            if len(action.card_indices) != 5:
+                out[pos] = (0, "High Card")
+    for slot, pos in enumerate(batch_positions):
+        entry = batch_result[slot]
+        if entry is not None:
+            out[pos] = (int(entry[0]), entry[1])
+    return out

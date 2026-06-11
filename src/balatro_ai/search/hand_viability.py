@@ -15,7 +15,7 @@ from math import comb
 
 from balatro_ai.api.state import Card, GameState
 from balatro_ai.rules.hand_evaluator import HandType
-from balatro_ai.search.deck_model import DeckModel
+from balatro_ai.search.deck_model import DeckModel, _zone_cards, card_key
 
 RANKS_LOW_TO_HIGH = ("2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A")
 RANK_INDEX = {rank: index for index, rank in enumerate(RANKS_LOW_TO_HIGH)}
@@ -58,6 +58,15 @@ class HandDrawOdds:
 # there is no exact known_deck (standard-deck inference).
 _HDO_CACHE: "OrderedDict[tuple, tuple[tuple, HandDrawOdds]]" = OrderedDict()
 _HDO_CACHE_MAX = 256
+# Content-keyed companion for the inferred-deck (no known_deck) branch, which
+# the identity-pinned cache above cannot serve.
+_HDO_INFERRED_CACHE: "OrderedDict[tuple, HandDrawOdds]" = OrderedDict()
+# Identity front layer over the content cache: hand/modifiers identities are
+# stable across the thousands of evals within a decision (modifiers is never
+# mutated in place — states are rebuilt via replace()), so this converts
+# per-call Counter+sort key construction into one content-key build per
+# decision. Both objects are pinned with `is` guards (id-reuse safe).
+_HDO_INFERRED_ID_CACHE: "OrderedDict[tuple, tuple[tuple, HandDrawOdds]]" = OrderedDict()
 
 
 def _odds_from_model(model: DeckModel, size_in: int, joker_names: frozenset[str]) -> HandDrawOdds:
@@ -110,8 +119,46 @@ def hand_draw_odds(state: GameState, *, draw_size: int | None = None) -> HandDra
             _HDO_CACHE.popitem(last=False)
         return result
 
-    model = DeckModel.from_state(state)
-    return _odds_from_model(model, size_in, joker_names)
+    # Inferred-deck path (no known_deck: the bridge, BALATRO_NO_FORESIGHT=hide).
+    # The model is a pure function of the visible-out-of-deck multiset, so a
+    # content key dedupes the standard-deck rebuild + signature scan that
+    # otherwise runs uncached on every call (~tens of thousands per run).
+    smeared = "Smeared Joker" in joker_names
+    four_fingers = "Four Fingers" in joker_names
+    shortcut = "Shortcut" in joker_names
+    id_key = (id(state.hand), id(state.modifiers), size_in, smeared, four_fingers, shortcut)
+    id_entry = _HDO_INFERRED_ID_CACHE.get(id_key)
+    if id_entry is not None and id_entry[0][0] is state.hand and id_entry[0][1] is state.modifiers:
+        _HDO_INFERRED_ID_CACHE.move_to_end(id_key)
+        return id_entry[1]
+    visible = (
+        state.hand
+        + _zone_cards(state.modifiers, "played_pile")
+        + _zone_cards(state.modifiers, "discard_pile")
+        + _zone_cards(state.modifiers, "destroyed_cards")
+    )
+    # key=repr: CardKey holds str|None fields, which plain tuple ordering
+    # cannot compare when an enhanced and plain copy of a card coexist.
+    key = (
+        tuple(sorted(Counter(card_key(card) for card in visible).items(), key=repr)),
+        size_in,
+        smeared,
+        four_fingers,
+        shortcut,
+    )
+    cached = _HDO_INFERRED_CACHE.get(key)
+    if cached is None:
+        model = DeckModel.from_state(state)
+        cached = _odds_from_model(model, size_in, joker_names)
+        _HDO_INFERRED_CACHE[key] = cached
+        if len(_HDO_INFERRED_CACHE) > _HDO_CACHE_MAX:
+            _HDO_INFERRED_CACHE.popitem(last=False)
+    else:
+        _HDO_INFERRED_CACHE.move_to_end(key)
+    _HDO_INFERRED_ID_CACHE[id_key] = ((state.hand, state.modifiers), cached)
+    if len(_HDO_INFERRED_ID_CACHE) > _HDO_CACHE_MAX:
+        _HDO_INFERRED_ID_CACHE.popitem(last=False)
+    return cached
 
 
 def hand_type_draw_probability(state: GameState, hand_type: HandType, *, draw_size: int | None = None) -> float:
