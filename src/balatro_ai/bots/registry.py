@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import os
 
-from balatro_ai.api.actions import Action
+from balatro_ai.api.actions import Action, ActionType
 from balatro_ai.api.state import GamePhase, GameState
 from balatro_ai.bots.basic_strategy_bot import BasicStrategyBot
 from balatro_ai.bots.base import Bot
@@ -53,6 +53,7 @@ class SolverShopBasicPlayBot:
     config: BotConfig | None = None
     _fallback: BasicStrategyBot = field(init=False, repr=False)
     _policy: object = field(init=False, repr=False)
+    _deep_play: object = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         from balatro_ai.solver.policy import SolverPolicy
@@ -75,6 +76,9 @@ class SolverShopBasicPlayBot:
     def choose_action(self, state: GameState) -> Action:
         state = blind_known_deck(state)
         with bot_config_scope(self.config):
+            deep_action = self._deep_play_action(state)
+            if deep_action is not None:
+                return deep_action
             if (
                 self.fallback_shop_through_ante > 0
                 and state.phase == GamePhase.SHOP
@@ -82,6 +86,59 @@ class SolverShopBasicPlayBot:
             ):
                 return self._fallback.choose_action(state)
             return self._policy.choose_action(state)
+
+    def _deep_play_action(self, state: GameState) -> Action | None:
+        """P1.5 experiment knob: from BALATRO_DEEP_PLAY_ANTE on, ENDANGERED
+        blind-phase decisions route to a deep v2 play beam (the honest
+        fork-audit's driver: 29.7% of honest losses were clearable by deep
+        play at the death blind). Endangered = the basic heuristic's best
+        immediate play, repeated for every remaining hand, still misses the
+        blind by the margin — i.e. the bot is projected to FAIL. Safe blinds
+        keep basic play (co-designed with the build, and ~30x cheaper;
+        blanket delegation measured win->loss flips). Default OFF; knobs:
+        BALATRO_DEEP_PLAY_DEPTH/WIDTH/MARGIN. Returns None for normal path."""
+
+        deep_ante = int(os.environ.get("BALATRO_DEEP_PLAY_ANTE", "0") or 0)
+        if deep_ante <= 0 or state.ante < deep_ante:
+            return None
+        if state.phase != GamePhase.SELECTING_HAND:
+            return None
+        remaining = state.required_score - state.current_score
+        if remaining <= 0:
+            return None
+        # Endangerment via the bot's OWN redraw-aware pace model: delegate
+        # only when _solve_blind projects an outright miss (hands_needed >
+        # hands_remaining). Immediate-play extrapolation was measured too
+        # imprecise (fired on clearable blinds; the beam then lost them).
+        try:
+            from balatro_ai.bots.basic_strategy.blind_solver import _solve_blind
+            from balatro_ai.bots.basic_strategy.cache import decision_cache_scope
+            from balatro_ai.bots.basic_strategy.hand_models import _BlindContext
+
+            with decision_cache_scope():
+                solution = _solve_blind(state, _BlindContext())
+        except Exception:  # noqa: BLE001
+            return None
+        if solution is None or solution.can_clear_now:
+            return None
+        if solution.hands_needed <= max(1, solution.hands_remaining):
+            return None  # bot's own pace model projects a clear -> basic play
+        if self._deep_play is None:
+            from balatro_ai.solver.policy import SolverPolicy
+
+            self._deep_play = SolverPolicy(
+                play_backend="v2",
+                play_depth=int(os.environ.get("BALATRO_DEEP_PLAY_DEPTH", "4") or 4),
+                play_width=int(os.environ.get("BALATRO_DEEP_PLAY_WIDTH", "4") or 4),
+                seed=self.seed or 0,
+            )
+        try:
+            action = self._deep_play.choose_action(state)
+        except Exception:  # noqa: BLE001 — never let the experiment knob kill a run
+            return None
+        if action is None or action.action_type == ActionType.NO_OP:
+            return None
+        return action
 
 
 @dataclass(slots=True)

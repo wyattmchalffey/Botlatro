@@ -2913,6 +2913,23 @@
   peeks with the hand_viability draw-odds DP / K-sample averaging) and the P1.5 late-ante play
   search are now the top two winrate levers, ahead of META work.**
 
+- **2026-06-11 P1.5 EXPERIMENT IN FLIGHT: endangered-blind deep-play delegation
+  (`BALATRO_DEEP_PLAY_ANTE/DEPTH/WIDTH`, registry.py `_deep_play_action`).** Routes
+  SELECTING_HAND decisions to a deep v2 beam when the basic bot's own redraw-aware pace model
+  (`_solve_blind`: hands_needed > hands_remaining, not can_clear_now) projects an outright miss.
+  Trigger iteration findings (3-seed smokes, NOT evidence of winrate — small-n outcomes are
+  trajectory-chaos-dominated; the foresight A/B showed 20% of seeds flip under ANY decision
+  perturbation): (a) blanket ante>=5 delegation = 604s/run CPU, undeployable; (b) immediate-play
+  extrapolation trigger fires on clearable blinds (no redraw model); (c) pace-model trigger v3
+  still fires at most blind STARTS (a fresh hand always extrapolates short pre-redraw) = 5-14
+  delegations/run at ~16s/run vs 12s baseline — cheap enough to GATE properly instead of
+  iterating on anecdotes. **PRE-REGISTERED GATE (`.data/deep_play_gate_v3.log`, queued behind the
+  depth-curve audits): 512 paired seeds, offset 6000, shuffle mode, v3 trigger ante>=1 d4w4.
+  Adopt if McNemar p<0.05 positive; if neutral/negative, kill THIS trigger and run the flip
+  diagnostic before any redesign.** Depth-curve audits (d3w2/d4w4 on the same 263 honest losses,
+  `.data/honest_depth_curve.log`) measure how much of the d6w6 29.7% clear rate survives at
+  deployable depth.
+
 - **2026-06-11 EIGHTH fix SHIPPED — Psychic lift in `rust_best_play_scores`** (the deployed bot's
   hottest loop dropped to full-Python for entire Psychic blinds; Psychic appears in 13/36 scanned
   seeds). The bail `or blind_name == "The Psychic"` removed; post-batch zeroing of !=5-card
