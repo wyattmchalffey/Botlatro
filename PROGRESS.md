@@ -2891,6 +2891,28 @@
   shuffle bench exactly 29/200, identical histogram, wall 358.2s** (vs 372.7-414.7s prior runs —
   fastest recorded, but wall noise ±13%; pin with bot_parity_speed.py process_time when idle).
 
+- **2026-06-11 HONEST-MODE DIAGNOSTIC REPLICATION — the play lever DOUBLES.** Re-measured the two
+  P1-aiming diagnostics on the honest information set (300 fresh seeds at offset 5M, deployed bot
+  under BALATRO_NO_FORESIGHT=shuffle; capture -> d6w6 fork audit with the fork driver now blinded
+  too via endgame_play_audit.py patch -> out-test). Artifacts: `.data/honest_caps_300.jsonl`,
+  `.data/honest_endgame_play_audit.json`, `.data/honest_endgame_out_test.json`.
+  **(1) Honest play-recoverable = 29.7% of losses (263 audited) vs 14.9% clairvoyant — the
+  late-ante play-search lever (P1.5) is ~2x the budgeted size**, and it extends EARLY: ante-1
+  losses 85.7% clearable (n=7), ante-3 50%, ante-6 37.3%, ante-8 12.5%. The honest bot's play is
+  much weaker than the clairvoyant bot's was (it lost the draw-peek), so deep search rescues far
+  more — consistent with "honest play quality was never optimized." Converting half of 29.7% of
+  the 87.7% loss mass ≈ **+13pp potential**, vs the +3-8pp originally budgeted.
+  (2) Honest ante-8 out-rate = 41.7% (10/24, Wilson ~24-61%) vs 73.7% clairvoyant (n=57) — honest
+  runs die earlier (only 24 ante-8 losses vs 57) and arrive with weaker builds/economy; the P1.1
+  route-oracle expectation should calibrate to the honest regime.
+  (3) Boss notes (honest): The Flint joins the 0%-clearable-at-death-blind club (0/7); Needle 18%,
+  House 12%, Manacle 25%, Eye 29%.
+  (4) Replication: honest winrate on this third independent range = 37/300 = 12.3%, matching the
+  12.4% certification.
+  **Priority implication: honest draw-evaluation (replace the heuristic's single-belief-sample
+  peeks with the hand_viability draw-odds DP / K-sample averaging) and the P1.5 late-ante play
+  search are now the top two winrate levers, ahead of META work.**
+
 - **2026-06-11 EIGHTH fix SHIPPED — Psychic lift in `rust_best_play_scores`** (the deployed bot's
   hottest loop dropped to full-Python for entire Psychic blinds; Psychic appears in 13/36 scanned
   seeds). The bail `or blind_name == "The Psychic"` removed; post-batch zeroing of !=5-card

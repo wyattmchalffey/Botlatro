@@ -159,6 +159,11 @@ plus optional cheap rented compute (repo's own costing: 10-50k solver-quality ru
 - **P1.5 Deploy play search late-ante.** Wire the existing d3w2 beam (Rust path) into the deployed bot for
   antes ≥5 with a death-aware objective (maximize P(clear), not EV) at must-clear blinds. The verified
   +3-8pp. Gate: paired ≥+2pp.
+  **↑ RESIZED 2026-06-11 (honest replication): honest play-recoverable = 29.7% of losses (vs 14.9%
+  clairvoyant), and it extends early (ante-1 losses 85.7% clearable, ante-3 50%). Potential ≈ +13pp,
+  ~2x the original budget, and "late-ante only" is the wrong scoping — pair it with honest
+  draw-evaluation in the heuristic (replace single-belief-sample peeks with the draw-odds DP).
+  These two are now the top winrate levers, ahead of META.**
 - **P1.6 Requirement-curve tracking.** The blind schedule is deterministic. Maintain
   projected-build-growth vs required-growth (winners 1.55×/ante, losers 1.26×) as a global feature that
   modulates shop aggression/economy (the existing `_estimated_shop_planning_required_score` only blends

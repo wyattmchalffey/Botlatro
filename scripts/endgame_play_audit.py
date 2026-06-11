@@ -35,6 +35,7 @@ def _audit_worker(cap_dict):
     from balatro_ai.api.actions import Action, ActionType
     from balatro_ai.api.state import GamePhase
     from balatro_ai.bots.config import DEFAULT_CONFIG, bot_config_scope
+    from balatro_ai.bots.no_foresight import blind_known_deck
     from balatro_ai.sim.local_runner import LocalBalatroSimulator
     from balatro_ai.solver.policy import SolverPolicy
     from balatro_ai.solver.seed_game import SeedGame
@@ -77,7 +78,12 @@ def _audit_worker(cap_dict):
             if st.phase not in active:
                 break
             try:
-                a = driver.choose_action(st)
+                # Honest-mode support: SolverPolicy is not a registry wrapper,
+                # so blind the observation explicitly. Identity no-op when
+                # BALATRO_NO_FORESIGHT is unset (the original clairvoyant
+                # oracle); under shuffle/hide this measures the HONEST
+                # deep-play headroom instead.
+                a = driver.choose_action(blind_known_deck(st))
             except Exception:
                 break
             if a is None or a.action_type == ActionType.NO_OP:
