@@ -30,7 +30,11 @@ _DEPTH = 6
 _WIDTH = 6
 
 
-def _audit_worker(cap_dict):
+def _audit_worker(task):
+    # depth/width travel WITH the task: Windows spawn workers re-import the
+    # module, so parent-side `global _DEPTH` mutations never reach them (the
+    # 2026-06-11 depth-curve runs all silently ran the 6/6 defaults).
+    cap_dict, depth, width = task
     from dataclasses import replace as dc_replace
     from balatro_ai.api.actions import Action, ActionType
     from balatro_ai.api.state import GamePhase
@@ -67,7 +71,7 @@ def _audit_worker(cap_dict):
     if required <= 0:
         return None
 
-    driver = SolverPolicy(play_backend="v2", play_depth=_DEPTH, play_width=_WIDTH, seed=0)
+    driver = SolverPolicy(play_backend="v2", play_depth=depth, play_width=width, seed=0)
     peak = int(osim.state.current_score)
     with bot_config_scope(dc_replace(DEFAULT_CONFIG, shop_audit_enabled=False)):
         for _ in range(300):
@@ -130,12 +134,13 @@ def main() -> int:
     losses = [c for c in caps if not c.get("won")]
     print(f"[audit] {len(caps)} runs, {len(losses)} losses; strong play v2 depth={_DEPTH} width={_WIDTH}", flush=True)
 
+    tasks = [(c, args.depth, args.width) for c in losses]
     if args.jobs > 1:
         from concurrent.futures import ProcessPoolExecutor
         with ProcessPoolExecutor(max_workers=args.jobs) as ex:
-            rows = [r for r in ex.map(_audit_worker, losses) if r is not None]
+            rows = [r for r in ex.map(_audit_worker, tasks) if r is not None]
     else:
-        rows = [r for r in (_audit_worker(c) for c in losses) if r is not None]
+        rows = [r for r in (_audit_worker(t) for t in tasks) if r is not None]
 
     by_ante = defaultdict(list)
     for r in rows:
