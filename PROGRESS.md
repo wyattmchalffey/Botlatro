@@ -2687,50 +2687,271 @@
   bots/basic_strategy/play_scoring.py + shop_values.py, botlatro-core/src/search/scorer.rs +
   hand_eval/evaluate.rs. See [[project_datagen_speed]].
 
+- **2026-06-09 SUPERHUMAN AUDIT + ROADMAP (17-agent workflow; `SUPERHUMAN_ROADMAP.md` is canonical).**
+  Full audit of every plan/post-mortem/kill-gate + external research; every load-bearing number
+  re-verified against the artifact that produced it. Headline findings:
+  (1) **The bar:** superhuman = >=95% white stake over >=1k random seeds (dev's stated position:
+  perfect play ~always wins white; experienced humans self-report >=95%). The "~80% human" figure
+  was unsourced and too low; the gap is ~75pp.
+  (2) **"~22-26% architecture ceiling" re-scoped:** it is the ceiling of the MYOPIC per-decision
+  argmax — every closure gate proves LOCAL optimality under a one-blind/one-shop horizon, not a
+  codebase ceiling. The two components that break it (whole-run planning; self-play value iteration
+  = the only learning paradigm that exceeds its teacher) were both fully specified
+  (NEW_CORE_PLAN sect.6, PHASE8 Stages 3-6) and never built, while every prerequisite now exists
+  (99.9% sim, ~98% faithful RNG, Rust core, 10^4-10^5 runs/day).
+  (3) **FORESIGHT LEAK (critical):** the basic_strategy play heuristic reads
+  `state.known_deck[:draw_count]` — the EXACT ordered future draws — at 12+ sites
+  (draw_evaluation.py:63,198,253,562,588,608,743; discard_state.py:32; score_projection.py:55).
+  In sim, known_deck is the true draw order (local_runner.py:2337); the bridge supplies ()
+  (api/state.py:478). So every reported winrate AND every near-optimality kill-gate (the 14.9%
+  play oracle, the 73.7% out-test, the construction kill-switch, the flat value-leaf) certified a
+  CLAIRVOYANT-draws player; no no-foresight ablation existed anywhere.
+  (4) **Evidence corrections:** "~42% play-recoverable" is REFUTED by the repo's own oracle
+  (`.data/endgame_play_audit.json`: 14.9% of losses clearable, 10.5% at ante 8 — play is +3-8pp,
+  not a pillar); the construction kill-switch v1 numbers (1.7/5.6, "~92% unrecoverable") were
+  retracted (v2: 5.0 vs 4.8, 26.5% flippable); S0 closed only the REACTIVE foresight route (a
+  planner can READ future offers via the seed predictors; a self-play policy SHAPES the basin —
+  suit concentration had zero variance only because the baseline never stacks suits); "shop closed"
+  is proven only for per-decision micro-ranking under the myopic value fn.
+  (5) **Unlisted candidate causes:** antes 1-2 were never kill-gate tested (construction forks =
+  antes 3-5 only) yet both adopted winrate levers were early-game fixes; consumable/leveling
+  allocation audited only at n=24; benches unpowered (100-seed unpaired MDE ~11pp; Blueprint/dig/
+  planet-scaling/safe-margin rejected on noise-level reads; largest bench ever 384 runs; zero
+  p-value/CI code; no live-bridge bench since 2026-05-24).
+  **Roadmap (gated):** P0 fix instruments (foresight ablation + re-baseline; McNemar/CI + one
+  overnight 1-2k paired certification; faithful-mode default; late-ante RNG fixtures vs Immolate)
+  -> P1 whole-run planner (clairvoyant route-oracle go/no-go on ~100 lost seeds; counterfactual
+  skip decider; multi-shop sequence search; boss-prep for the five 0%-clearable bosses = 59/316
+  deaths; deploy d3w2 play beam late-ante with P(survive) objective) -> P2 self-play value
+  iteration (TD(lambda)+target net+candidate-conditioned arch on 10k-100k ON-POLICY planner runs,
+  as the planner leaf, iterated) -> P3 1k-seed honest certification + live-bridge run.
+
+- **2026-06-09 P0.1 SHIPPED: `BALATRO_NO_FORESIGHT` information-set ablation
+  (`src/balatro_ai/bots/no_foresight.py`).** Env-gated blinding at the bot OBSERVATION boundary
+  (`BasicStrategyBot.choose_action`, `SolverShopBasicPlayBot`, `SolverPolicyBot` in registry.py),
+  so the play heuristic, solver shop search, and every rollout forked from the observed state plan
+  against the same honest belief; the runner's true state is untouched. Modes: `shuffle` =
+  multiset-preserving deterministic belief order (canonical-sort then keyed shuffle -> pure
+  function of the multiset, PYTHONHASHSEED-independent; the multiset IS honest info — the in-game
+  deck view shows it), `hide` = known_deck=() (today's bridge reality), unset/0 = identity no-op.
+  7 unit tests (tests/test_no_foresight.py) + 279 targeted bot/solver tests pass. Smoke (3 seeds):
+  modes visibly change trajectories (seed 3: clairvoyant reaches ante 8, shuffle dies ante 6).
+  **RESULTS — the leak was worth ~1/3 of the reported winrate.** 3-arm 200-seed bench
+  (generic, seeds 1..200, PYTHONHASHSEED=0, `.data/no_foresight_bench_200.log`):
+  control (clairvoyant) **43/200 = 21.5%** (Wilson 16.4-27.7%) mean ante 6.46; shuffle (honest
+  multiset) **29/200 = 14.5%** (10.3-20.0%) mean ante 6.12; hide (bridge-today) **29/200 = 14.5%**
+  mean ante 5.83. Paired confirmation (`env_paired_ab.py BALATRO_NO_FORESIGHT shuffle 200 12 0`,
+  `.data/no_foresight_paired_200.log`): **d_winrate -7.0pp (95% CI -13.0..-1.0), McNemar exact
+  p=0.034** (gained 12 / lost 26 — 19% of seeds flip either way, so foresight reshapes whole
+  trajectories, not just marginal hands). Honest-mode deaths shift EARLY (ante<=2 deaths: 2
+  clairvoyant -> 8 shuffle / 16 hide). Multiset-vs-nothing (shuffle vs hide) is winrate-neutral
+  at n=200 but +0.29 mean ante. IMPLICATIONS: (1) the honest baseline is ~14.5%, not 19.5-22%;
+  every historical winrate was clairvoyant-inflated. (2) The near-optimality kill-gates (play
+  oracle 14.9%, out-test 73.7%, construction kill-switch, flat value-leaf) certified a clairvoyant
+  player — honest play quality has NEVER been measured/optimized and reopens as a lever. (3) Part
+  of the 7pp is honestly recoverable: the multiset is legitimate info (in-game deck view); the
+  heuristic should replace ordered peeks with the existing draw-odds DP / K-sample determinization
+  instead of the single belief sample shuffle-mode gives it. (4) Sim->bridge transfer for the play
+  heuristic = hide-mode today (14.5%, mean ante 5.83) until the bridge adapter tracks the deck
+  multiset.
+  **1000-SEED HELD-OUT CERTIFICATION (seeds 1001..2000, paired, PYTHONHASHSEED=0,
+  `.data/no_foresight_paired_1000_holdout.log`): clairvoyant 178/1000 = 17.8% (Wilson 15.6-20.3%)
+  vs honest-shuffle 124/1000 = 12.4% (Wilson 10.5-14.6%); d = -5.4pp (95% CI -8.2..-2.6),
+  McNemar exact p = 0.0002; 202/1000 seeds flip either way; mean ante 6.38 -> 5.73.**
+  TWO compounding inflations are now quantified: dev-seed optimism (21.5% on seeds 1..200 vs
+  17.8% held-out, ~3.7pp) and foresight (-5.4pp). **The certified honest held-out baseline is
+  12.4%** — the project's true starting point for the superhuman roadmap (~83pp gap), not the
+  19.5-22% in historical docs. All future winrate claims: held-out seeds +
+  BALATRO_NO_FORESIGHT=shuffle + paired with CI, or they don't count.
+
+- **2026-06-10 P0.2 (first half) SHIPPED: statistical inference in benches
+  (`src/balatro_ai/bench_stats.py` + tests/test_bench_stats.py).** Pure-stdlib Wilson CI, exact
+  McNemar (= sign test), and paired-delta Wald CI; wired into `winrate_bench_par.py`,
+  `winrate_bench_config.py` (winrate lines now print 95% CIs), `bot_paired_ab.py` (paired block now
+  reports `win_mcnemar_exact_p`, `d_winrate` + CI, `d_ante_sign_p`), and `env_paired_ab.py`.
+  Hand-checked: the 2026-06-08 skip A/B (lost 15 / gained 5) computes p=0.041 — that rejection was
+  legitimately significant; 39/200 has Wilson CI 14.6-25.5%, which is how wide the old canonical
+  number always was. Remaining P0.2: the overnight 1-2k paired certification of the adopted-knob
+  stack + powered re-tests of the four noise-rejected knobs (Blueprint fix, dig, planet-scaling,
+  safe-margin).
+
+- **2026-06-10 SHOP-KNOB SPEED GATES (paired, 512 seeds each, honest shuffle mode, fresh offsets,
+  `.data/shop_knob_speed_gates.log`):** reroll_samples 4->2 **REJECTED** (-4.5pp, 95% CI
+  -7.5..-1.5, McNemar p=0.0044 — reroll-EV sampling quality genuinely matters; keep 4);
+  beam_width 3->2 **NEUTRAL** (-0.98pp, CI -4.2..+2.3, p=0.64, mean ante +0.05 — NOT adopted for
+  the deployed bot on a negative-leaning point estimate; candidate for bulk data-gen throughput
+  only); **depth 2->1 CATASTROPHIC FAIL** (`.data/shop_knob_gate3_depth.log`, rerun after the
+  overnight run died to an environmental ProcessPoolExecutor hang): 8.8% -> 1.6%, d = -7.2pp
+  (CI -9.7..-4.8), p<0.0001. VERDICT: the shop search budget is load-bearing at every notch —
+  NO free speed in shop knobs; speed must come from making the same search cheaper (see perf
+  fixes below), not from less search. Honest baseline replicates on fresh ranges (13.1% at
+  offsets 2000/3000, 8.8% at 4000 — seed-range variance is real, use large held-out samples).
+
+- **2026-06-10 HIDE-MODE PERF CLIFF FOUND & FIXED (behavior-identical, equivalence-proven):
+  inferred-deck `hand_draw_odds` was completely uncached.** A perf-bug-hunt workflow (6 finders;
+  5 hit the session limit — only plans-miner completed) + first-hand verification found the
+  mechanism behind the "hide slower than clairvoyant" bench anomaly: `hand_draw_odds`'s id-pinned
+  memo only engages `if known:` (search/hand_viability.py); with `known_deck=()` (the BRIDGE
+  reality + BALATRO_NO_FORESIGHT=hide) every call — tens of thousands/run inside the shop 54.5%
+  bucket — fell through to `DeckModel.from_state`, which allocated a fresh 52-Card standard deck +
+  Counter (`_standard_deck()` had no cache), copied it in `remove_seen`, and re-scanned the deck
+  signature. FIX: (a) lazy module-level `_standard_model()` singleton in deck_model.py
+  (`remove_seen` copies, Cards frozen -> safe to share); (b) content-keyed bounded memo for the
+  inferred branch of `hand_draw_odds`, keyed on (visible-out-of-deck card_key multiset [sorted
+  key=repr — CardKey holds str|None, plain sort crashes on enhanced+plain copies of one card],
+  draw size, Smeared/FourFingers/Shortcut) — exactly the inputs the computation reads, so
+  behavior-identical by construction. VERIFIED: 376 cached results cross-checked against fresh
+  computation on a live hide-mode run (all match); 3 full seeds trajectory-identical cache-on vs
+  cache-off; 294 bot/solver/viability tests pass. MEASURED (process_time, hide mode): seed 3
+  +3.3%, seed 7 +17.7%, seed 12 +21.4% (~10-20% for bridge/hide workloads; ~0% for shuffle-mode
+  benches where the id-pinned memo already engages). The deployed honest path no longer pays a
+  latent tax.
+
+- **2026-06-10 (cont.) THREE MORE behavior-identical perf fixes shipped (state-alloc finder,
+  trajectory-parity PROVEN: 3 seeds x all 3 foresight modes reproduce pre-change
+  won/ante/score exactly; 551 tests pass):**
+  (1) **`_jokers_with_dynamic_state_values` early-exit** (search/forward_sim.py): the epilogue of
+  EVERY simulate_* transition (play/discard/buy/sell/reroll/pack/cash-out/blind-select + the Rust
+  play fast path) unconditionally built the full-deck tuple, materialized 4 zone lists, ran 3
+  ~50-card enhancement scans, and replace()'d the state — even when none of the only five jokers
+  it can affect (Stencil/Stone/Steel/Driver's License/Erosion) are owned (the overwhelmingly
+  common case). Now: frozenset name guard -> return state.jokers unchanged; skip the replace when
+  nothing changed. Est ~1.5-2% data-gen, ~0.5-1% deployed bot (unmeasured).
+  (2) **`JokerEffect.from_text` lru_cache** (api/state.py): Joker.__post_init__ ran a 12-regex
+  effect parse on EVERY Joker construction, including every per-transition scaling-joker metadata
+  update in forward_sim. JokerEffect is frozen+slots and the parse is pure -> module-level
+  lru_cache(4096) on the text. (3) **idempotent `blind_known_deck`** (bots/no_foresight.py): the
+  composed bots blind at the wrapper AND again in the delegated BasicStrategyBot.choose_action
+  (~2x repr-sort+md5+shuffle of ~50 cards per decision in shuffle mode); the second call's output
+  is provably identical (multiset-invariant seed + canonical sort), so an id-pinned guard now
+  returns the same object. DEFERRED (prototype+measure later, parity claim needs care):
+  derive-only legal-actions for the search beams — sanitize+augment passes are claimed no-ops on
+  freshly-derived states (the from_mapping derive branch already trusts bare derive output) but
+  the USE_CONSUMABLE re-enumeration equivalence should be proven with a differ before switching
+  the 3 beam call sites.
+
+- **2026-06-10 (cont.) FOURTH fix: `_card_keep_scores` decision-cache memo (play-path finder;
+  parity re-proven, 277 tests pass).** `_cycle_value_for_play` (play_scoring.py:529) called
+  `_card_keep_scores(state.hand, preferred, state)` with IDENTICAL args for every one of the
+  ~150-200 play candidates per decision (per-card joker scans inside; ~72us/call micro-measured);
+  five more call sites (discard_policy, blind_solver, preferred_hunt, blind_setup, pack_targets)
+  pass the same args. Now `_identity_cached_value(f"card_keep_scores:{preferred}", state, ...)`
+  when `hand is state.hand` — the un-memoized twin of the already-cached `_preferred_hand_type`.
+  Trajectory parity: 3 seeds x 3 foresight modes IDENTICAL. Finder est ~3-5% of deployed-bot
+  runtime (unmeasured; take with the 3x optimism discount).
+  **Play-path finder backlog (evidenced, not yet implemented):** (a) `_play_candidates` scores
+  218 subsets via 218 per-subset FFI calls — the BATCHED score_play_actions_batch is only reached
+  via best_play_from_hand, NOT via _play_candidates (micro-measured 7.29ms loop vs 0.49ms batch,
+  15x; needs scorer.rs to also return hand-type strings — it already computes them); the prior
+  sweep's "both hot paths use the batched path" note was WRONG. (b) hunt/draw-evaluation pipeline
+  re-evaluates identical (kept, hand_type) target draws up to 3x per behind-pace decision —
+  decision-scoped content memos mirroring _best_score_from_cards. (c) HIDE-PATH SIBLING:
+  `_projected_score_after_discard` runs up to 5 best-play enumerations per discard action with
+  known_deck=() vs 1 with it populated (score_projection.py:86-89 _optimistic_completion_score,
+  4 synthetic completion pools x 637-subset batches) — the remaining mechanism of the hide-mode
+  wall gap; same class as the fixed hand_draw_odds guard.
+
+- **2026-06-10 (cont.) FIFTH+SIXTH fixes (rust-boundary finder) + 200-SEED PARITY CONFIRMATION
+  of the whole day's batch.** (5) **Empty-known_deck Rust-rollout bail**
+  (search/state_value.py `_try_rust_clear_probability`): the Rust rollout draws ONLY from
+  known_deck (rollout.rs), so with an empty belief it simulates ZERO redraws while the Python twin
+  infers standard-52-minus-visible — a silently biased-low clear estimate on the bridge/hide path.
+  Now bails to Python when `not known_deck and deck_size > 0`. Instrumented: the deployed bot
+  makes 0 clear_probability calls (it's a data-gen/solver-play component), so this is
+  PROPHYLACTIC — but P1.5 (solver play search in the deployed bot, honest mode) would have
+  stepped directly on it. (6) **Identity front-layer over the inferred hand_draw_odds cache**
+  (hide/bridge only): hand/modifiers identities are decision-stable and modifiers is never
+  mutated in place (grepped), so per-call Counter+repr-sort key builds collapse to one per
+  decision. **PARITY AT SCALE: re-ran the full 200-seed shuffle bench — exactly 29/200, identical
+  ante histogram {1:4,2:4,3:8,4:8,5:44,6:45,7:31,8:56}, mean ante 6.115 — the entire 6-fix batch
+  is behavior-preserving at n=200.** Wall-clock on shuffle within pool noise (the measured win is
+  hide-mode's 10-20% process_time + the est ~3-5% from _card_keep_scores; quantify with
+  bot_parity_speed.py when the box is idle).
+  **Backlog status (vetting still pending — session limits killed every vet pass):** batch-FFI
+  _play_candidates (15x micro-measured), hunt/draw-eval content memos, _projected_score_
+  after_discard hide sibling, Psychic blind-safe drift (4 sets), Serpent fingerprint check,
+  derive-only legal-actions, Rust shop kernel port (raw est 8-12%), bnb.py wiring, data-gen
+  beam_depth 3->2 gate, SHOP_BEAM_WIDTH=2 for bulk data-gen, P2 build-vs-rent memo.
+
+- **2026-06-11 SEVENTH fix SHIPPED — batch-FFI `_play_candidates` (the headline find).**
+  `_play_candidates` scored its ~218 subsets via 218 per-call `rust_evaluate_score_and_hand_type`
+  FFI round-trips (each re-marshalling 14 per-joker lists); the batched Rust scorer existed but
+  was only reachable via `best_play_from_hand` (the prior sweep's "both hot paths are batched"
+  note was wrong; micro-measured 7.29ms loop vs 0.49ms batch = 15x). CHANGES: (a) scorer.rs
+  `score_play_actions_batch` gains `with_hand_types=False` — returns (score, hand_type) pairs
+  (the hand type was always computed internally and discarded; existing callers see byte-identical
+  returns); (b) new `rust_bridge.rust_play_action_evals` — batched twin of the per-action wrapper
+  with EXACT semantics (same RUST_BLIND_SAFE bail, Psychic !=5-card -> (0,"High Card")
+  Python-side, Card Sharp/Supernova/Obelisk-conditional played_hand_types, same ctx fields);
+  (c) `_play_candidates` tries the batch, falls back per-action for individually-bailed entries
+  (which then bail to the Python evaluator exactly as before); `_candidate_from_evaluation`
+  extracted to share construction. VERIFIED: **25,472 candidates across 3 full games — 0
+  mismatches** vs the per-action path (score/hand_type/scoring_indices/cycle all equal);
+  trajectory parity 3 seeds x 3 modes IDENTICAL; 101 Rust + 561 Python tests pass; **200-seed
+  shuffle bench exactly 29/200, identical histogram, wall 358.2s** (vs 372.7-414.7s prior runs —
+  fastest recorded, but wall noise ±13%; pin with bot_parity_speed.py process_time when idle).
+
+- **2026-06-11 EIGHTH fix SHIPPED — Psychic lift in `rust_best_play_scores`** (the deployed bot's
+  hottest loop dropped to full-Python for entire Psychic blinds; Psychic appears in 13/36 scanned
+  seeds). The bail `or blind_name == "The Psychic"` removed; post-batch zeroing of !=5-card
+  subsets added (same adjustment shape as the existing Eye/Mouth block — Python's evaluator
+  zeroes them; the tie-break consistency guard already degrades to a Python tie-break if a zeroed
+  subset ties at top, so detail stays safe). VERIFIED: direct flag-on/off best-play comparison at
+  live Psychic decisions (scripts/_psychic_parity_probe.py): 0 mismatches (n=3 decisions — thin,
+  but backed by the structural argument + seed 3's full trajectory traversing a Psychic blind
+  unchanged); 3-seed x 3-mode trajectory parity re-PROVEN. DEFERRED: the state_value twins
+  (_try_rust_batch_scores/_try_rust_best_play_action, data-gen only, needs argmax rerouting) and
+  the Serpent fingerprint check.
+
+- **2026-06-10 perf-hunt leads (found, NOT yet vetted/executed — session limit cut the vetting):**
+  (1) Rust shop kernel port: RUST_PORT_PLAN.md:964-968 names shop Python ("reroll_ev,
+  shop_item_value, shop_leaf_terms, _record_available") the "largest unported hot path"; still
+  54.5% of the deployed bot. Batched-FFI port of shop_leaf_terms term aggregation is the shape
+  that historically paid. (2) Orphan `solver/search_v2/bnb.py` (Tier-2 #5 branch-and-bound play
+  search) is fully written, never imported anywhere — wire as a SolverPolicy play_backend and A/B
+  vs the data-gen expand+enum 42% bucket. (3) P2 decision memo needed: full-Rust run-level
+  self-play engine (FFI once per RUN — every per-decision hybrid measured <=1x) vs renting cores
+  ($3-50/batch); the rng/pseudohash.rs + tw223 Rust pieces in the plan's diagram were never built.
+
 ## Next Steps
 
-> **Top priority:** improve the general unseeded bot through the neural candidate-ranker/search
-> path, not seed-known selectors or more local heuristic tuning. Use the portfolio diagnostic
-> only to expose complementarity.
+> **Top priority (2026-06-09): execute `SUPERHUMAN_ROADMAP.md`.** The shop-ranker steps that
+> previously lived here are superseded — per-decision shop work is closed, and the audit re-scoped
+> the remaining path to: fix the instruments, then whole-run planning, then self-play value
+> iteration. Do not resume shop micro-ranking, static META rules, reactive basin classifiers, or
+> imitation-only training (all measured-closed; see roadmap Part 5).
 
-1. Stop treating deep shop labels as a one-winner classification problem. Acceptable-set,
-   pairwise, and confidence-aware diagnostics now exist; `confidence_advantage_tie_mse` is wired
-   but needs a much larger solver-confirmed comparison set before it can be trusted. The current
-   merged 54-candidate-label set shows positive validation lift, but not safe calibration. Judge by
-   held-out regret, near-best/acceptable-set accuracy, confidence-gated lift, and both conditional
-   and covered-state harmful override rates, not top-1 alone.
-2. Use the 64-state capture-only pool for label-design experiments. Prefer the diverse targeted
-   subset path (`phase8_select_shop_state_pool.py`) before relabeling, and avoid selecting states
-   that fail to produce at least two executable probe actions. Fresh2 is exhausted; continue on
-   `.data/phase8_capture_pool_v3_128_fresh3.jsonl`, selecting non-overlapping 16-state slices with
-   the marginal balance selector. Relabel subsets through `--input-records`; avoid scaling r8
-   blindly because the 16-state r8 gate cost 47.6 minutes and still had split-half agreement
-   `0.25`.
-3. Keep the ranker as a prior or conservative override unless the uncertainty-aware gate proves
-   safe. The current mean/attention models can learn some ordering, but train-side threshold
-   calibration does not transfer yet, so confidence calibration is not safe enough to replace the
-   shop heuristic.
-4. Prioritize deployment-disagreement labels before more generic pool labels: scale
-   `phase8_ranker_override_capture.py` on fresh held-out seeds, then solver-confirm the captured
-   ranker-vs-baseline actions with enough wall time/horizon to be meaningful. Keep strict SEM-gated
-   positive acquisition (`max_sem=0.45` first) for build-forward `buy`/`open_pack` choices, and
-   treat `end_shop`/skip-economy proposals as a separate action family until their cheap labels
-   stop producing solver-confirmed false positives.
-5. Add winning-trajectory backward reanalysis as the next late-game label source: capture shop
-   snapshots from ante-8 wins and near-wins, branch late shops across legal alternatives, roll
-   forward with paired RNG, label by win/ante margin/economy, then gradually move the branch point
-   earlier only after late-shop labels are clean.
-6. Use `phase8_shop_confidence_audit.py` after every cheap mixed block before spending r8/sweep
-   time. Keep wins eligible, but treat `calibration_only` and weak mixed cheap blocks as
-   calibration/holdout unless they produce r8-confirmed positives; do not blindly append them to
-   training pools.
-7. For trained shop-ranker checkpoints, run override-capture plus r8 exact-proposal audit before
-   any live A/B. Only spend A/B compute if the checkpoint produces positive, not merely ambiguous,
-   deployment-disagreement labels on fresh seeds.
-8. Run paired unseeded holdout A/Bs against `solver_shop_basic_play_bot` and `basic_strategy_bot`
-   on contiguous seed ranges only after the r8 override gate passes. Promote nothing until
-   held-out winrate or regret improves at comparable compute.
-9. Scale only after the above gates: larger candidate datasets, batched inference, then iterative
-   search-improvement targets where ranker-guided search creates better labels for the next model.
-10. Keep sim/RNG validation as the regression gate. The two deferred minor sim bugs (Drunkard sell,
-   Credit Card reroll) can be fixed any time, but they are not blocking the current neural probe.
+**P0 — fix the instruments (~1 week):**
+1. [IN PROGRESS] No-foresight re-baseline: `BALATRO_NO_FORESIGHT=shuffle|hide` shipped
+   (bots/no_foresight.py); 3-arm 200-seed bench running -> re-baseline every winrate claim on the
+   honest information set, then re-run the key kill-gates (play oracle, out-test) honest-mode
+   before trusting their magnitudes again.
+2. Add McNemar p / Wilson CI to `bot_paired_ab.py` + `winrate_bench_config.py` (~20 lines); run
+   ONE overnight 1-2k-seed paired-CRN certification of current config vs pre-ECON_W baseline;
+   batch re-test the four noise-rejected knobs (Blueprint fix, dig, planet-scaling, safe-margin)
+   properly powered.
+3. Default benches to faithful mode (divergence is ~2% now; generic mode no longer earns its
+   distribution mismatch).
+4. Late-ante RNG fixtures for the never-audited transition classes (BUY, OPEN_PACK/
+   CHOOSE_PACK_CARD, SELECT/SKIP_BLIND, stochastic-joker plays, stochastic bosses) at antes 6-8;
+   cross-check predictors vs Immolate; fix the two deferred sim bugs (Drunkard sell, Credit Card
+   reroll) while in there.
+5. Pre-register the target: superhuman = >=95% honest white-stake over >=1k seeds;
+   information-set-honest deployed bot (no seed/true-future reading at decision time); the
+   clairvoyant planner is an OFFLINE diagnostic/label tool only.
+
+**P1 — whole-run planner (~3-6 weeks):** clairvoyant route-oracle on ~100 honest-mode lost seeds
+(GATE: <30% flip = re-diagnose; expect 50-80%); counterfactual skip decider (sample the forgone
+shop vs the tag); multi-shop buy-sequence search (NEW_CORE_PLAN sect.6); boss-prep mode for the
+five 0%-clearable bosses (59/316 deaths; boss identity visible all ante); deploy the d3w2 play
+beam late-ante with a P(survive) objective (+3-8pp verified); requirement-curve tracking from
+ante 1 (winners 1.55x/ante vs losers 1.26x).
+
+**P2 — self-play value iteration (~2-3 months):** V(state)->P(win) on 10k-100k ON-POLICY planner
+runs (TD(lambda) + target network + candidate-conditioned architecture — the three things that
+each worked and were never combined), used as the planner's plan-horizon leaf, iterated
+generate->train->redeploy. GATE per iteration: powered paired holdout; kill after 2 flat
+iterations. Shop re-enters here legitimately as plan-horizon value, not micro-ranking.
+
+**P3 — certification:** 1k+ seed honest faithful-sim certification + live-bridge run (sim->real
+never measured for any current-generation config); optionally publish vs BalatroBench.

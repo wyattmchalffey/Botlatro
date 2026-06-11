@@ -1,5 +1,11 @@
 # Phase 8 Current Status
 
+> **SUPERSEDED 2026-06-09:** the shop-ranker program below is closed (per-decision shop work is a
+> measured dead end), and the "Next Work" list no longer reflects priorities. The current plan is
+> `SUPERHUMAN_ROADMAP.md` (repo root): P0 fix instruments (incl. the known_deck foresight leak) ->
+> P1 whole-run planner -> P2 self-play value iteration. This file is kept as the shop-ranker
+> post-mortem record.
+
 Last updated after the quality-filtered ranker override gate.
 
 ## Short Version
