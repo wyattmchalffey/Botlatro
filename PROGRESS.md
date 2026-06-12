@@ -2950,6 +2950,24 @@
   `.data/honest_depth_curve.log`) measure how much of the d6w6 29.7% clear rate survives at
   deployable depth.
 
+- **2026-06-12 P1.5 GATE v3 VERDICT: FAIL, decisively — the pace-trigger delegation is DEAD.**
+  512 paired seeds (offset 6000, honest shuffle, d4w4, budget 25,
+  `.data/deep_play_gate_v3.log` + per-pair rows `.data/deep_play_gate_rows.jsonl`):
+  **baseline 71/512 (13.9%) vs delegation 41/512 (8.0%) — d = -5.9pp (95% CI -9.5..-2.2),
+  McNemar p = 0.0023; gained 31 / lost 61; mean ante 5.83 -> 5.38.** Per the pre-registration the
+  v3 trigger (delegate whenever `_solve_blind` projects hands_needed > hands_remaining) is killed.
+  READ: the 29.7% play-recoverable pool is fork-audit ground truth (deep beam FROM BLIND START at
+  the DEATH blind clears it), but mid-run delegation on a pace trigger that fires at most blind
+  starts destroys more value than it captures — the beam's whole-run play style (vs basic's
+  build-co-designed style) loses more recoverable blinds than it rescues. Flip diagnostic queued
+  (`scripts/deep_play_flip_diag.py` on the persisted rows) to split the 61 losses into
+  butterfly (trigger precision) vs beam_failed (beam quality) before any redesign. Candidate
+  redesigns, pending that evidence: (a) selective ACCEPTANCE — run the beam but take its line only
+  when its own projection clears a blind that basic's pace model says it misses (rescue-only,
+  never a mid-blind handoff); (b) restrict to boss blinds at ante>=5 (where deaths concentrate);
+  (c) blind-START-only delegation with the whole blind handed over, matching the fork-audit's
+  measured condition exactly.
+
 - **2026-06-11 EIGHTH fix SHIPPED — Psychic lift in `rust_best_play_scores`** (the deployed bot's
   hottest loop dropped to full-Python for entire Psychic blinds; Psychic appears in 13/36 scanned
   seeds). The bail `or blind_name == "The Psychic"` removed; post-batch zeroing of !=5-card
