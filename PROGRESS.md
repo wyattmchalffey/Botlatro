@@ -2968,6 +2968,17 @@
   (c) blind-START-only delegation with the whole blind handed over, matching the fork-audit's
   measured condition exactly.
 
+- **2026-06-12 RECIPE STANDALONE BENCHES (128 honest seeds each,
+  `.data/recipe_standalone_benches.log`) — the Gate-B0 mixture reference, now measured:**
+  level_focus **11.7%** (near-baseline! leveling is genuinely under-exploited), flush_commit
+  **7.8%**, buy_best 1.6%, buy_best_skip 0.8%, hoard2_spend / reroll_hunt / churn_weakest 0.0%
+  (diversity providers, not policies — mixture weighting must reflect this: at ~35% recipe share
+  the mixture lands ≈8-9%, NOT 12%). **skip_smalls CRASHED the bench: `ValueError: Cannot open
+  Spectral Pack for $0 with $-9` — a SIM BUG on the skip->tag->free-pack path (a $0 tag pack
+  must bypass the money check; bot was in Credit Card debt). This is the under-validated
+  SKIP_BLIND transition class P0.4 flagged, found by the recipe bench acting as a fuzzer. FIX
+  before any mixture generation (skip episodes would crash workers) and rerun the skip bench.**
+
 - **2026-06-12 CLAIRVOYANT CEILING v1: 40.2% of honest losses flip under the SAME crude grammar
   that flips 14.3% honest — the headroom is real, large, and lives in foresight + runway.**
   (`.data/clairvoyant_ceiling_v1.json`: 100 honest-loss seeds, foresight ON, fork_back 6;
