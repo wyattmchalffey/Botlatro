@@ -36,6 +36,18 @@ class SolverPolicyBot:
 
 
 @dataclass(slots=True)
+class _BlindedPolicyBot:
+    """Honest-mode adapter for raw policies that bypass the registry
+    wrappers: blinds the observation (no_foresight) then delegates."""
+
+    policy: object
+    name: str = "blinded_policy_bot"
+
+    def choose_action(self, state: GameState) -> Action:
+        return self.policy.choose_action(blind_known_deck(state))
+
+
+@dataclass(slots=True)
 class SolverShopBasicPlayBot:
     """Solver shop policy with BasicStrategy play decisions."""
 
@@ -321,6 +333,25 @@ def _restore_env(name: str, value: str | None) -> None:
 
 def create_bot(name: str, seed: int | None = None) -> Bot:
     normalized = name.lower().replace("-", "_")
+    if normalized == "recipe_flush_commit_bot":
+        # Suit-stacking diversity (the S0 antidote dimension): the deployed
+        # composition with the flush archetype leaf committed from ante 1 —
+        # the exact bot the S0 oracle measured (flush best on 72/200 seeds).
+        from balatro_ai.solver.archetypes import FLUSH_ARCHETYPE
+        from balatro_ai.solver.policy import SolverPolicy
+
+        fb = BasicStrategyBot(seed=seed)
+        return _BlindedPolicyBot(
+            SolverPolicy(
+                play_policy=fb,
+                fallback=fb,
+                seed=seed or 0,
+                prefer_fallback_info_first_shop=True,
+                fallback_negative_shop_sells=True,
+                archetype=FLUSH_ARCHETYPE,
+            ),
+            name="recipe_flush_commit_bot",
+        )
     if normalized.startswith("recipe_") and normalized.endswith("_bot"):
         # Exploration-diversity wrappers for self-play data generation
         # (route_recipes.py): recipe_<policy>_bot over the deployed bot.
