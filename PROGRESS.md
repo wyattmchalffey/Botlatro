@@ -2968,6 +2968,22 @@
   (c) blind-START-only delegation with the whole blind handed over, matching the fork-audit's
   measured condition exactly.
 
+- **2026-06-12 CLAIRVOYANT CEILING v1: 40.2% of honest losses flip under the SAME crude grammar
+  that flips 14.3% honest — the headroom is real, large, and lives in foresight + runway.**
+  (`.data/clairvoyant_ceiling_v1.json`: 100 honest-loss seeds, foresight ON, fork_back 6;
+  87 stayed losses at clairvoyant baseline (13 won outright), 35/87 = 40.2% flipped by some
+  recipe; null 0.0%, 99.9% clean. Policy wins: skip_smalls 38, level_focus 28, buy_best 23,
+  churn 23, buy_best_skip 15, reroll_hunt 12, hoard 10 — every family multiplies vs the honest
+  late-fork run.) **Achievable-in-principle floor: 12.4% honest wins + 48% of the loss mass
+  (13 base + 35 recipe flips of 100) ≈ >=54% of seeds winnable even by 8 static recipes + the
+  clairvoyant heuristic — a LOWER bound on the true ceiling (no adaptive planning, no deep play).
+  The >=95% bar is not yet proven reachable, but >=54% is proven, and the gap 14.3%->40.2% on
+  identical grammar quantifies foresight+runway as the dominant missing ingredient.** CONFOUND
+  to resolve: two variables changed vs the honest oracle (clairvoyant play AND fork_back 2->6);
+  the missing cell (honest play, fork_back 6) is queued — it attributes the gap between RUNWAY
+  (earlier intervention, honestly exploitable) and FORESIGHT (only exploitable by stronger play/
+  value, i.e. Phase B's job).
+
 - **2026-06-12 FLIP DIAGNOSTIC (P1.5 post-mortem): it was BEAM QUALITY, not trigger precision.**
   All 92 gate flips re-traced with delegation logging (`.data/deep_play_flip_diag.json`):
   gained 31 = 31 rescued_or_helped; lost 61 = **60 beam_failed / 1 butterfly**; mean
