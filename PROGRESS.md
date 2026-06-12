@@ -2968,6 +2968,16 @@
   (c) blind-START-only delegation with the whole blind handed over, matching the fork-audit's
   measured condition exactly.
 
+- **2026-06-12 HONEST-DRAW-PROBS GATE: NEUTRAL — not adopted.** 512 paired seeds (offset 7000,
+  `.data/honest_draw_probs_gate.log`): baseline 63/512 (12.3%) vs honest probabilities 67/512
+  (13.1%) — d = +0.78pp (95% CI -2.2..+3.7), McNemar p = 0.70, mean ante +0.10 (gained 32 /
+  lost 28). Leans positive, semantically more correct, but fails the pre-registered p<0.05 bar
+  -> stays env-gated OFF (`BALATRO_HONEST_DRAW_PROBS`). READ: the fake-certainty errors at the
+  completion-probability sites largely CANCEL over a run (overconfident hunts hit at ~the true
+  rate anyway; underconfident give-ups cost similarly), and the decision-dense draw reasoning
+  lives in the Phase-B score-projection sites (still 1-sample). Re-gate as part of a Phase A+B
+  bundle if Phase B gets built; do not re-test alone.
+
 - **2026-06-11 EIGHTH fix SHIPPED — Psychic lift in `rust_best_play_scores`** (the deployed bot's
   hottest loop dropped to full-Python for entire Psychic blinds; Psychic appears in 13/36 scanned
   seeds). The bail `or blind_name == "The Psychic"` removed; post-batch zeroing of !=5-card
