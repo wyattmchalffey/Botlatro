@@ -193,6 +193,9 @@ def seed_faithful_pack_contents(
     state: "GameState",
     pack: Any,
     seed_or_rng: Any,
+    *,
+    used_jokers: frozenset[str] = frozenset(),
+    used_consumables: frozenset[str] = frozenset(),
 ) -> tuple[dict[str, Any], ...] | None:
     """Return seed-faithful contents for an opened booster pack, or None
     to fall back to generic sampling.
@@ -207,7 +210,11 @@ def seed_faithful_pack_contents(
     cards build a payload from the predicted rank/suit/enhancement/edition/
     seal. Telescope (forces the first Celestial card to the most-played
     hand's planet) and Omen Globe (Arcana->Spectral) are threaded via
-    played-hand context."""
+    played-hand context.
+
+    ``used_jokers``/``used_consumables`` are the keys excluded from the pack's
+    pools at open time (G.GAME.used_jokers = owned keys + cards still alive in
+    the shop areas, since packs open while the shop is displayed)."""
 
     if not isinstance(pack, dict):
         return None
@@ -229,6 +236,8 @@ def seed_faithful_pack_contents(
             played_hand_types=ctx["played_hand_types"],
             telescope_planet_key=ctx["telescope_planet_key"],
             edition_rate=ctx["edition_rate"],
+            used_jokers=used_jokers,
+            used_consumables=used_consumables,
         )
     except Exception:  # noqa: BLE001 — never crash the sim path
         return None

@@ -614,7 +614,10 @@ class SearchBotTests(unittest.TestCase):
 
         first_action = bot.choose_action(state)
         self.assertEqual(first_action.action_type, ActionType.DISCARD)
-        self.assertEqual(first_action.card_indices, (0, 1, 7))
+        # Indices updated when _sort_hand_cards switched to Balatro's
+        # get_nominal ordering: rank "10" cards now sort between J and 9
+        # (previously they fell to the end of the hand), shifting positions.
+        self.assertEqual(first_action.card_indices, (0, 1, 5))
         state = simulator.step(first_action)
         second_action = bot.choose_action(state)
 

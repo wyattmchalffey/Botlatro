@@ -1397,22 +1397,29 @@ def _deck_after_returning_hand(state: GameState) -> tuple[int, tuple[Card, ...]]
     return state.deck_size + len(state.hand), known_deck
 
 
+_HAND_SORT_RANK_NOMINAL = {
+    "2": 2.0, "3": 3.0, "4": 4.0, "5": 5.0, "6": 6.0, "7": 7.0, "8": 8.0,
+    "9": 9.0, "T": 10.0, "10": 10.0, "J": 10.1, "Q": 10.2, "K": 10.3, "A": 11.4,
+}
+_HAND_SORT_SUIT_NOMINAL = {"S": 0.04, "H": 0.03, "C": 0.02, "D": 0.01}
+
+
+def _hand_sort_nominal(card: Card) -> float:
+    """Balatro's Card:get_nominal() (card.lua:950-955) for the default
+    'desc' hand sort: rank nominal (+face offset) + suit nominal, EXCEPT
+    Stone cards whose suit term is multiplied by -1000 — they sort to the
+    END of the hand display regardless of their hidden front."""
+
+    rank = _HAND_SORT_RANK_NOMINAL.get(card.rank, 0.0)
+    suit = _HAND_SORT_SUIT_NOMINAL.get(card.suit, 0.0)
+    mult = 1.0
+    if _normalized(card.enhancement) in {"stone", "stone card"}:
+        mult = -1000.0
+    return rank + suit * mult + (suit / 10.0) * 0.0001 * mult
+
+
 def _sort_hand_cards(cards: tuple[Card, ...]) -> tuple[Card, ...]:
-    rank_order = {rank: index for index, rank in enumerate(("A", "K", "Q", "J", "T", "9", "8", "7", "6", "5", "4", "3", "2"))}
-    suit_order = {"S": 0, "H": 1, "C": 2, "D": 3}
-    return tuple(
-        sorted(
-            cards,
-            key=lambda card: (
-                rank_order.get(card.rank, len(rank_order)),
-                suit_order.get(card.suit, len(suit_order)),
-                card.enhancement or "",
-                card.seal or "",
-                card.edition or "",
-                card.debuffed,
-            ),
-        )
-    )
+    return tuple(sorted(cards, key=lambda card: -_hand_sort_nominal(card)))
 
 
 def _play_outcome_mapping(outcomes: StochasticPlayOutcomes | dict[str, object] | None) -> dict[str, object]:
@@ -2728,6 +2735,12 @@ def _playing_card_from_key(item: dict[str, object]) -> Card | None:
 
 
 def _pack_card_enhancement(item: dict[str, object]) -> str | None:
+    # Explicit field first: seed-faithful pack payloads carry the predicted
+    # enhancement (e.g. "BONUS") while their label is just the card name
+    # ("JS"), which the label sniffing below would mis-read as unenhanced.
+    explicit = item.get("enhancement")
+    if isinstance(explicit, str) and explicit.strip():
+        return explicit
     label = _item_label(item).lower()
     if "base" in label:
         return None

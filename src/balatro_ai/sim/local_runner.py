@@ -9,6 +9,7 @@ iteration, smoke tests, and generating cheap exploratory trajectories.
 from __future__ import annotations
 
 import argparse
+import re
 from dataclasses import dataclass, field, replace
 from random import Random
 from time import perf_counter
@@ -313,13 +314,21 @@ class LocalBalatroSimulator:
     # round (at blind select in this model), excluding the previous suit. The
     # chain advances every round regardless of ownership; None = run start.
     _ancient_suit_chain: str | None = field(default=None, init=False, repr=False)
-    # Run-long set of joker/consumable KEYS already shown in shops (Balatro's
-    # G.GAME.used_jokers/used_consumeables), which are excluded from future shop
-    # pools (unless Showman is owned). Accumulated as seed-faithful shops/rerolls
-    # are generated; combined with owned keys when generating the next shop.
-    _used_jokers_seen: set[str] = field(default_factory=set, init=False, repr=False)
-    _used_consumables_seen: set[str] = field(default_factory=set, init=False, repr=False)
     _tag_by_blind: dict[tuple[int, str], str] = field(default_factory=dict, init=False, repr=False)
+    # Monotonic creation-order counter for playing cards added after run
+    # start (Balatro's G.sort_id analogue, relative order only). Starts past
+    # the 52 base-deck slots; stamped onto pack playing-card payloads.
+    _card_sort_seq: int = field(default=53, init=False, repr=False)
+    # SHADOW BalatroRNG owning the idol/mail/castle round-reset streams
+    # ('idol'/'mail'/'cas'+ante). Balatro rolls these at run start
+    # (game.lua:2385-2389) and at the end of EVERY won round
+    # (state_events.lua end_round), regardless of joker ownership. A shadow
+    # instance (same seed => identical per-key streams) keeps the main rng's
+    # lazy 'cas' read in _predict_first_buffoon_pack at call #1 (validated).
+    _round_reset_rng: Any = field(default=None, init=False, repr=False)
+    _sf_idol_card: Card | None = field(default=None, init=False, repr=False)
+    _sf_mail_rank: str | None = field(default=None, init=False, repr=False)
+    _sf_castle_suit: str | None = field(default=None, init=False, repr=False)
     _economy: EconomyLedger = field(default_factory=EconomyLedger, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -336,8 +345,11 @@ class LocalBalatroSimulator:
         self._voucher_by_ante = {}
         self._sf_boss_use_counts = {}
         self._ancient_suit_chain = None
-        self._used_jokers_seen = set()
-        self._used_consumables_seen = set()
+        self._card_sort_seq = 53
+        self._round_reset_rng = None
+        self._sf_idol_card = None
+        self._sf_mail_rank = None
+        self._sf_castle_suit = None
         if not self.balatro_seed:
             return
         try:
@@ -352,9 +364,15 @@ class LocalBalatroSimulator:
             # cumulative get_new_boss use-counts so ante 2+ picks correctly.
             if self._initial_surface is not None and self._initial_surface.boss_key:
                 self._sf_boss_use_counts[self._initial_surface.boss_key] = 1
+            # Run-start idol/mail/castle resets (game.lua:2385-2389) over the
+            # fresh 52-card deck, choosing round 1's idol card / mail rank /
+            # castle suit.
+            self._round_reset_rng = BalatroRNG(str(self.balatro_seed))
+            self._roll_round_reset_cards(None, ante=1)
         except Exception:  # noqa: BLE001 — fall back to generic on any issue
             self._balatro_rng = None
             self._initial_surface = None
+            self._round_reset_rng = None
 
     def reset(self, seed: int | None = None) -> GameState:
         """Start a fresh local White Stake-style run."""
@@ -648,8 +666,35 @@ class LocalBalatroSimulator:
         count = min(2, len(held_cards))
         if count <= 0:
             return ()
+        faithful = self._seed_faithful_hook_discards(held_cards, count)
+        if faithful is not None:
+            return faithful
         discarded_indexes = set(self._rng.sample(range(len(held_cards)), count))
         return tuple(card for index, card in enumerate(held_cards) if index in discarded_indexes)
+
+    def _seed_faithful_hook_discards(self, held_cards: tuple[Card, ...], count: int) -> tuple[Card, ...] | None:
+        """The Hook's per-play discards: ``count`` sequential
+        ``pseudorandom_element(G.hand.cards, pseudoseed('hook'))`` picks
+        (blind.lua), each removing its card before the next pick.
+        pseudorandom_element sorts card tables by sort_id, so the pool is in
+        CREATION order (canonical deck order + acquisition hints), not hand
+        display order. The 'hook' stream is per-run with no ante suffix."""
+
+        if self._balatro_rng is None or self._rng_diverged:
+            return None
+        try:
+            from balatro_ai.rng.luajit_prng import LuaJITPRNG
+        except ImportError:
+            return None
+        pool = sorted(held_cards, key=_canonical_card_key)
+        picked: list[Card] = []
+        for _ in range(count):
+            if not pool:
+                break
+            seed_float = self._balatro_rng.random("hook")
+            index = LuaJITPRNG.seeded(seed_float).random_int_1_to_n(len(pool)) - 1
+            picked.append(pool.pop(index))
+        return tuple(picked)
 
     def _stochastic_play_outcomes(
         self,
@@ -905,33 +950,25 @@ class LocalBalatroSimulator:
             used_jokers=used_jokers,
             used_consumables=used_consumables,
         )
-        if result is not None:
-            self._record_shop_pool_keys(result[0])
         return result
 
     def _shop_pool_used_keys(self, state: GameState) -> tuple[frozenset[str], frozenset[str]]:
-        """(used_jokers, used_consumables) excluded from the shop pool: keys
-        already shown in shops this run plus currently-owned keys. Jokers are
-        not excluded when Showman is owned (duplicates allowed)."""
+        """(used_jokers, used_consumables) excluded from a shop FILL's pool.
 
-        consumables = frozenset(self._used_consumables_seen | _owned_consumable_keys(state))
+        Balatro's G.GAME.used_jokers is an alive-card refcount, not a run-long
+        record: keys are set when a card is created (card.lua:352) and CLEARED
+        when the card is removed with no owned copy left (card.lua:4745).
+        Reroll/shop-close remove the old shop cards BEFORE the next fill
+        (button_callbacks.lua reroll_shop), so unbought offers return to the
+        pool and CAN re-appear — at fill time the exclusions are exactly the
+        player's owned jokers + held consumables. Within-fill exclusion of
+        earlier slots is handled inside predict_shop_cards. Showman bypasses
+        the used_jokers check for ALL sets (common_events.lua:1987), so both
+        sets are empty when it is owned."""
+
         if _active_joker_count(state, "Showman") > 0:
-            return frozenset(), consumables
-        jokers = frozenset(self._used_jokers_seen | _owned_joker_keys(state))
-        return jokers, consumables
-
-    def _record_shop_pool_keys(self, shop_cards) -> None:
-        """Accumulate joker/consumable keys shown in a generated shop (Balatro
-        adds shop-displayed jokers to G.GAME.used_jokers)."""
-
-        for card in shop_cards or ():
-            key = card.get("key") if isinstance(card, dict) else None
-            if not isinstance(key, str):
-                continue
-            if key.startswith("j_"):
-                self._used_jokers_seen.add(key)
-            elif key.startswith("c_"):
-                self._used_consumables_seen.add(key)
+            return frozenset(), frozenset()
+        return frozenset(_owned_joker_keys(state)), frozenset(_owned_consumable_keys(state))
 
     def _voucher_for_ante(self, state: GameState) -> str | None:
         """Resolve the shop voucher for ``state.ante``, rolling it on the
@@ -982,6 +1019,25 @@ class LocalBalatroSimulator:
         deck.reverse()
         return replace(state, known_deck=tuple(deck))
 
+    def _seed_faithful_cashout_deck(self, state: GameState, *, ante: int) -> GameState | None:
+        """Reorder known_deck per the cash_out 'cashout'+ante pseudoshuffle
+        (sort by sort_id, LuaJIT Fisher-Yates, then REVERSE so the sim's
+        draw-from-front matches Balatro's draw-from-end), or None to leave
+        the deck untouched (non-faithful runs). Consumes exactly one
+        'cashout'+ante roll like the real game."""
+
+        if self._balatro_rng is None or self._rng_diverged or not state.known_deck:
+            return None
+        try:
+            from balatro_ai.rng.luajit_prng import luajit_pseudoshuffle
+        except ImportError:
+            return None
+        deck = sorted(state.known_deck, key=_canonical_card_key)
+        seed_float = self._balatro_rng.random("cashout" + str(ante))
+        luajit_pseudoshuffle(deck, seed_float)
+        deck.reverse()
+        return replace(state, known_deck=tuple(deck))
+
     def _seed_faithful_reroll_cards(self, state: GameState):
         """Seed-faithful shop cards for a reroll (one extra
         predict_shop_cards roll on the persistent rng), or None to use
@@ -994,13 +1050,10 @@ class LocalBalatroSimulator:
         except ImportError:
             return None
         used_jokers, used_consumables = self._shop_pool_used_keys(state)
-        result = seed_faithful_reroll(
+        return seed_faithful_reroll(
             self.sampler, state, self._balatro_rng,
             used_jokers=used_jokers, used_consumables=used_consumables,
         )
-        if result is not None:
-            self._record_shop_pool_keys(result)
-        return result
 
     def _seed_faithful_pack_contents(self, state: GameState, pack):
         """Seed-faithful contents for an opened pack, or None to use
@@ -1016,7 +1069,33 @@ class LocalBalatroSimulator:
         # Use the PERSISTENT rng so pack-content streams continue across packs
         # within the run (a 2nd Celestial pack of the same ante must continue
         # the planet stream, not restart it from the seed).
-        return seed_faithful_pack_contents(self.sampler, state, pack, self._balatro_rng)
+        used_jokers, used_consumables = self._pack_pool_used_keys(state)
+        return seed_faithful_pack_contents(
+            self.sampler, state, pack, self._balatro_rng,
+            used_jokers=used_jokers, used_consumables=used_consumables,
+        )
+
+    def _pack_pool_used_keys(self, state: GameState) -> tuple[frozenset[str], frozenset[str]]:
+        """(used_jokers, used_consumables) excluded from an opened pack's
+        pools. Packs open while the shop is still displayed, so the alive-card
+        set is the owned keys PLUS the cards currently sitting in the shop
+        slots (they are only removed — and their used_jokers entries cleared —
+        on reroll/shop close, card.lua:4745)."""
+
+        if _active_joker_count(state, "Showman") > 0:
+            return frozenset(), frozenset()
+        jokers = set(_owned_joker_keys(state))
+        consumables = set(_owned_consumable_keys(state))
+        shop_cards = state.modifiers.get("shop_cards", ()) if isinstance(state.modifiers, Mapping) else ()
+        for card in shop_cards or ():
+            key = card.get("key") if isinstance(card, dict) else None
+            if not isinstance(key, str):
+                continue
+            if key.startswith("j_"):
+                jokers.add(key)
+            elif key.startswith("c_"):
+                consumables.add(key)
+        return frozenset(jokers), frozenset(consumables)
 
     def _cash_out(self, state: GameState) -> GameState:
         # Defeating a boss increments the ante, and the post-boss shop is the
@@ -1026,6 +1105,17 @@ class LocalBalatroSimulator:
         shop_state = state
         if _blind_kind(state) == "BOSS" and state.ante < 8:
             shop_state = replace(state, ante=state.ante + 1)
+        # End-of-round idol/mail/castle resets (Balatro end_round): rolled
+        # with the post-boss-increment ante and the PRE-shop deck, choosing
+        # the next round's idol card / mail rank / castle suit.
+        self._roll_round_reset_cards(state, ante=shop_state.ante)
+        # G.FUNCS.cash_out shuffles the deck via pseudoshuffle('cashout'+ante)
+        # (button_callbacks.lua). The next round re-sorts before its 'nr'
+        # shuffle, but pack TARGET-HAND draws in the upcoming shop come off
+        # this order, so reproduce it (and its one stream roll) here.
+        cashed_deck = self._seed_faithful_cashout_deck(state, ante=shop_state.ante)
+        if cashed_deck is not None:
+            state = cashed_deck
         seed_faithful = self._seed_faithful_shop(shop_state)
         if seed_faithful is not None:
             shop_cards, voucher_payload, booster_packs = seed_faithful
@@ -1284,7 +1374,11 @@ class LocalBalatroSimulator:
         contents = self._seed_faithful_pack_contents(state, pack)
         if contents is None:
             contents = self.sampler.sample_pack_contents(state, pack, self._rng)
-        state, drawn_cards = _target_hand_draw_for_pack(state, pack, self._rng)
+        contents = self._stamp_deck_sort_hints(contents)
+        state, drawn_cards = _target_hand_draw_for_pack(
+            state, pack, self._rng,
+            reshuffle=self._balatro_rng is None or self._rng_diverged,
+        )
         opened = simulate_open_pack(
             state,
             action,
@@ -1295,6 +1389,28 @@ class LocalBalatroSimulator:
         modifiers = dict(opened.modifiers)
         modifiers["pack_choices_remaining"] = _pack_choices(pack)
         return replace(opened, modifiers=modifiers)
+
+    def _stamp_deck_sort_hints(self, contents) -> tuple:
+        """Stamp playing-card pack payloads with a per-run creation-order hint.
+
+        Balatro assigns ``sort_id`` when the card object is CREATED — i.e. at
+        pack open, in display order — and ``pseudoshuffle`` sorts by sort_id
+        before the Fisher-Yates. Pack-acquired playing cards therefore sort
+        AFTER the 52 base deck cards (and after earlier packs' cards), in pack
+        DISPLAY order regardless of pick order. The hint flows into
+        Card.metadata via the acquisition payload and is consumed by
+        ``_canonical_card_key`` when ordering the deck for the round shuffle."""
+
+        if not contents:
+            return contents
+        stamped = []
+        for item in contents:
+            if isinstance(item, dict) and _PLAYING_CARD_KEY_RE.fullmatch(str(item.get("key", ""))):
+                item = dict(item)
+                item["deck_sort_hint"] = self._card_sort_seq
+                self._card_sort_seq += 1
+            stamped.append(item)
+        return tuple(stamped)
 
     def _choose_pack_card(self, state: GameState, action: Action) -> GameState:
         if _is_skip_action(action):
@@ -1707,21 +1823,70 @@ class LocalBalatroSimulator:
         choices = [suit for suit in ("S", "H", "C", "D") if suit != previous]
         return self._rng.choice(choices or ["S", "H", "C", "D"])
 
+    def _roll_round_reset_cards(self, state: GameState | None, *, ante: int) -> None:
+        """Mirror Balatro's reset_idol_card / reset_mail_rank /
+        reset_castle_card (common_events.lua:2271-2323): one
+        pseudorandom_element('idol'/'mail'/'cas'+ante) each over the run's
+        playing cards in creation (sort_id) order, excluding Stone cards.
+
+        Rolled at run start (state=None: the fresh 52-card deck) and at the
+        END of every won round — in the sim, at cash_out BEFORE the next
+        shop is generated, so the pool matches the real pre-shop deck. After
+        a boss the ante has already been increased (ease_ante fires before
+        end_round's reset event), so callers pass the incremented ante.
+        These streams advance every round regardless of joker ownership."""
+
+        rng = self._round_reset_rng
+        if rng is None:
+            return
+        try:
+            from balatro_ai.rng.luajit_prng import LuaJITPRNG
+            if state is None:
+                from balatro_ai.rng.deck import build_standard_red_deck
+                pool = tuple(build_standard_red_deck())
+            else:
+                pool = tuple(sorted(_non_stone_full_deck_cards(state), key=_canonical_card_key))
+
+            def _pick(key: str) -> Card | None:
+                if not pool:
+                    return None  # Balatro guards the roll on a non-empty pool
+                seed_float = rng.random(key)
+                idx = LuaJITPRNG.seeded(seed_float).random_int_1_to_n(len(pool)) - 1
+                return pool[idx]
+
+            idol = _pick("idol" + str(ante))
+            mail = _pick("mail" + str(ante))
+            castle = _pick("cas" + str(ante))
+            self._sf_idol_card = idol if idol is not None else Card("A", "S")
+            self._sf_mail_rank = mail.rank if mail is not None else "A"
+            self._sf_castle_suit = castle.suit if castle is not None else "S"
+        except Exception:  # noqa: BLE001 — never crash the sim path
+            self._round_reset_rng = None
+            self._sf_idol_card = None
+            self._sf_mail_rank = None
+            self._sf_castle_suit = None
+
     def _idol_card(self, state: GameState) -> Card | None:
         if _active_joker_count(state, "The Idol") <= 0:
             return None
+        if self._sf_idol_card is not None:
+            return self._sf_idol_card
         candidates = _non_stone_full_deck_cards(state)
         return self._rng.choice(candidates) if candidates else Card("A", "S")
 
     def _castle_suit(self, state: GameState) -> str | None:
         if _active_joker_count(state, "Castle") <= 0:
             return None
+        if self._sf_castle_suit is not None:
+            return self._sf_castle_suit
         candidates = _non_stone_full_deck_cards(state)
         return self._rng.choice(candidates).suit if candidates else "S"
 
     def _mail_rank(self, state: GameState) -> str | None:
         if _active_joker_count(state, "Mail-In Rebate") <= 0:
             return None
+        if self._sf_mail_rank is not None:
+            return self._sf_mail_rank
         candidates = _non_stone_full_deck_cards(state)
         return self._rng.choice(candidates).rank if candidates else "A"
 
@@ -2299,6 +2464,9 @@ def _owned_consumable_keys(state: GameState) -> set[str]:
     return keys
 
 
+_PLAYING_CARD_KEY_RE = re.compile(r"[SHCD]_[2-9TJQKA]")
+
+
 def _canonical_rank(rank: str) -> str:
     return "T" if rank in ("10", "T") else rank
 
@@ -2314,15 +2482,25 @@ def _build_canonical_deck_index() -> dict[tuple[str, str], int]:
 _CANONICAL_DECK_INDEX = _build_canonical_deck_index()
 
 
-def _canonical_card_key(card: Card) -> tuple[int, str, str, str, str]:
-    """Sort key matching Balatro's deck ``sort_id`` order for the base deck;
-    cards not in the standard deck (created/added) sort after, stably."""
+def _canonical_card_key(card: Card) -> tuple[int, int, str, str, str, str]:
+    """Sort key matching Balatro's deck ``sort_id`` order.
 
+    Base-deck cards keep their canonical slot (0..51). Cards CREATED later
+    (e.g. acquired from Standard packs) carry a ``deck_sort_hint`` stamped at
+    creation time and sort after ALL base cards in creation order — Balatro's
+    global ``G.sort_id`` counter — even when their rank/suit duplicates a
+    base card. Unstamped non-base cards sort last, stably."""
+
+    metadata = card.metadata if isinstance(card.metadata, dict) else {}
+    hint = metadata.get("deck_sort_hint")
+    if isinstance(hint, int):
+        return (len(_CANONICAL_DECK_INDEX) + hint, 0, "", "", "", "")
     base = _CANONICAL_DECK_INDEX.get((card.suit, _canonical_rank(card.rank)))
     if base is not None:
-        return (base, "", "", "", "")
+        return (base, 0, "", "", "", "")
     return (
         len(_CANONICAL_DECK_INDEX),
+        1,
         card.suit,
         _canonical_rank(card.rank),
         card.enhancement or "",
@@ -2383,6 +2561,12 @@ def _card_is_forced_selection(card: Card) -> bool:
 
 
 def _cards_after_blind_debuffs(state: GameState, cards: tuple[Card, ...]) -> tuple[Card, ...]:
+    # Strip any debuff left over from a PREVIOUS blind first: Balatro
+    # re-evaluates blind:debuff_card per blind, so a card debuffed by e.g.
+    # The Pillar scores normally in later rounds. Every card enters a round
+    # through a draw, so cleaning here covers all paths.
+    from balatro_ai.search.forward_sim import _card_without_blind_debuff
+    cards = tuple(_card_without_blind_debuff(card) for card in cards)
     if not _boss_effect_active(state):
         return cards
     if state.blind == "Verdant Leaf":
@@ -2899,10 +3083,19 @@ def _target_hand_draw_for_pack(
     state: GameState,
     pack: Mapping[str, Any],
     rng: Random,
+    *,
+    reshuffle: bool = True,
 ) -> tuple[GameState, tuple[Card, ...]]:
+    """Draw the tarot/spectral target hand for an opened pack.
+
+    With ``reshuffle=False`` (seed-faithful runs) the hand comes off the
+    CURRENT known_deck order — the real game draws from the deck as left by
+    the cash_out 'cashout'+ante pseudoshuffle, with no extra shuffle at pack
+    open."""
+
     if not _pack_draws_target_hand(pack):
         return state, ()
-    shuffled = _with_shuffled_known_deck(state, rng)
+    shuffled = _with_shuffled_known_deck(state, rng) if reshuffle else state
     draw_count = min(_hand_size(shuffled), shuffled.deck_size)
     return shuffled, _draw_from_known_deck(shuffled, draw_count)
 
