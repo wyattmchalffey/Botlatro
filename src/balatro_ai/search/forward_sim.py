@@ -3577,12 +3577,11 @@ def _jokers_after_cash_out(state: GameState, *, next_to_do_targets: tuple[str, .
             current = _rocket_dollars(joker)
             increase = _joker_int(joker, keys=("increase", "dollar_increase"), default=2)
             updated.append(_with_joker_metadata(joker, {"current_dollars": current + increase}))
-        elif joker.name == "Popcorn":
-            current = _joker_int(joker, keys=("current_mult", "mult"), default=20)
-            decay = _joker_int(joker, keys=("decay", "mult_decay", "extra"), default=4)
-            next_mult = current - decay
-            if next_mult > 0:
-                updated.append(_with_joker_metadata(joker, {"current_mult": next_mult}))
+        # NOTE: Popcorn is intentionally NOT decayed here. Its once-per-round
+        # decay fires at the play->ROUND_EVAL transition via
+        # _jokers_after_played_round_ends (matching the real game's
+        # end-of-round timing); decaying again at cash_out double-counted it
+        # (P04 root cause: seed 0000048 scored 672 vs the bridge's 784).
         elif joker.name == "Turtle Bean":
             current = _joker_int(joker, keys=("current_h_size", "current_hand_size", "h_size", "hand_size"), default=5)
             decay = _joker_int(joker, keys=("h_mod", "hand_size_decay", "decay"), default=1)
@@ -3803,7 +3802,13 @@ def _joker_cash_out_money_delta(state: GameState) -> int:
         if joker.name == "Golden Joker":
             delta += _joker_int(joker, keys=("current_dollars", "dollars", "extra"), default=4)
         elif joker.name == "Rocket":
-            delta += _rocket_dollars(joker)
+            payout = _rocket_dollars(joker)
+            if _blind_is_boss(state):
+                # The real game applies the boss-defeat payout increase
+                # BEFORE this round's cash-out payout (P04: seed 0000037
+                # bridge paid $3 at the ante-1 boss, sim paid $1).
+                payout += _joker_int(joker, keys=("increase", "dollar_increase"), default=2)
+            delta += payout
         elif joker.name == "Delayed Gratification":
             if _discard_used_count(state) == 0 and state.discards_remaining > 0:
                 dollars = _joker_int(joker, keys=("dollars", "extra"), default=2)

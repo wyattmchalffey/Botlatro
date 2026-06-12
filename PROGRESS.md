@@ -2968,6 +2968,18 @@
   (c) blind-START-only delegation with the whole blind handed over, matching the fork-audit's
   measured condition exactly.
 
+- **2026-06-12 P0.4 ROOT-CAUSE: two real sim bugs FIXED + bridge-verified (agent investigation,
+  `.data/p04_rootcause_0000048.md`).** (1) **Popcorn double-decay** (since f383dc2, 2026-05-03):
+  decay fired at BOTH _jokers_after_played_round_ends AND _jokers_after_cash_out -> sim
+  under-mults (672 vs real 784 on the ante-1 Goad). Fixed: cash-out branch removed; recorded
+  play now scores exactly 784. (2) **Rocket boss-payout ordering**: sim paid the pre-bump $1 at
+  boss cash-out; real game pays the bumped $3. Fixed in _joker_cash_out_money_delta; $12
+  bridge-verified. 3 stale test expectations updated (they encoded the bugs); 631 tests pass.
+  Post-fix replay of 0000048: divergence moved step 13 -> 31 (ante-1 boss + both ante-2 shops
+  now exact); the step-31 class is pack/per-card RNG (known-unvalidated, next target). OPEN:
+  0000015/0000064/0000027 OVER-score in sim (shop-content RNG, Abstract Joker missing on
+  bridge) — separate root cause. The "validated to ante 5" era predates BOTH bugs' visibility.
+
 - **2026-06-12 P0.4 BRIDGE SESSION: CERTIFICATION FAILED — the sim->real gap is real, early, and
   now per-class attributed.** Bridge launched headless (gamespeed 32); 64-seed scan ranked the
   worklist; top-8 seeds replayed action-by-action (`.data/p04_class_audit.json` + log).

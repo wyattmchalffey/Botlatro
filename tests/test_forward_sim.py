@@ -946,7 +946,10 @@ class ForwardSimTests(unittest.TestCase):
 
         self.assertEqual(values["Campfire"].metadata["current_xmult"], 1.0)
         self.assertEqual(values["Rocket"].metadata["current_dollars"], 5)
-        self.assertEqual(values["Popcorn"].metadata["current_mult"], 8)
+        # Popcorn decays once per round, at the play->ROUND_EVAL transition
+        # (test_simulate_play_removes_expired_popcorn_when_blind_clears), NOT
+        # again at cash_out (P04 bridge-verified, seed 0000048).
+        self.assertEqual(values["Popcorn"].metadata["current_mult"], 12)
         self.assertEqual(values["Turtle Bean"].metadata["current_h_size"], 1)
         self.assertEqual(values["Invisible Joker"].metadata["current_rounds"], 2)
         self.assertEqual(values["Egg"].metadata["extra_value"], 0)
@@ -974,7 +977,10 @@ class ForwardSimTests(unittest.TestCase):
 
         next_state = simulate_cash_out(state)
 
-        self.assertEqual(next_state.money, 45)
+        # Rocket pays its boss-defeat-increased amount ($3 + $2) at the boss
+        # cash-out itself (bridge-verified, P04 seed 0000037), so the total is
+        # $2 higher than the pre-bump payout.
+        self.assertEqual(next_state.money, 47)
 
     def test_simulate_cash_out_honors_no_blind_reward_and_no_extra_hand_money(self) -> None:
         state = GameState(
@@ -1141,7 +1147,10 @@ class ForwardSimTests(unittest.TestCase):
         self.assertEqual(tuple(joker.sell_value for joker in next_state.jokers), (2, 3))
         self.assertNotIn("consumable_sell_value_bonus", next_state.modifiers)
 
-    def test_simulate_cash_out_removes_expired_popcorn_and_turtle_bean(self) -> None:
+    def test_simulate_cash_out_removes_expired_turtle_bean_but_keeps_popcorn(self) -> None:
+        # Popcorn's once-per-round decay (and expiry removal) happens at the
+        # play->ROUND_EVAL transition, not at cash_out, so a Popcorn that
+        # reached round_eval keeps its value here (P04, seed 0000048).
         state = GameState(
             phase=GamePhase.ROUND_EVAL,
             blind="Small Blind",
@@ -1154,7 +1163,8 @@ class ForwardSimTests(unittest.TestCase):
 
         next_state = simulate_cash_out(state)
 
-        self.assertEqual(tuple(joker.name for joker in next_state.jokers), ("Joker",))
+        self.assertEqual(tuple(joker.name for joker in next_state.jokers), ("Popcorn", "Joker"))
+        self.assertEqual(next_state.jokers[0].metadata["current_mult"], 4)
 
     def test_simulate_cash_out_removes_injected_extinct_jokers(self) -> None:
         state = GameState(
