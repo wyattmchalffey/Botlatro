@@ -3,7 +3,10 @@
 Runs each seed twice in the same worker -- baseline (env unset) and treatment (env=VAL)
 -- on identical RNG, so the comparison is paired. Reports winrate, mean ante, and flips.
 
-    PYTHONPATH=src py -3.12 scripts/env_paired_ab.py ENVVAR VALUE [n] [jobs] [seed_offset]
+    PYTHONPATH=src py -3.12 scripts/env_paired_ab.py ENVVAR VALUE [n] [jobs] [seed_offset] [rows_jsonl]
+
+rows_jsonl (optional): persist each completed pair as a JSONL line and RESUME
+from it on restart — interrupted runs lose at most the in-flight pairs.
     e.g. scripts/env_paired_ab.py BALATRO_DECAY_W 1.6 128 8 4000000
 """
 from __future__ import annotations
@@ -50,18 +53,37 @@ def main():
     n = int(sys.argv[3]) if len(sys.argv) > 3 else 128
     jobs = int(sys.argv[4]) if len(sys.argv) > 4 else 8
     off = int(sys.argv[5]) if len(sys.argv) > 5 else 4000000
+    rows_path = sys.argv[6] if len(sys.argv) > 6 else None
     seeds = [f"{off + i:07d}" for i in range(1, n + 1)]
-    t0 = time.perf_counter()
     rows = []
-    with ProcessPoolExecutor(max_workers=jobs) as ex:
-        from concurrent.futures import as_completed
-        futs = {ex.submit(_worker, (s, env, val)): s for s in seeds}
-        for fut in as_completed(futs):
-            rows.append(fut.result())
-            done = len(rows)
-            if done % 16 == 0 or done == n:
-                el = time.perf_counter() - t0
-                print(f"  [pairs {done}/{n}] {el:.0f}s elapsed (~{el/done:.1f}s/pair)", flush=True)
+    if rows_path:
+        import json as _json
+        import os as _os
+        if _os.path.exists(rows_path):
+            with open(rows_path, encoding="utf-8") as fh:
+                for line in fh:
+                    if line.strip():
+                        rows.append(_json.loads(line))
+            done_seeds = {r["seed"] for r in rows}
+            seeds = [s for s in seeds if s not in done_seeds]
+            print(f"  [resume] {len(rows)} pairs loaded from {rows_path}; {len(seeds)} to run", flush=True)
+    t0 = time.perf_counter()
+    fresh = 0
+    if seeds:
+        with ProcessPoolExecutor(max_workers=jobs) as ex:
+            from concurrent.futures import as_completed
+            futs = {ex.submit(_worker, (s, env, val)): s for s in seeds}
+            for fut in as_completed(futs):
+                row = fut.result()
+                rows.append(row)
+                fresh += 1
+                if rows_path:
+                    import json as _json
+                    with open(rows_path, "a", encoding="utf-8") as fh:
+                        fh.write(_json.dumps(row) + "\n")
+                if fresh % 16 == 0 or len(rows) == n:
+                    el = time.perf_counter() - t0
+                    print(f"  [pairs {len(rows)}/{n}] {el:.0f}s elapsed (~{el/max(1,fresh):.1f}s/pair this session)", flush=True)
     dt = time.perf_counter() - t0
     import statistics as st
     bw = sum(r["base"]["won"] for r in rows)
