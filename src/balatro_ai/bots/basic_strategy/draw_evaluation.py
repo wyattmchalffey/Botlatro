@@ -38,6 +38,7 @@ from balatro_ai.bots.basic_strategy.score_projection import (
     _dominant_suit_from_cards,
     _score_selected_cards,
 )
+from balatro_ai.bots.no_foresight import known_deck_is_belief
 from balatro_ai.rules.hand_evaluator import HandType, RANK_VALUES
 
 
@@ -61,7 +62,7 @@ def _straight_draw_evaluation(
     projected_state = _discard_scoring_state(state, discarded_cards, context)
     known_completion_score = (
         _best_score_from_cards(projected_state, (*kept_cards, *state.known_deck[:draw_count]), context)
-        if state.known_deck and draw_count > 0
+        if state.known_deck and draw_count > 0 and not known_deck_is_belief(state)
         else None
     )
     best: _StraightDrawEvaluation | None = None
@@ -193,7 +194,7 @@ def _straight_missing_value_out_count(state: GameState, value: int) -> int:
 
 
 def _straight_top_draw_out_count(state: GameState, out_values: tuple[int, ...], draw_count: int) -> int:
-    if not state.known_deck or draw_count <= 0:
+    if not state.known_deck or draw_count <= 0 or known_deck_is_belief(state):
         return 0
     top_draw = state.known_deck[:draw_count]
     return sum(1 for card in top_draw if any(_rank_matches_straight_value(card, value) for value in out_values))
@@ -204,7 +205,7 @@ def _straight_known_draw_completes(
     missing_values: tuple[int, ...],
     draw_count: int,
 ) -> bool:
-    if not state.known_deck:
+    if not state.known_deck or known_deck_is_belief(state):
         return False
     top_values = _straight_values_present(tuple(state.known_deck[:draw_count]))
     return all(value in top_values for value in missing_values)
@@ -221,7 +222,7 @@ def _straight_completion_probability(
 ) -> float:
     if not missing_values:
         return 1.0
-    if state.known_deck:
+    if state.known_deck and not known_deck_is_belief(state):
         return 1.0 if completes_from_known_draw else 0.0
     if draw_count <= 0 or not out_counts:
         return 0.0
@@ -249,7 +250,7 @@ def _straight_completion_score(
     draw_count: int,
     context: _BlindContext,
 ) -> int:
-    if state.known_deck:
+    if state.known_deck and not known_deck_is_belief(state):
         return _best_score_from_cards(state, (*kept_cards, *state.known_deck[:draw_count]), context)
     selected_cards = _straight_completion_cards_for_values(state, kept_cards, window_values, missing_values, draw_count)
     if not selected_cards:
@@ -558,7 +559,7 @@ def _flush_completion_probability(
         return 1.0
     if draw_count <= 0:
         return 0.0
-    if state.known_deck:
+    if state.known_deck and not known_deck_is_belief(state):
         top_draw = state.known_deck[:draw_count]
         hits = sum(1 for card in top_draw if _normalize_suit(card.suit) == suit)
         return 1.0 if hits >= missing_count else 0.0
@@ -584,7 +585,7 @@ def _rank_completion_probability(
         return 1.0
     if draw_count <= 0:
         return 0.0
-    if state.known_deck:
+    if state.known_deck and not known_deck_is_belief(state):
         top_draw = state.known_deck[:draw_count]
         hits = sum(1 for card in top_draw if _rank_matches(card.rank, rank))
         return 1.0 if hits >= missing_count else 0.0
@@ -604,7 +605,7 @@ def _rank_group_completion_probability(
         return 1.0
     if draw_count <= 0:
         return 0.0
-    if state.known_deck:
+    if state.known_deck and not known_deck_is_belief(state):
         top_draw = state.known_deck[:draw_count]
         hits = []
         for index, requirement in enumerate(needed):
@@ -739,7 +740,7 @@ def _best_flush_dig(
         outs = _flush_suit_out_count(state, suit)
         if outs < missing:
             continue
-        if state.known_deck:
+        if state.known_deck and not known_deck_is_belief(state):
             window_outs = sum(1 for card in state.known_deck[:budget] if _normalize_suit(card.suit) == suit)
             if window_outs < missing:
                 continue

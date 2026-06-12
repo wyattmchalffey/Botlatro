@@ -54,6 +54,24 @@ def no_foresight_mode() -> str:
     raise ValueError(f"{_MODE_ENV} must be unset, 'shuffle', or 'hide'; got {raw!r}")
 
 
+def known_deck_is_belief(state: GameState) -> bool:
+    """True when ``state.known_deck`` holds an order-blinded BELIEF rather
+    than the true draw order: multiset counts over it are honest, but
+    ``[:n]`` slices are NOT the actual upcoming draws and must not be
+    treated as certain (the heuristic's completion checks otherwise return
+    fake 1.0/0.0 certainty from the belief sample).
+
+    Active only under BALATRO_NO_FORESIGHT=shuffle with the gate-pending
+    BALATRO_HONEST_DRAW_PROBS=1 flag. In clairvoyant mode the order IS the
+    truth, so the deterministic branches stay correct there.
+    """
+    if not state.known_deck:
+        return False
+    if os.environ.get("BALATRO_HONEST_DRAW_PROBS", "").strip().lower() not in ("1", "true", "on"):
+        return False
+    return no_foresight_mode() == "shuffle"
+
+
 def blind_known_deck(state: GameState) -> GameState:
     """Return ``state`` with the future-draw order hidden per the env mode.
 
