@@ -178,10 +178,14 @@ unanimous in comparable games: **learned whole-run (after)state value + shallow 
 iterated on self-play outcomes.**
 
 - Train V(state) → P(win) (+ auxiliary ante-reached / discounted margin) on **10k-100k on-policy runs of
-  the P1 planner bot** (local: ~10k/day; rented: $3-50 per batch). Combine the two fixes that each worked
-  and were never combined: TD(λ) targets + target network, on-policy data. Use the candidate-conditioned
-  architecture (the only head class that ever worked: candidate-subset 12.5× over random) rather than
-  pooled-state regression.
+  the P1 planner bot** (local: ~10k/day; rented: $3-50 per batch). Value-training recipe (CORRECTED
+  2026-06-12 — an earlier version of this doc misquoted the record): MC-outcome targets first;
+  TD(λ) as a gated experiment (its one win was on-distribution only; its deployment test failed);
+  target network was NEVER implemented — it is the textbook stabilizer to TRY against the documented
+  fitted-iteration collapse, not a known-working fix. Use the candidate-conditioned architecture
+  (the strongest offline head: candidate-subset 12.5× over random — though its one deployment test
+  failed as a beam pruner) rather than pooled-state regression. See PHASE_B_ARCHITECTURE.md (v2,
+  adversarially reviewed) for the current full design.
 - Use V as the planner's leaf (replacing the myopic heuristic leaf at 1-2-ante horizon), then close the
   loop: generate → train → redeploy → regenerate. 2-4 iterations.
 - **Why this dodges the Phase 8 graveyard:** (a) outcome labels at 100-1000× the old data scale (384 →
