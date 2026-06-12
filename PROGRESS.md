@@ -2968,6 +2968,26 @@
   (c) blind-START-only delegation with the whole blind handed over, matching the fork-audit's
   measured condition exactly.
 
+- **2026-06-12 P0.4 ROUND 3: THREE more sim bugs fixed + bridge-verified (agent, commit 944ae24,
+  findings `.data/p04_rootcause_round3.md`).** (11) Redeeming the ante's voucher nils
+  `current_round.voucher` until the next boss defeat — the sim kept returning the bought key,
+  the payload lookup failed, and the WHOLE shop silently fell back to generic sampling (0000015's
+  ante-5 frontier); plus used_vouchers passed NAMES into a KEY-filtered pool. (12) Overstock's
+  change_shop_size slot fill used the generic rng + consumed no seeded rolls (0000058's buy
+  APPLY_ERROR + silent stream shift) — new seed_faithful_fill_slots. (13) Sort-identity stamps:
+  in-place tarot transforms (Strength/suit/Death/Sigil/Ouija) keep their sort_id; Cryptid/DNA
+  copies get fresh max sort_ids; Familiar/Grim/Incantation creations stamped (round-2 residual).
+  Stale Psychic test updated to the post-371a1c2 lift behavior (zeroing, not bail) — no code bug.
+  **Audit v3 (`.data/p04_class_audit_v3.json`): 0000058 frontier 76->130 (lockstep into ANTE 7),
+  0000015 110->119 (its audit step-85 entry is a PROVEN cash-out ticker read race, not a sim
+  bug), 0000048 still full-run match; first nonzero ante-6+ class coverage (buy 6, select_blind
+  5, packs 3+3, boss 1).** 1384 tests pass (+6 new). VERDICT: shop/economy surface effectively
+  closed; NOT yet certified for full-trajectory antes-1-8 training data — residuals are 3
+  play-score divergences (0000064/0000027 over-score, 0000014 under-score), 1 hand-size
+  (0000039), 2 hand-content/deck-order (0000037, 0000015@119) cases, and the comparator's
+  money-ticker race. Shop-decision-only distillation at antes 1-5 is usable now with a per-seed
+  replay gate.
+
 - **2026-06-12 P0.4 ROUND 2: SEVEN more sim bugs fixed + bridge-verified (agent, commit 37d7e38,
   findings `.data/p04_rootcause_round2.md`).** used_jokers is a refcount not an accumulator
   (rerolled-away jokers RETURN to the pool); pack-card sort_id ordering + dropped pack
