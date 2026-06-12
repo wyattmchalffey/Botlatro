@@ -2968,6 +2968,23 @@
   (c) blind-START-only delegation with the whole blind handed over, matching the fork-audit's
   measured condition exactly.
 
+- **2026-06-12 P0.4 BRIDGE SESSION: CERTIFICATION FAILED — the sim->real gap is real, early, and
+  now per-class attributed.** Bridge launched headless (gamespeed 32); 64-seed scan ranked the
+  worklist; top-8 seeds replayed action-by-action (`.data/p04_class_audit.json` + log).
+  **ALL 8 diverged, at steps 12-70 (antes 1-4!), far earlier than the stale "validated to ~ante 5"
+  belief (that was 2026-05-24, different sim era).** Attribution: 4x cash_out (one inspected:
+  sim score 672/ante 1 vs bridge 784/ante 2 at round_eval — scoring or blind-progression
+  divergence INSIDE ante 1), 2x choose_pack_card, 1x buy (money $10 vs $12 at an ante-2 shop —
+  small money-accounting drift upstream), 1x stochastic-joker play (hand multiset diverged at
+  ante 4 = draw-order divergence). IMPLICATION: Phase B iteration-0 generation should NOT spend
+  on rented compute until the cash_out/scoring and money-accounting divergences are root-caused —
+  training data from a sim that diverges at ante 1-2 mistrains everything, not just late antes.
+  NEXT: (1) replay one diverging seed with per-step verbose diff to root-cause the ante-1
+  cash_out/score divergence (suspect: blind payout/interest timing or a play-scoring change
+  since May); (2) re-check the settle/polling artifact hypothesis for round_eval comparisons;
+  (3) fix, then re-run this exact audit (tooling now turnkey). The per-class audit tool worked
+  exactly as designed — bridge time landed on the densest seeds and every divergence has a class.
+
 - **2026-06-12 SKIP-FROM-ANTE-5 GATE: FAIL — static skipping is dead at EVERY horizon.**
   512 paired seeds offset 13000 (`.data/skip_a5_gate.json`): deployed 59/512 (11.5%) vs
   skip-smalls-from-ante-5 41/512 (8.0%) — d = -3.5pp (95% CI -6.5..-0.5), McNemar p = 0.030,
