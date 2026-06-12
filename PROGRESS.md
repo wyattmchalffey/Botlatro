@@ -2968,6 +2968,18 @@
   (c) blind-START-only delegation with the whole blind handed over, matching the fork-audit's
   measured condition exactly.
 
+- **2026-06-12 P0.4 ROUND 2: SEVEN more sim bugs fixed + bridge-verified (agent, commit 37d7e38,
+  findings `.data/p04_rootcause_round2.md`).** used_jokers is a refcount not an accumulator
+  (rerolled-away jokers RETURN to the pool); pack-card sort_id ordering + dropped pack
+  enhancements + Stone-card display ordering; Castle/Mail/Idol seed-faithful round-reset
+  streams; Pillar debuff stickiness; Hook discard stream; pack target-hand draw order.
+  **Seed 0000048 now matches the bridge PER-STEP for the full run** (was step 13); 0000015
+  frontier 12->110 (ante-5 shop slot, documented open); matched transitions ~doubled per class
+  (`.data/p04_class_audit_v2.json`). 1384 tests pass. OPEN: ante-5 shop slot content, one buy
+  APPLY_ERROR (same class), tarot/spectral sort-stamping, cosmetic pack key — plus CHECK whether
+  the 1 "pre-existing" failure (test_fast_path_bails_on_psychic_context) is actually stale vs
+  the 2026-06-11 Psychic lift (which intentionally removed that bail).
+
 - **2026-06-12 P0.4 ROOT-CAUSE: two real sim bugs FIXED + bridge-verified (agent investigation,
   `.data/p04_rootcause_0000048.md`).** (1) **Popcorn double-decay** (since f383dc2, 2026-05-03):
   decay fired at BOTH _jokers_after_played_round_ends AND _jokers_after_cash_out -> sim
