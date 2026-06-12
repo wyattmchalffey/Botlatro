@@ -2968,6 +2968,25 @@
   (c) blind-START-only delegation with the whole blind handed over, matching the fork-audit's
   measured condition exactly.
 
+- **2026-06-12 P1.1 ROUTE-ORACLE VERDICT: 14.3% — marginal fail of the pre-registered 15% bar;
+  P1 RE-AIMED.** 84 honest losses x 8 route policies x 2 pre-death shop forks
+  (`.data/p11_route_oracle.json`): routed_above_null = 12/84 = **14.3%** (Wilson ~8-23%), null
+  control 0.0% (fork noise did not materialize), 99.8% seed-faithful rollouts. Policy wins:
+  **skip_smalls 10**, level_focus 6, buy_best 4, reroll_hunt 3, buy_best_skip 2, hoard2_spend 1.
+  RE-DIAGNOSIS (per the gate): (1) multi-shop BUY-sequence planning (P1.3) is DEPRIORITIZED —
+  the buy-family recipes flip few seeds, consistent with every prior shop-selection closure;
+  the routing headroom that exists lives in **SKIP/TAGS** (10/84 = 11.9% flipped by crude
+  always-skip-smalls from a late fork!) and **LEVELING** (6/84). (2) NOTE the contrast with the
+  2026-06-08 static-skip A/B (-10/100 net): that was whole-run blanket skipping; the oracle's
+  wins are LATE-GAME skipping (forks 1-2 antes pre-death) — a cheap pre-P1.2 experiment falls
+  out directly: env-gated "skip Small Blinds from ante N" paired gate (hindsight-best-of-K
+  credits flips but hides breakage; only the paired net decides). (3) The grammar is a LOWER
+  bound (8 static recipes, 2-ante horizon) — but a low lower bound plus all prior shop closures
+  shifts weight toward the chassis-replacement scenario: P2 policy learning with
+  exploration-diverse data-gen (the route grammar itself is the exploration mechanism) over
+  hand-built whole-run planners. (4) Bar re-derivation (clairvoyant ceiling measurement) gains
+  priority: if crude routes flip only 14%, the 12.4%->95% gap is mostly NOT in late routing.
+
 - **2026-06-12 HONEST-DRAW-PROBS GATE: NEUTRAL — not adopted.** 512 paired seeds (offset 7000,
   `.data/honest_draw_probs_gate.log`): baseline 63/512 (12.3%) vs honest probabilities 67/512
   (13.1%) — d = +0.78pp (95% CI -2.2..+3.7), McNemar p = 0.70, mean ante +0.10 (gained 32 /
