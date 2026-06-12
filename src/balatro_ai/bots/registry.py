@@ -321,6 +321,13 @@ def _restore_env(name: str, value: str | None) -> None:
 
 def create_bot(name: str, seed: int | None = None) -> Bot:
     normalized = name.lower().replace("-", "_")
+    if normalized.startswith("recipe_") and normalized.endswith("_bot"):
+        # Exploration-diversity wrappers for self-play data generation
+        # (route_recipes.py): recipe_<policy>_bot over the deployed bot.
+        from balatro_ai.bots.route_recipes import RouteRecipeBot
+
+        policy = normalized[len("recipe_"):-len("_bot")]
+        return RouteRecipeBot(policy, SolverShopBasicPlayBot(seed=seed))
     if normalized == "random_bot":
         return RandomBot(seed=seed)
     if normalized == "greedy_bot":
