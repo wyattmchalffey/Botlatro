@@ -40,36 +40,75 @@ def _cap_worker(args):
     bot = create_bot(bot_name, _stable_seed_int(seed))
     with bot_config_scope(replace(DEFAULT_CONFIG, shop_audit_enabled=False)):
         cap = capture_run(seed, bot.choose_action, stake=stake, max_steps=max_steps)
-    return cap.to_json_dict()
+    row = cap.to_json_dict()
+    # Policy provenance (Phase B): mixture accounting + per-policy advantage
+    # baselines need to know which policy generated each run.
+    row["bot_name"] = bot_name
+    return row
 
 
 def _capture(args) -> int:
     out = args.out
-    existing = 0
+    # TRUE resumability (Phase B feasibility-review fix): per-run incremental
+    # appends + per-seed dedupe — a crash at run 49k of 50k loses at most the
+    # in-flight runs (the old cache regenerated EVERYTHING unless complete).
+    # Bot MIXTURES: --bot "name1:w1,name2:w2" -> deterministic per-seed
+    # assignment proportional to weights (stable across resumes).
+    done_seeds: set[str] = set()
     if os.path.exists(out):
         with open(out, encoding="utf-8") as fh:
-            existing = sum(1 for line in fh if line.strip())
+            for line in fh:
+                if line.strip():
+                    try:
+                        done_seeds.add(json.loads(line)["seed"])
+                    except (ValueError, KeyError):
+                        continue
     seeds = [f"{args.seed_offset + i:07d}" for i in range(1, args.seeds + 1)]
-    if existing >= len(seeds):
-        print(f"[capture] {existing} captures already present in {out}; skipping generation", flush=True)
-        return existing
-    jobs = [(s, args.bot, args.stake, args.max_steps) for s in seeds]
+
+    mix: list[tuple[str, float]] = []
+    for part in str(args.bot).split(","):
+        bot_name, _, weight = part.strip().partition(":")
+        mix.append((bot_name, float(weight) if weight else 1.0))
+    total_weight = sum(w for _, w in mix)
+
+    def _bot_for(index: int) -> str:
+        if len(mix) == 1:
+            return mix[0][0]
+        slot = (index * 0.6180339887498949) % 1.0  # low-discrepancy assignment
+        acc = 0.0
+        for bot_name, weight in mix:
+            acc += weight / total_weight
+            if slot < acc:
+                return bot_name
+        return mix[-1][0]
+
+    jobs = [
+        (s, _bot_for(i), args.stake, args.max_steps)
+        for i, s in enumerate(seeds)
+        if s not in done_seeds
+    ]
+    if not jobs:
+        print(f"[capture] all {len(seeds)} seeds already present in {out}", flush=True)
+        return len(seeds)
+    if done_seeds:
+        print(f"[capture] resume: {len(done_seeds)} present, {len(jobs)} to run", flush=True)
     t0 = time.perf_counter()
-    rows = []
-    from concurrent.futures import ProcessPoolExecutor
+    n_new = 0
+    from concurrent.futures import ProcessPoolExecutor, as_completed
     with ProcessPoolExecutor(max_workers=args.workers) as ex:
-        for i, row in enumerate(ex.map(_cap_worker, jobs), start=1):
-            rows.append(row)
-            if i % 32 == 0:
-                print(f"[capture] {i}/{len(jobs)} ({time.perf_counter()-t0:.0f}s)", flush=True)
-    won = sum(1 for r in rows if r["won"])
-    tmp = out + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        for r in rows:
-            fh.write(json.dumps(r, separators=(",", ":")) + "\n")
-    os.replace(tmp, out)
-    print(f"[capture] wrote {len(rows)} runs to {out} | winrate {won}/{len(rows)} "
-          f"({won/len(rows):.1%}) in {time.perf_counter()-t0:.0f}s", flush=True)
+        futures = [ex.submit(_cap_worker, job) for job in jobs]
+        for future in as_completed(futures):
+            row = future.result()
+            with open(out, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(row, separators=(",", ":")) + "\n")
+            n_new += 1
+            if n_new % 32 == 0:
+                print(f"[capture] {n_new}/{len(jobs)} ({time.perf_counter()-t0:.0f}s)", flush=True)
+    with open(out, encoding="utf-8") as fh:
+        rows = [json.loads(line) for line in fh if line.strip()]
+    won = sum(1 for r in rows if r.get("won"))
+    print(f"[capture] {out} now holds {len(rows)} runs | winrate {won}/{len(rows)} "
+          f"({won/len(rows):.1%}) | {n_new} new in {time.perf_counter()-t0:.0f}s", flush=True)
     return len(rows)
 
 
