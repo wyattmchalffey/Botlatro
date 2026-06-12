@@ -54,6 +54,7 @@ class SolverShopBasicPlayBot:
     _fallback: BasicStrategyBot = field(init=False, repr=False)
     _policy: object = field(init=False, repr=False)
     _deep_play: object = field(default=None, init=False, repr=False)
+    _deep_play_used: int = field(default=0, init=False, repr=False)
 
     def __post_init__(self) -> None:
         from balatro_ai.solver.policy import SolverPolicy
@@ -103,6 +104,11 @@ class SolverShopBasicPlayBot:
             return None
         if state.phase != GamePhase.SELECTING_HAND:
             return None
+        # Cost rail: bound worst-case run cost (a degenerate seed could
+        # otherwise grind thousands of multi-second deep decisions).
+        budget = int(os.environ.get("BALATRO_DEEP_PLAY_BUDGET", "25") or 25)
+        if self._deep_play_used >= budget:
+            return None
         remaining = state.required_score - state.current_score
         if remaining <= 0:
             return None
@@ -138,6 +144,7 @@ class SolverShopBasicPlayBot:
             return None
         if action is None or action.action_type == ActionType.NO_OP:
             return None
+        self._deep_play_used += 1
         return action
 
 

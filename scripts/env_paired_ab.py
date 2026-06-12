@@ -52,8 +52,16 @@ def main():
     off = int(sys.argv[5]) if len(sys.argv) > 5 else 4000000
     seeds = [f"{off + i:07d}" for i in range(1, n + 1)]
     t0 = time.perf_counter()
+    rows = []
     with ProcessPoolExecutor(max_workers=jobs) as ex:
-        rows = list(ex.map(_worker, [(s, env, val) for s in seeds]))
+        from concurrent.futures import as_completed
+        futs = {ex.submit(_worker, (s, env, val)): s for s in seeds}
+        for fut in as_completed(futs):
+            rows.append(fut.result())
+            done = len(rows)
+            if done % 16 == 0 or done == n:
+                el = time.perf_counter() - t0
+                print(f"  [pairs {done}/{n}] {el:.0f}s elapsed (~{el/done:.1f}s/pair)", flush=True)
     dt = time.perf_counter() - t0
     import statistics as st
     bw = sum(r["base"]["won"] for r in rows)
