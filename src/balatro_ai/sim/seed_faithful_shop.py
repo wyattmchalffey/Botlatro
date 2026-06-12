@@ -121,6 +121,7 @@ def _shop_card_payloads(
     *,
     used_jokers: frozenset[str] = frozenset(),
     used_consumables: frozenset[str] = frozenset(),
+    n_slots: int | None = None,
 ) -> tuple[dict[str, Any], ...] | None:
     """Predict the rerollable shop-card slots and map them to ShopSampler
     payloads, advancing ``rng`` by exactly one shop-card roll. Returns None
@@ -130,14 +131,16 @@ def _shop_card_payloads(
     ``used_jokers``/``used_consumables`` are the run's already-seen keys that
     Balatro excludes from the shop pool (G.GAME.used_jokers; skipped when
     Showman is owned). Passing them keeps the pool — and thus the pick at a
-    given rng value — aligned with the live game."""
+    given rng value — aligned with the live game. ``n_slots`` overrides the
+    full slot count for partial fills (Overstock's newly unlocked slot)."""
 
     try:
         from balatro_ai.rng.surfaces import predict_shop_cards
     except ImportError:
         return None
     try:
-        n_slots = sampler.shop_slot_count(state)
+        if n_slots is None:
+            n_slots = sampler.shop_slot_count(state)
         # Run pool flags (G.GAME.pool_flags) gate a few items (Gros Michel / Cavendish).
         # Pass the SET flag names so predict_shop_cards mirrors get_current_pool's gating
         # (common_events.lua:2027-2028); without this it predicted gated items that the
@@ -185,6 +188,30 @@ def seed_faithful_reroll(
 
     return _shop_card_payloads(
         sampler, state, rng, used_jokers=used_jokers, used_consumables=used_consumables,
+    )
+
+
+def seed_faithful_fill_slots(
+    sampler: "ShopSampler",
+    state: "GameState",
+    rng: Any,
+    *,
+    n_slots: int,
+    used_jokers: frozenset[str] = frozenset(),
+    used_consumables: frozenset[str] = frozenset(),
+) -> tuple[dict[str, Any], ...] | None:
+    """Predict ``n_slots`` newly created shop-card slots, or None to fall
+    back to generic sampling.
+
+    Redeeming Overstock / Overstock Plus calls ``change_shop_size(+1)``
+    (common_events.lua:1097), which immediately fills every EMPTY slot via
+    ``create_card_for_shop`` — the same 'cdt'+ante / content rolls as a shop
+    fill — while the current shop cards are still alive, so the pool excludes
+    owned keys PLUS the displayed slot keys (the caller passes those)."""
+
+    return _shop_card_payloads(
+        sampler, state, rng, n_slots=n_slots,
+        used_jokers=used_jokers, used_consumables=used_consumables,
     )
 
 

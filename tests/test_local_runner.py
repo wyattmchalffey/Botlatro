@@ -578,6 +578,24 @@ class LocalRunnerTests(unittest.TestCase):
         self.assertIs(shop_cards[0], visible)
         self.assertEqual(next_state.shop[0], "Visible Joker")
 
+    def test_voucher_slot_empties_after_redeeming_the_antes_voucher(self) -> None:
+        """Redeeming the shop voucher nils G.GAME.current_round.voucher
+        (card.lua:1819); it is re-rolled only at the next boss defeat, so
+        every later shop of the same ante shows an EMPTY voucher slot —
+        and the cached key must translate display NAMES to v_* keys."""
+
+        sim = LocalBalatroSimulator(seed=5, sampler=ShopSampler(tiny_sim_data()), boss_pool=("The Club",))
+        sim._voucher_by_ante[3] = "v_overstock_norm"
+
+        unowned = GameState(phase=GamePhase.SHOP, ante=3)
+        self.assertEqual(sim._voucher_for_ante(unowned), "v_overstock_norm")
+
+        owned_by_name = GameState(phase=GamePhase.SHOP, ante=3, vouchers=("Overstock",))
+        self.assertIsNone(sim._voucher_for_ante(owned_by_name))
+
+        owned_by_key = GameState(phase=GamePhase.SHOP, ante=3, vouchers=("v_overstock_norm",))
+        self.assertIsNone(sim._voucher_for_ante(owned_by_key))
+
     def test_hook_play_samples_held_discards_and_refills_hand(self) -> None:
         sim = LocalBalatroSimulator(seed=6, sampler=ShopSampler(tiny_sim_data()), boss_pool=("The Hook",))
         sim.state = GameState(

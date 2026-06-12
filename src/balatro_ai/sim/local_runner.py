@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import re
 from dataclasses import dataclass, field, replace
+from functools import lru_cache
 from random import Random
 from time import perf_counter
 from typing import Any, Iterable, Mapping
@@ -498,9 +499,33 @@ class LocalBalatroSimulator:
         #     sim's simulate_use_consumable never touches the persistent rng;
         #   - pack-opens: independent (seed, ante, pack_key) keys (24/24).
         next_state = self._apply_action(state, action)
+        next_state = self._stamp_new_sort_objects(next_state)
         self._economy.record(state, action, next_state)
         self.state = _with_local_legal_actions(next_state)
         return self.state
+
+    def _stamp_new_sort_objects(self, state: GameState) -> GameState:
+        """Replace ``deck_sort_new`` markers (Cryptid/DNA copies — brand-new
+        Card objects in Balatro) with the run's next creation-order hints so
+        they sort after every existing card, like a fresh ``G.sort_id``."""
+
+        def _needs_stamp(card: Card) -> bool:
+            return isinstance(card.metadata, dict) and bool(card.metadata.get("deck_sort_new"))
+
+        def _stamped(card: Card) -> Card:
+            if not _needs_stamp(card):
+                return card
+            metadata = dict(card.metadata)
+            metadata.pop("deck_sort_new", None)
+            metadata["deck_sort_hint"] = self._card_sort_seq
+            self._card_sort_seq += 1
+            return replace(card, metadata=metadata)
+
+        if any(_needs_stamp(card) for card in state.hand):
+            state = replace(state, hand=tuple(_stamped(card) for card in state.hand))
+        if state.known_deck and any(_needs_stamp(card) for card in state.known_deck):
+            state = replace(state, known_deck=tuple(_stamped(card) for card in state.known_deck))
+        return state
 
     def economy_payload(self) -> dict[str, float]:
         state = self.state
@@ -573,8 +598,40 @@ class LocalBalatroSimulator:
         if not _is_overstock_voucher_buy(state, action):
             return bought
         current_shop = _modifier_items(bought.modifiers, "shop_cards")
+        new_cards = self._seed_faithful_overstock_fill(bought, current_shop)
+        if new_cards is not None:
+            return _with_shop_cards(bought, tuple(current_shop) + new_cards)
+        if self._balatro_rng is not None and not self._rng_diverged:
+            # The real game consumed 'cdt'+ante/content rolls for the new
+            # slot(s); a generic fill desyncs the seed-faithful shop stream.
+            self._rng_diverged = True
         filled_shop = self.sampler.fill_shop_to_slot_count(bought, current_shop, rng=self._rng)
         return _with_shop_cards(bought, filled_shop)
+
+    def _seed_faithful_overstock_fill(self, state: GameState, current_shop) -> tuple | None:
+        """Seed-faithful payloads for the shop slot(s) unlocked by an
+        Overstock / Overstock Plus redeem, or None to use generic sampling.
+
+        ``change_shop_size`` (common_events.lua:1097) immediately fills every
+        empty slot via ``create_card_for_shop`` — the same 'cdt'+ante and
+        content rolls as a shop fill — while the current shop cards are still
+        alive, so the pool exclusions are the pack-open ones (owned keys +
+        displayed slot keys)."""
+
+        if self._balatro_rng is None or self._rng_diverged:
+            return None
+        n_missing = max(0, self.sampler.shop_slot_count(state) - len(tuple(current_shop)))
+        if n_missing <= 0:
+            return ()
+        try:
+            from balatro_ai.sim.seed_faithful_shop import seed_faithful_fill_slots
+        except ImportError:
+            return None
+        used_jokers, used_consumables = self._pack_pool_used_keys(state)
+        return seed_faithful_fill_slots(
+            self.sampler, state, self._balatro_rng, n_slots=n_missing,
+            used_jokers=used_jokers, used_consumables=used_consumables,
+        )
 
     def _sell(self, state: GameState, action: Action) -> GameState:
         index = _action_index(action)
@@ -976,24 +1033,35 @@ class LocalBalatroSimulator:
 
         Ante 1's voucher was already consumed by predict_initial_surface;
         ante 2+ roll the independent "Voucher"+ante stream lazily the
-        first time a shop for that ante is generated."""
+        first time a shop for that ante is generated.
+
+        Redeeming the shop voucher sets ``G.GAME.current_round.voucher = nil``
+        (card.lua:1819) and it is re-rolled only at the next BOSS defeat
+        (state_events.lua:263) — so once the ante's voucher is OWNED, every
+        later shop of that ante has an EMPTY voucher slot. Without this check
+        the payload lookup failed (owned vouchers are filtered from the pool)
+        and the WHOLE shop silently fell back to generic sampling — the seed
+        0000015 step-108 ante-5 shop-content divergence."""
 
         ante = state.ante
+        owned_keys = _owned_voucher_keys(state)
         cached = self._voucher_by_ante.get(ante)
         if cached is not None:
-            return cached
+            return None if cached in owned_keys else cached
         if ante <= 1:
             voucher_key = getattr(self._initial_surface, "voucher_key", None)
         else:
             try:
                 from balatro_ai.rng.surfaces import predict_voucher
                 voucher_key = predict_voucher(
-                    self._balatro_rng, ante=ante, used_vouchers=tuple(state.vouchers),
+                    self._balatro_rng, ante=ante, used_vouchers=owned_keys,
                 )
             except Exception:  # noqa: BLE001 — never crash the sim path
                 voucher_key = None
         if voucher_key:
             self._voucher_by_ante[ante] = voucher_key
+        if voucher_key in owned_keys:
+            return None
         return voucher_key
 
     def _seed_faithful_round_deck(self, state: GameState):
@@ -1644,14 +1712,28 @@ class LocalBalatroSimulator:
     def _spectral_created_hand_cards(self, name: str) -> tuple[Card, ...]:
         seed_faithful = self._seed_faithful_spectral_cards(name)
         if seed_faithful is not None:
-            return seed_faithful
+            return self._with_creation_sort_hints(seed_faithful)
         if name == "Familiar":
-            return tuple(_random_playing_card(self._rng, rank=self._rng.choice(("J", "Q", "K")), enhancement=_random_enhancement(self._rng)) for _ in range(3))
+            return self._with_creation_sort_hints(tuple(_random_playing_card(self._rng, rank=self._rng.choice(("J", "Q", "K")), enhancement=_random_enhancement(self._rng)) for _ in range(3)))
         if name == "Grim":
-            return tuple(_random_playing_card(self._rng, rank="A", enhancement=_random_enhancement(self._rng)) for _ in range(2))
+            return self._with_creation_sort_hints(tuple(_random_playing_card(self._rng, rank="A", enhancement=_random_enhancement(self._rng)) for _ in range(2)))
         if name == "Incantation":
-            return tuple(_random_playing_card(self._rng, rank=self._rng.choice(("2", "3", "4", "5", "6", "7", "8", "9", "10")), enhancement=_random_enhancement(self._rng)) for _ in range(4))
+            return self._with_creation_sort_hints(tuple(_random_playing_card(self._rng, rank=self._rng.choice(("2", "3", "4", "5", "6", "7", "8", "9", "10")), enhancement=_random_enhancement(self._rng)) for _ in range(4)))
         return ()
+
+    def _with_creation_sort_hints(self, cards: tuple[Card, ...]) -> tuple[Card, ...]:
+        """Stamp spectral-created hand cards (Familiar/Grim/Incantation) with
+        creation-order ``deck_sort_hint``s: Balatro creates them as new Card
+        objects, so their sort_ids land after every existing card in the
+        order they are created."""
+
+        stamped: list[Card] = []
+        for card in cards:
+            metadata = dict(card.metadata)
+            metadata["deck_sort_hint"] = self._card_sort_seq
+            self._card_sort_seq += 1
+            stamped.append(replace(card, metadata=metadata))
+        return tuple(stamped)
 
     def _seed_faithful_spectral_cards(self, name: str) -> tuple[Card, ...] | None:
         """Seed-faithful Familiar/Grim/Incantation created playing cards via
@@ -2450,6 +2532,37 @@ def _owned_joker_keys(state: GameState) -> set[str]:
     return keys
 
 
+@lru_cache(maxsize=1)
+def _voucher_key_by_name() -> dict[str, str]:
+    try:
+        from balatro_ai.rng.surfaces import _voucher_records
+        return {str(r["name"]): str(r["key"]) for r in _voucher_records()}
+    except Exception:  # noqa: BLE001 — never crash the sim path
+        return {}
+
+
+def _owned_voucher_keys(state: GameState) -> frozenset[str]:
+    """Owned vouchers as POOL KEYS (``v_*``).
+
+    ``state.vouchers`` holds display NAMES on the bridge/sim path while the
+    voucher pool (and Balatro's ``G.GAME.used_vouchers``) is keyed by ``v_*``
+    keys — translate so owned-voucher exclusion (and the requires-chain for
+    upgraded vouchers) actually applies."""
+
+    by_name = _voucher_key_by_name()
+    keys: set[str] = set()
+    for item in state.vouchers:
+        if not isinstance(item, str):
+            continue
+        if item.startswith("v_"):
+            keys.add(item)
+        else:
+            key = by_name.get(item)
+            if key:
+                keys.add(key)
+    return frozenset(keys)
+
+
 def _owned_consumable_keys(state: GameState) -> set[str]:
     keys: set[str] = set()
     for item in state.consumables:
@@ -2489,15 +2602,24 @@ def _canonical_card_key(card: Card) -> tuple[int, int, str, str, str, str]:
     (e.g. acquired from Standard packs) carry a ``deck_sort_hint`` stamped at
     creation time and sort after ALL base cards in creation order — Balatro's
     global ``G.sort_id`` counter — even when their rank/suit duplicates a
-    base card. Unstamped non-base cards sort last, stably."""
+    base card. Cards TRANSFORMED in place (Strength / suit tarots / Death /
+    Sigil / Ouija) keep their original sort_id in Balatro, recorded here as a
+    ``deck_sort_identity`` (pre-transform suit/rank) stamp. Unstamped
+    non-base cards sort last, stably."""
 
     metadata = card.metadata if isinstance(card.metadata, dict) else {}
     hint = metadata.get("deck_sort_hint")
     if isinstance(hint, int):
         return (len(_CANONICAL_DECK_INDEX) + hint, 0, "", "", "", "")
-    base = _CANONICAL_DECK_INDEX.get((card.suit, _canonical_rank(card.rank)))
-    if base is not None:
-        return (base, 0, "", "", "", "")
+    identity = metadata.get("deck_sort_identity")
+    if isinstance(identity, (tuple, list)) and len(identity) == 2:
+        base = _CANONICAL_DECK_INDEX.get((str(identity[0]), _canonical_rank(str(identity[1]))))
+        if base is not None:
+            return (base, 0, "", "", "", "")
+    if not metadata.get("deck_sort_new"):
+        base = _CANONICAL_DECK_INDEX.get((card.suit, _canonical_rank(card.rank)))
+        if base is not None:
+            return (base, 0, "", "", "", "")
     return (
         len(_CANONICAL_DECK_INDEX),
         1,

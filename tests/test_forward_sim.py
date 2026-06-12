@@ -2782,5 +2782,85 @@ class ForwardSimTests(unittest.TestCase):
         self.assertEqual(state.modifiers["discards_used"], 1)
 
 
+class DeckSortIdentityTests(unittest.TestCase):
+    """Balatro identity transforms keep the card object (and its sort_id);
+    the sim must preserve the original deck-sort position via metadata."""
+
+    def _use(self, state: GameState, *, indices=(), **injections) -> GameState:
+        return simulate_use_consumable(
+            state,
+            Action(ActionType.USE_CONSUMABLE, card_indices=tuple(indices), target_id="consumable", amount=0, metadata={"kind": "consumable", "index": 0}),
+            **injections,
+        )
+
+    def test_suit_tarot_stamps_original_identity_on_base_card(self) -> None:
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            hand=(Card("6", "H"), Card("K", "H")),
+            consumables=("The Star",),
+        )
+        next_state = self._use(state, indices=(0,))
+        converted = next_state.hand[0]
+        self.assertEqual(converted.suit, "D")
+        self.assertEqual(tuple(converted.metadata["deck_sort_identity"]), ("H", "6"))
+        from balatro_ai.sim.local_runner import _canonical_card_key
+        self.assertEqual(_canonical_card_key(converted), _canonical_card_key(Card("6", "H")))
+
+    def test_strength_keeps_pack_creation_hint(self) -> None:
+        hinted = Card("6", "H", metadata={"deck_sort_hint": 60})
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            hand=(hinted,),
+            consumables=("Strength",),
+        )
+        next_state = self._use(state, indices=(0,))
+        upgraded = next_state.hand[0]
+        self.assertEqual(upgraded.rank, "7")
+        self.assertEqual(upgraded.metadata["deck_sort_hint"], 60)
+        self.assertNotIn("deck_sort_identity", upgraded.metadata)
+
+    def test_death_copy_keeps_replaced_cards_position_not_sources(self) -> None:
+        source = Card("A", "S", metadata={"deck_sort_hint": 77})
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            hand=(Card("2", "C"), source),
+            consumables=("Death",),
+        )
+        next_state = self._use(state, indices=(0, 1))
+        copy = next_state.hand[0]
+        self.assertEqual((copy.rank, copy.suit), ("A", "S"))
+        self.assertNotIn("deck_sort_hint", copy.metadata)
+        self.assertEqual(tuple(copy.metadata["deck_sort_identity"]), ("C", "2"))
+        from balatro_ai.sim.local_runner import _canonical_card_key
+        self.assertEqual(_canonical_card_key(copy), _canonical_card_key(Card("2", "C")))
+
+    def test_cryptid_copies_are_new_sort_objects(self) -> None:
+        source = Card("9", "D", metadata={"deck_sort_hint": 64})
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            hand=(source,),
+            consumables=("Cryptid",),
+        )
+        next_state = self._use(state, indices=(0,))
+        copies = [card for card in next_state.hand if isinstance(card.metadata, dict) and card.metadata.get("deck_sort_new")]
+        self.assertEqual(len(copies), 2)
+        for copy in copies:
+            self.assertNotIn("deck_sort_hint", copy.metadata)
+
+    def test_sigil_preserves_each_cards_original_identity(self) -> None:
+        state = GameState(
+            phase=GamePhase.SELECTING_HAND,
+            hand=(Card("4", "H"), Card("9", "C")),
+            consumables=("Sigil",),
+        )
+        next_state = self._use(state, sigil_suit="S")
+        from balatro_ai.sim.local_runner import _canonical_card_key
+        self.assertEqual(
+            [_canonical_card_key(card) for card in next_state.hand],
+            [_canonical_card_key(Card("4", "H")), _canonical_card_key(Card("9", "C"))],
+        )
+        self.assertTrue(all(card.suit == "S" for card in next_state.hand))
+
+
 if __name__ == "__main__":
     unittest.main()

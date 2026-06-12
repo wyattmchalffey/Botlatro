@@ -86,7 +86,15 @@ class RustBestPlayBridgeTests(unittest.TestCase):
         )
         self.assertIsNotNone(result)
 
-    def test_fast_path_bails_on_psychic_context(self) -> None:
+    def test_fast_path_zeroes_non_five_card_plays_under_psychic(self) -> None:
+        """The Psychic no longer bails (Psychic lift, commit 371a1c2): the
+        Rust batch runs and !=5-card subsets are zeroed post-batch, matching
+        Python's evaluator (which zeroes any !=5-card play under The
+        Psychic). The argmax must therefore be the full 5-card play with a
+        Python-equal score."""
+
+        from balatro_ai.rules.hand_evaluator import evaluate_played_cards
+
         result = rust_best_play_scores(
             _cards(),
             {"High Card": 1},
@@ -94,7 +102,24 @@ class RustBestPlayBridgeTests(unittest.TestCase):
             (Joker("Joker"),),
             deck_size=40,
         )
-        self.assertIsNone(result)
+        self.assertIsNotNone(result)
+        actions, scores = result
+        score_by_action = dict(zip(actions, scores))
+        for idxs, score in score_by_action.items():
+            if len(idxs) != 5:
+                self.assertEqual(score, 0, f"non-5-card play {idxs} must score 0 under The Psychic")
+        five_card = (0, 1, 2, 3, 4)
+        self.assertGreater(score_by_action[five_card], 0)
+        python_eval = evaluate_played_cards(
+            _cards(),
+            hand_levels={"High Card": 1},
+            blind_name="The Psychic",
+            jokers=(Joker("Joker"),),
+            deck_size=40,
+        )
+        self.assertEqual(score_by_action[five_card], python_eval.score)
+        best_action = max(score_by_action, key=lambda key: score_by_action[key])
+        self.assertEqual(best_action, five_card)
 
 
 if __name__ == "__main__":

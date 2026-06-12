@@ -1527,7 +1527,7 @@ def _dna_cards_after_play(state: GameState, played_cards: tuple[Card, ...], eval
     dna_count = sum(1 for joker in state.jokers if joker.name == "DNA" and not _joker_is_disabled(joker))
     if dna_count <= 0:
         return ()
-    return tuple(_copy_card(played_cards[0]) for _ in range(dna_count))
+    return tuple(_card_as_new_sort_object(_copy_card(played_cards[0])) for _ in range(dna_count))
 
 
 def _sixth_sense_triggers(state: GameState, played_cards: tuple[Card, ...]) -> bool:
@@ -1541,6 +1541,48 @@ def _sixth_sense_triggers(state: GameState, played_cards: tuple[Card, ...]) -> b
 
 def _copy_card(card: Card) -> Card:
     return replace(card, metadata=_copy_metadata(card.metadata))
+
+
+def _card_with_inherited_sort_position(position_card: Card, card: Card) -> Card:
+    """Keep ``card`` sorting at ``position_card``'s deck position.
+
+    Balatro's identity transforms (``Card:set_base`` for Strength / suit
+    conversions / Sigil / Ouija, ``copy_card`` ONTO an existing card for
+    Death) mutate the card OBJECT in place, so its ``sort_id`` — the key
+    ``pseudoshuffle`` sorts by — never changes. The sim replaces the Card
+    value, so stamp the original's sort identity into metadata for
+    ``_canonical_card_key`` (local_runner) to honour:
+
+    - already-stamped originals (pack-acquired ``deck_sort_hint`` /
+      previously transformed ``deck_sort_identity``) pass their stamp on;
+    - plain base-deck originals record their pre-transform (suit, rank).
+    """
+
+    source_meta = position_card.metadata if isinstance(position_card.metadata, dict) else {}
+    metadata = dict(card.metadata)
+    metadata.pop("deck_sort_hint", None)
+    metadata.pop("deck_sort_identity", None)
+    metadata.pop("deck_sort_new", None)
+    if isinstance(source_meta.get("deck_sort_hint"), int):
+        metadata["deck_sort_hint"] = source_meta["deck_sort_hint"]
+    elif source_meta.get("deck_sort_identity") is not None:
+        metadata["deck_sort_identity"] = source_meta["deck_sort_identity"]
+    else:
+        metadata["deck_sort_identity"] = (position_card.suit, position_card.rank)
+    return replace(card, metadata=metadata)
+
+
+def _card_as_new_sort_object(card: Card) -> Card:
+    """Mark a COPY that Balatro creates as a brand-new Card object (Cryptid,
+    DNA): it gets a fresh ``sort_id`` larger than every existing card, so it
+    must NOT inherit the source's sort stamps. The local runner replaces the
+    ``deck_sort_new`` flag with the run's next creation-order hint."""
+
+    metadata = dict(card.metadata)
+    metadata.pop("deck_sort_hint", None)
+    metadata.pop("deck_sort_identity", None)
+    metadata["deck_sort_new"] = True
+    return replace(card, metadata=metadata)
 
 
 def _copy_metadata(value):
@@ -2098,15 +2140,16 @@ def _state_after_tarot_used(
         hand = _hand_with_replaced_cards(hand, indices, lambda card: _card_with_enhancement(card, TAROT_ENHANCEMENTS[tarot_name]))
     elif tarot_name in TAROT_SUIT_CONVERSIONS:
         _require_selected_indices(state, indices, min_count=1, max_count=3, label=tarot_name)
-        hand = _hand_with_replaced_cards(hand, indices, lambda card: _card_with_suit(card, TAROT_SUIT_CONVERSIONS[tarot_name]))
+        hand = _hand_with_replaced_cards(hand, indices, lambda card: _card_with_inherited_sort_position(card, _card_with_suit(card, TAROT_SUIT_CONVERSIONS[tarot_name])))
     elif tarot_name == "Strength":
         _require_selected_indices(state, indices, min_count=1, max_count=2, label=tarot_name)
-        hand = _hand_with_replaced_cards(hand, indices, lambda card: _card_with_rank(card, STRENGTH_RANKS[_normalize_rank(card.rank)]))
+        hand = _hand_with_replaced_cards(hand, indices, lambda card: _card_with_inherited_sort_position(card, _card_with_rank(card, STRENGTH_RANKS[_normalize_rank(card.rank)])))
     elif tarot_name == "Death":
         _require_selected_indices(state, indices, min_count=2, max_count=2, label=tarot_name)
         source_index = max(indices)
         source = hand[source_index]
-        hand = _hand_with_replacement_map(hand, {index: _copy_card(source) for index in indices if index != source_index})
+        # copy_card targets the EXISTING left card, which keeps its sort_id.
+        hand = _hand_with_replacement_map(hand, {index: _card_with_inherited_sort_position(hand[index], _copy_card(source)) for index in indices if index != source_index})
     elif tarot_name == "The Hanged Man":
         _require_selected_indices(state, indices, min_count=1, max_count=2, label=tarot_name)
         destroyed_cards = _hand_cards_at_indices(state, indices)
@@ -2192,7 +2235,8 @@ def _state_after_spectral_used(
     elif spectral_name == "Cryptid":
         _require_selected_indices(state, indices, min_count=1, max_count=1, label=spectral_name)
         source = state.hand[indices[0]]
-        created = (_copy_card(source), _copy_card(source))
+        # copy_card with no target creates NEW cards (fresh sort_ids).
+        created = (_card_as_new_sort_object(_copy_card(source)), _card_as_new_sort_object(_copy_card(source)))
         hand = _sort_hand_cards(hand + created)
         jokers = _jokers_after_playing_cards_added(jokers, created)
     elif spectral_name in {"Familiar", "Grim", "Incantation", "Immolate"}:
@@ -2212,11 +2256,11 @@ def _state_after_spectral_used(
     elif spectral_name == "Sigil":
         if sigil_suit is None:
             raise ValueError("Sigil requires an injected suit")
-        hand = tuple(_card_with_suit(card, _normalize_suit(sigil_suit)) for card in hand)
+        hand = tuple(_card_with_inherited_sort_position(card, _card_with_suit(card, _normalize_suit(sigil_suit))) for card in hand)
     elif spectral_name == "Ouija":
         if ouija_rank is None:
             raise ValueError("Ouija requires an injected rank")
-        hand = tuple(_card_with_rank(card, _normalize_rank(ouija_rank)) for card in hand)
+        hand = tuple(_card_with_inherited_sort_position(card, _card_with_rank(card, _normalize_rank(ouija_rank))) for card in hand)
         updated_modifiers = _add_hand_size_delta(updated_modifiers, -1)
     elif spectral_name == "Black Hole":
         hand_levels = {hand_type.value: max(1, _int_value(state.hand_levels.get(hand_type.value))) + 1 for hand_type in HandType}
