@@ -2968,6 +2968,19 @@
   (c) blind-START-only delegation with the whole blind handed over, matching the fork-audit's
   measured condition exactly.
 
+- **2026-06-12 SKIP-FROM-ANTE-5 GATE: FAIL — static skipping is dead at EVERY horizon.**
+  512 paired seeds offset 13000 (`.data/skip_a5_gate.json`): deployed 59/512 (11.5%) vs
+  skip-smalls-from-ante-5 41/512 (8.0%) — d = -3.5pp (95% CI -6.5..-0.5), McNemar p = 0.030,
+  gained 22 / lost 40. The hindsight-best-of-K caveat materialized exactly as pre-registered:
+  the oracle credits the 23/87 seeds skipping flips but hides the 40 it breaks. Combined with
+  the 2026-06-08 whole-run skip A/B (-10/100), the cheap-skip story closes coherently: skip
+  value depends on the SPECIFIC forgone shop (the June-8 flip diagnostic said precisely this),
+  so no static rule at any horizon can harvest it. THE WEEK'S PATTERN, NOW COMPLETE: every
+  oracle-identified family fails its static-rule gate — the headroom is real (hindsight proves
+  it) but harvestable only by EVALUATION (counterfactual or learned). Phase B is no longer the
+  preferred path; it is the only live one. Do-not-retry list grows: static skip rules at any
+  ante horizon.
+
 - **2026-06-12 ATTRIBUTION CELL (honest play, fork_back 6): 20.2% — the 2x2 is complete and
   FORESIGHT dominates.** (`.data/honest_oracle_fork6.json`: 20.2% routable-above-null, null 0.0%,
   99.9% clean; skip_smalls 23 / level_focus 12 / others <=6.) Same grammar, same seeds:
