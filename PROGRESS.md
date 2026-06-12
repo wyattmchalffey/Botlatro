@@ -2968,6 +2968,17 @@
   (c) blind-START-only delegation with the whole blind handed over, matching the fork-audit's
   measured condition exactly.
 
+- **2026-06-12 ATTRIBUTION CELL (honest play, fork_back 6): 20.2% — the 2x2 is complete and
+  FORESIGHT dominates.** (`.data/honest_oracle_fork6.json`: 20.2% routable-above-null, null 0.0%,
+  99.9% clean; skip_smalls 23 / level_focus 12 / others <=6.) Same grammar, same seeds:
+  honest-late 14.3% -> honest-early 20.2% (+5.9pp = RUNWAY, honestly exploitable) ->
+  clairvoyant-early 40.2% (+20.0pp = FORESIGHT, exploitable only by stronger evaluation —
+  Phase B's job, now precisely sized at ~3.4x the runway lever). Honest-early ALSO clears the
+  15% planning bar the late-fork run marginally failed: earlier intervention partially
+  rehabilitates whole-run planning even honest, with skip/tags + leveling still the only
+  strong families. NET MAP: 12.4% bot | ~20% honest-recipes-early floor | >=54% proven
+  achievable | 95% bar still unproven but no longer implausible.
+
 - **2026-06-12 RECIPE STANDALONE BENCHES (128 honest seeds each,
   `.data/recipe_standalone_benches.log`) — the Gate-B0 mixture reference, now measured:**
   level_focus **11.7%** (near-baseline! leveling is genuinely under-exploited), flush_commit
