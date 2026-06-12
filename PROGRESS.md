@@ -2968,6 +2968,21 @@
   (c) blind-START-only delegation with the whole blind handed over, matching the fork-audit's
   measured condition exactly.
 
+- **2026-06-12 FLIP DIAGNOSTIC (P1.5 post-mortem): it was BEAM QUALITY, not trigger precision.**
+  All 92 gate flips re-traced with delegation logging (`.data/deep_play_flip_diag.json`):
+  gained 31 = 31 rescued_or_helped; lost 61 = **60 beam_failed / 1 butterfly**; mean
+  delegations 7.6 (gained) vs 12.8 (lost). READ: the pace trigger's endangerment calls were
+  basically sound (almost no pure-butterfly losses) — the deaths happened AT delegated blinds,
+  i.e. the d4w4 EV-objective beam, in control, failed must-clear blinds that basic play (the
+  control arm) survived. Combined with the fork audit (beam clears 29.7% of blinds basic FAILS),
+  the picture is selection-conditional superiority: the beam beats basic only where basic was
+  already failing; unconditionally it is worse, and more delegation = worse outcomes. Any retry
+  needs either (a) near-certain-failure triggering (last-hand projected miss only) or (b) true
+  selective acceptance (simulate both lines' blind outcomes, keep basic's unless the beam's
+  PROJECTED clear is strictly better) — but with the play lever now 0-for-3 (delegation negative,
+  draw-probs neutral, this post-mortem), further trigger iterations are POOR EV vs the chassis-
+  replacement program. Play-lever work PARKED pending Phase B.
+
 - **2026-06-12 P1.1 ROUTE-ORACLE VERDICT: 14.3% — marginal fail of the pre-registered 15% bar;
   P1 RE-AIMED.** 84 honest losses x 8 route policies x 2 pre-death shop forks
   (`.data/p11_route_oracle.json`): routed_above_null = 12/84 = **14.3%** (Wilson ~8-23%), null
