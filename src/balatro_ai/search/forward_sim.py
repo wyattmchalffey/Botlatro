@@ -916,7 +916,12 @@ def simulate_open_pack(
         raise ValueError(f"Open-pack action index is outside booster_packs: {action.amount}")
     pack = packs[index]
     cost = _effective_item_buy_cost(state, pack)
-    if not _can_afford_cost(state, cost):
+    # Zero-cost packs (skip-tag grants like Ethereal/Charm) are not purchases
+    # in the real game — no money check fires there, so they must open even
+    # in debt (e.g. money -9 after selling Credit Card mid-debt restores
+    # bankrupt_at to 0). Found by the recipe_skip_smalls bench fuzzing the
+    # skip->tag->free-pack path.
+    if cost > 0 and not _can_afford_cost(state, cost):
         raise ValueError(f"Cannot open {_item_label(pack)} for ${cost} with ${state.money}")
     contents = tuple(pack_contents)
     hallucination_cards = _created_labels(created_consumables)
