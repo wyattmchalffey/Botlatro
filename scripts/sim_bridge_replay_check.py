@@ -82,12 +82,22 @@ def replay_on_bridge(seed: str, records, endpoint: str = "http://127.0.0.1:12346
         if diff_key == "money" and first_diff is None:
             # Money reads can race the bridge's cash-out dollar ticker (the
             # easing can pause longer than the settle window — a PROVEN audit
-            # artifact, see p04 round 3 seed 0000015). Before declaring a
-            # divergence on money alone, give the ticker a long re-settle and
-            # re-compare once.
-            raw = _settled_raw_state(client, None, polls=40, delay_seconds=0.1)
-            state = with_derived_legal_actions(GameState.from_mapping(raw))
-            bridge_pre = _summary(state)
+            # artifact, see p04 round 3 seed 0000015). The boss cash-out ticker
+            # runs even slower under sustained load (the 8-seed audit). Before
+            # declaring a money-only divergence, poll until the money read is
+            # STABLE (two consecutive equal reads) up to a long ceiling, then
+            # re-compare — a stabilized read equals the save's persistent
+            # G.GAME.dollars (verified round 5, seeds 0000014 / 0000039).
+            prev_money = None
+            for _ in range(12):  # up to ~12 * 20 polls * 0.1s = 24s ceiling
+                raw = _settled_raw_state(client, None, polls=20, delay_seconds=0.1)
+                state = with_derived_legal_actions(GameState.from_mapping(raw))
+                bridge_pre = _summary(state)
+                if bridge_pre["money"] == sim_pre["money"]:
+                    break
+                if bridge_pre["money"] == prev_money:
+                    break  # stabilized at a value != sim -> genuine divergence
+                prev_money = bridge_pre["money"]
             diff_key = next((key for key in compare_keys if bridge_pre[key] != sim_pre[key]), None)
         if diff_key is not None and first_diff is None:
             first_diff = (i, diff_key, sim_pre, bridge_pre, action.action_type.value, tuple(action.card_indices))

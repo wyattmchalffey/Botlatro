@@ -1565,7 +1565,9 @@ class LocalBalatroSimulator:
         if index is None or not 0 <= index < len(pack_cards):
             raise LocalSimError(f"Pack choice index is outside pack cards: {action.amount}")
 
-        injections = self._consumable_injections(state, _item_label(pack_cards[index]), storage_use=False)
+        injections = self._consumable_injections(
+            state, _item_label(pack_cards[index]), storage_use=False, from_pack=True
+        )
         remaining_choices = max(1, _int_value(state.modifiers.get("pack_choices_remaining"), default=1))
         remaining_pack_cards = tuple(item for item_index, item in enumerate(pack_cards) if item_index != index)
         if remaining_choices > 1 and remaining_pack_cards:
@@ -1653,7 +1655,9 @@ class LocalBalatroSimulator:
             return "HOLOGRAPHIC"
         return "FOIL"
 
-    def _consumable_injections(self, state: GameState, name: str, *, storage_use: bool) -> dict[str, object]:
+    def _consumable_injections(
+        self, state: GameState, name: str, *, storage_use: bool, from_pack: bool = False
+    ) -> dict[str, object]:
         injections: dict[str, object] = {}
         if name == "The Wheel of Fortune":
             joker_index, edition = self._wheel_of_fortune_outcome(state, name)
@@ -1666,7 +1670,16 @@ class LocalBalatroSimulator:
         elif name == "The High Priestess":
             injections["created_consumables"] = self._created_consumables_of_type(state, "Planet", storage_use=storage_use, max_count=2, key_append="pri")
         elif name in {"Judgement", "The Soul", "Wraith"}:
-            if _normal_joker_open_slots(state) > 0:
+            # Judgement/The Soul/Wraith create a Joker via a deferred event with
+            # NO room check (card.lua:1418-1420). Selecting one FROM A BOOSTER
+            # PACK bypasses the joker-slot gate entirely: pack selection is
+            # gated by can_select_card, which allows any non-Joker-set card
+            # regardless of joker room (button_callbacks.lua:2112-2113 —
+            # `set ~= 'Joker'` is true for these Tarots/Spectrals), so the
+            # joker is created over the cap. Used from the CONSUMABLE SLOT they
+            # are gated by can_use_consumeable's `#jokers < card_limit` check
+            # (card.lua:1557-1561), so they need a free slot there.
+            if from_pack or _normal_joker_open_slots(state) > 0:
                 joker_key = {"Judgement": "jud", "The Soul": "sou", "Wraith": "wra"}[name]
                 card = self._seed_faithful_created_card(
                     state,
@@ -1678,6 +1691,11 @@ class LocalBalatroSimulator:
                 )
                 if card is None:
                     card = self.sampler.sample_card_of_type(state, "Joker", self._rng)
+                if from_pack:
+                    # Pack-selected creation goes over the joker-slot cap
+                    # (the real game emplaces without a room check); flag the
+                    # card so the downstream slot-cap guard allows the overflow.
+                    card = _joker_item_with_overflow_flag(card)
                 injections["created_jokers"] = (card,)
         elif name == "Aura":
             injections["aura_edition"] = self._wheel_of_fortune_edition()
@@ -3495,6 +3513,29 @@ def _copy_metadata(value):
     if isinstance(value, tuple):
         return tuple(_copy_metadata(item) for item in value)
     return value
+
+
+JOKER_SLOT_OVERFLOW_FLAG = "pack_created_over_cap"
+
+
+def _joker_item_with_overflow_flag(card):
+    """Mark a created-joker payload as a legitimate over-cap pack creation so
+    the slot-limit guard in forward_sim lets it through."""
+    if isinstance(card, Mapping):
+        updated = dict(card)
+        metadata = dict(updated.get("metadata") or {})
+        metadata[JOKER_SLOT_OVERFLOW_FLAG] = True
+        updated["metadata"] = metadata
+        return updated
+    metadata = getattr(card, "metadata", None)
+    if isinstance(metadata, Mapping):
+        try:
+            new_meta = dict(metadata)
+            new_meta[JOKER_SLOT_OVERFLOW_FLAG] = True
+            return replace(card, metadata=new_meta)
+        except Exception:  # noqa: BLE001 - non-dataclass payloads fall through
+            return card
+    return card
 
 
 def _normal_joker_open_slots(state: GameState) -> int:

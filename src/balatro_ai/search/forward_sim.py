@@ -2439,7 +2439,12 @@ def _jokers_and_modifiers_after_created_jokers(
 ) -> tuple[tuple[Joker, ...], dict[str, object]]:
     if not created:
         return jokers, modifiers
-    normal_created = sum(1 for joker in created if _joker_uses_normal_slot(joker))
+    # Jokers created by a pack-selected Judgement / The Soul / Wraith are
+    # emplaced over the slot cap by the real game (the booster-pack selection
+    # bypasses the room gate — button_callbacks.lua:2112-2113, card.lua:1418).
+    # Such jokers carry the overflow flag and are exempt from the cap guard.
+    capped_created = tuple(joker for joker in created if not _joker_is_pack_overflow(joker))
+    normal_created = sum(1 for joker in capped_created if _joker_uses_normal_slot(joker))
     if normal_created > max(0, _normal_joker_slot_limit(state) - sum(1 for joker in jokers if _joker_uses_normal_slot(joker))):
         raise ValueError(f"Created joker does not fit in joker slots: {normal_created}")
     updated_modifiers = modifiers
@@ -4780,6 +4785,16 @@ def _normal_joker_slot_limit(state: GameState) -> int:
 
 def _joker_uses_normal_slot(joker: Joker) -> bool:
     return "negative" not in (joker.edition or "").lower()
+
+
+def _joker_is_pack_overflow(joker: Joker) -> bool:
+    """A pack-selected Judgement/The Soul/Wraith joker created over the slot
+    cap (flagged in local_runner._joker_item_with_overflow_flag)."""
+    metadata = getattr(joker, "metadata", None)
+    try:
+        return bool(metadata is not None and metadata.get("pack_created_over_cap"))
+    except AttributeError:
+        return False
 
 
 def _joker_item_uses_normal_slot(item: object) -> bool:
