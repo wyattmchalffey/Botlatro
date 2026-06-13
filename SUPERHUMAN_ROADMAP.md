@@ -129,9 +129,13 @@ plus optional cheap rented compute (repo's own costing: 10-50k solver-quality ru
   Batch re-test the four noise-rejected knobs (Blueprint, dig, planet-scaling, safe-margin) properly powered.
 - **P0.3 Faithful-mode benches by default** (divergence is 2% now; generic mode is no longer earning its
   distribution mismatch).
-- **P0.4 Close late-ante RNG.** Fixtures for the skipped transition classes (BUY, OPEN_PACK, blind-select,
-  stochastic jokers, stochastic bosses) at antes 6-8; cross-check predictors against Immolate. Fix the two
-  deferred sim bugs (Drunkard sell, Credit Card reroll) while in there.
+- **P0.4 Close late-ante RNG. ✅ CERTIFIED 2026-06-12** (live-bridge per-class replay, 5 rounds, 20
+  bridge-verified sim bugs). Per-class audit (`scripts/p04_transition_class_audit.py`) over BUY/OPEN_PACK/
+  CHOOSE_PACK_CARD/SELECT_BLIND/stochastic-joker/showdown-boss: audit v5 shows **0 score/hand divergences
+  across 8 worklist seeds to antes 5-7**, first-ever ante-6+ lockstep in every class. Surviving diffs are
+  money-only (dollar-ticker comparator artifact + one gated economy residual on seed 0000039's Fish
+  cash-out). VERDICT: certified for Phase B full-trajectory value targets; **gate per-seed on
+  `_rng_diverged`**. See [[sim-correctness-baseline]] memory + `.data/p04_rootcause_round{1-5}.md`.
 - **P0.5 Pre-register the target.** Superhuman = ≥95% honest white-stake over ≥1k seeds. Decide the
   information regime now: **recommended — information-set-honest deployed bot** (what a human can see;
   no seed reading, no true-future access at decision time); the clairvoyant planner is an *offline*
