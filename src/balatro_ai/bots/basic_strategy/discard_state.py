@@ -51,14 +51,18 @@ def _has_explicit_hand_size_modifier(state: GameState) -> bool:
 
 
 def _effective_hand_size(state: GameState) -> int:
+    # Effective size = explicit base ("hand_size", 8 at run start) PLUS the
+    # sim-accumulated "hand_size_delta" (Juggler/Stuntman/...): the two keys
+    # coexist on sim states and mutating paths update exactly one of them.
+    delta = _int_or_default(state.modifiers.get("hand_size_delta"), 0)
     for key in ("hand_size", "hand_size_limit", "hand_size_max"):
         raw = state.modifiers.get(key)
         try:
             if raw is not None:
-                return max(1, int(raw))
+                return max(1, int(raw) + delta)
         except (TypeError, ValueError):
             continue
-    return max(1, 8 + _int_or_default(state.modifiers.get("hand_size_delta"), 0))
+    return max(1, 8 + delta)
 
 
 def _serpent_draws_three_for_strategy(state: GameState) -> bool:

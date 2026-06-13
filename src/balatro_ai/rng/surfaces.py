@@ -833,13 +833,18 @@ def _voucher_pool(
 
 
 def _soul_for_type(rng: BalatroRNG, card_type: str, *, ante: int, used_consumables: set[str]) -> str | None:
+    # Both checks ALWAYS roll when their gate passes (common_events.lua
+    # 2088-2100 runs the two ifs sequentially with no early exit), so for
+    # Spectral cards the 'soul_Spectral<ante>' stream advances TWICE per card
+    # and a Black Hole hit overrides an earlier Soul hit.
+    forced: str | None = None
     if card_type in {"Tarot", "Spectral", "Tarot_Planet"} and "c_soul" not in used_consumables:
         if _pseudorandom_float(rng, "soul_" + card_type + str(ante)) > 0.997:
-            return "c_soul"
+            forced = "c_soul"
     if card_type in {"Planet", "Spectral"} and "c_black_hole" not in used_consumables:
         if _pseudorandom_float(rng, "soul_" + card_type + str(ante)) > 0.997:
-            return "c_black_hole"
-    return None
+            forced = "c_black_hole"
+    return forced
 
 
 def _pick_shop_type(polled: float, rates: Mapping[str, int], shop_type_order: tuple[str, ...]) -> str:

@@ -503,17 +503,21 @@ def _straight_windows(size: int, *, shortcut: bool) -> tuple[int, ...]:
 
 
 def _hand_size(state: GameState) -> int:
+    # Effective size = explicit base ("hand_size", 8 at run start) PLUS the
+    # sim-accumulated "hand_size_delta" (Juggler/Stuntman/...): the two keys
+    # coexist on sim states and mutating paths update exactly one of them.
+    try:
+        delta = int(state.modifiers.get("hand_size_delta", 0))
+    except (TypeError, ValueError):
+        delta = 0
     for key in ("hand_size", "hand_size_limit", "hand_size_max"):
         try:
             value = int(state.modifiers.get(key, 0))
         except (TypeError, ValueError):
             value = 0
         if value > 0:
-            return value
-    try:
-        return max(1, 8 + int(state.modifiers.get("hand_size_delta", 0)))
-    except (TypeError, ValueError):
-        return 8
+            return max(1, value + delta)
+    return max(1, 8 + delta)
 
 
 def _normalize_rank(rank: str) -> str:

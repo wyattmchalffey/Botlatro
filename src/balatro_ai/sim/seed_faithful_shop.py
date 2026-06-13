@@ -44,10 +44,23 @@ def _payload_for_key(
     """Build a shop payload for a specific pool key, or None if the key
     isn't in the (state-filtered) pool."""
 
-    from balatro_ai.search.shop_sampler import _payload_from_record
+    from balatro_ai.search.shop_sampler import SHOP_TYPE_TO_DATA_KEY, _payload_from_record
 
     records = sampler._pool_records(pool_type, state)
     record = next((r for r in records if str(r.get("key")) == key), None)
+    if record is None:
+        # The Soul / Black Hole never appear in the state-filtered SHOP pools
+        # (``_pool_records`` strips them — get_current_pool marks them
+        # unavailable, common_events.lua:2022), but packs CAN roll them via
+        # the 0.3% ``soul_<type><ante>`` surface (create_card,
+        # common_events.lua:2088-2100). Build their payloads from the raw
+        # records so a predicted Soul/Black Hole doesn't nuke the whole pack
+        # prediction into the generic-content fallback.
+        raw = sampler.data.get(SHOP_TYPE_TO_DATA_KEY.get(pool_type, f"{pool_type.lower()}s"), ())
+        record = next(
+            (r for r in raw if isinstance(r, Mapping) and str(r.get("key")) == key),
+            None,
+        )
     if record is None:
         return None
     return _payload_from_record(record, state, edition=edition)

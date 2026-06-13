@@ -78,11 +78,19 @@ def replay_on_bridge(seed: str, records, endpoint: str = "http://127.0.0.1:12346
         compare_keys = ("score", "money", "hand")
         if sim_pre["phase"] != "round_eval" and bridge_pre["phase"] != "round_eval":
             compare_keys = ("ante",) + compare_keys
-        for key in compare_keys:
-            if bridge_pre[key] != sim_pre[key]:
-                if first_diff is None:
-                    first_diff = (i, key, sim_pre, bridge_pre, action.action_type.value, tuple(action.card_indices))
-                break
+        diff_key = next((key for key in compare_keys if bridge_pre[key] != sim_pre[key]), None)
+        if diff_key == "money" and first_diff is None:
+            # Money reads can race the bridge's cash-out dollar ticker (the
+            # easing can pause longer than the settle window — a PROVEN audit
+            # artifact, see p04 round 3 seed 0000015). Before declaring a
+            # divergence on money alone, give the ticker a long re-settle and
+            # re-compare once.
+            raw = _settled_raw_state(client, None, polls=40, delay_seconds=0.1)
+            state = with_derived_legal_actions(GameState.from_mapping(raw))
+            bridge_pre = _summary(state)
+            diff_key = next((key for key in compare_keys if bridge_pre[key] != sim_pre[key]), None)
+        if diff_key is not None and first_diff is None:
+            first_diff = (i, diff_key, sim_pre, bridge_pre, action.action_type.value, tuple(action.card_indices))
         try:
             method, params = client._action_to_rpc(action)
             # Settle the bridge after each action so animated state (esp.

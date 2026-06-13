@@ -927,8 +927,32 @@ class LocalBalatroSimulator:
                 1 for card in held_cards_after_hook if not card.debuffed and str(card.seal or "").lower() == "blue"
             )
             count = min(room, blue_seal_count)
-            created.extend(self._sample_created_consumables_of_type(state, "Planet", count, used_consumables=used_consumables))
+            if count > 0:
+                # Blue seal creates THE planet of G.GAME.last_hand_played
+                # (card.lua:1040-1058) — a FORCED key ('blusl' create with
+                # _planet set, so create_card skips the pool and consumes no
+                # rng). When the seal triggers, the round-ending play IS the
+                # last hand played, so the planet is this evaluation's hand
+                # type. (Previously sampled a random planet — seed 0000014's
+                # ante-5 score divergence: sim created Earth, the real game
+                # Uranus for a Two Pair round-winner.)
+                payload = self._blue_seal_planet_payload(state, evaluation)
+                if payload is not None:
+                    created.extend(dict(payload) for _ in range(count))
+                else:
+                    created.extend(self._sample_created_consumables_of_type(state, "Planet", count, used_consumables=used_consumables))
         return tuple(created)
+
+    def _blue_seal_planet_payload(self, state: GameState, evaluation) -> dict[str, Any] | None:
+        try:
+            from balatro_ai.rng.surfaces import planet_key_for_hand
+            from balatro_ai.sim.seed_faithful_shop import _payload_for_key
+        except ImportError:
+            return None
+        key = planet_key_for_hand(getattr(evaluation.hand_type, "value", None))
+        if key is None:
+            return None
+        return _payload_for_key(self.sampler, state, "Planet", key)
 
     def _roll_odds(self, odds: int | float, *, probability_multiplier: float) -> bool:
         if odds <= 0:
@@ -959,7 +983,54 @@ class LocalBalatroSimulator:
         odds: int,
         probability_multiplier: float,
     ) -> bool:
+        # Seed-faithful runs roll extinction ONCE per won round at cash_out
+        # (_seed_faithful_round_end_extinctions) — the real game rolls
+        # pseudorandom('gros_michel'/'cavendish') in the end_of_round joker
+        # eval (card.lua:3019), never during plays. Rolling here per play
+        # would over-consume the stream.
+        if self.balatro_seed is not None and self._balatro_rng is not None and not self._rng_diverged:
+            return False
         return _active_joker_count(state, name) > 0 and self._roll_odds(odds, probability_multiplier=probability_multiplier)
+
+    def _seed_faithful_round_end_extinctions(self, state: GameState) -> GameState:
+        """Gros Michel / Cavendish end-of-round extinction (card.lua:3019-3037).
+
+        Balatro rolls ``pseudorandom('gros_michel'|'cavendish') < normal/odds``
+        once per WON round for each owned, non-debuffed copy, during the
+        end_of_round joker eval. Verified against a live save probe (seed
+        0000064): 7 round-ends with Gros Michel owned -> roll 7 (0.134 < 1/6)
+        went extinct at the ante-3 Big Blind cash_out; stream state matched
+        the save's ``gros_michel`` entry to 13 digits. Extinct Gros Michel
+        also sets the run pool flag ``gros_michel_extinct`` (card.lua:3037),
+        which swaps Gros Michel OUT of and Cavendish INTO later joker pools."""
+
+        if self.balatro_seed is None or self._balatro_rng is None or self._rng_diverged:
+            return state
+        if not state.jokers:
+            return state
+        from balatro_ai.rng.surfaces import pseudorandom_float
+
+        probability_multiplier = _probability_multiplier(state)
+        removed_indices: set[int] = set()
+        gros_michel_extinct = False
+        for index, joker in enumerate(state.jokers):
+            if joker.name not in ("Gros Michel", "Cavendish") or _joker_disabled(joker):
+                continue
+            key, odds = ("cavendish", 1000) if joker.name == "Cavendish" else ("gros_michel", 6)
+            if pseudorandom_float(self._balatro_rng, key) < probability_multiplier / float(odds):
+                removed_indices.add(index)
+                if joker.name == "Gros Michel":
+                    gros_michel_extinct = True
+        if not removed_indices:
+            return state
+        jokers = tuple(joker for index, joker in enumerate(state.jokers) if index not in removed_indices)
+        modifiers = dict(state.modifiers)
+        if gros_michel_extinct:
+            flags_raw = modifiers.get("pool_flags")
+            flags = dict(flags_raw) if isinstance(flags_raw, Mapping) else {}
+            flags["gros_michel_extinct"] = True
+            modifiers["pool_flags"] = flags
+        return replace(state, jokers=jokers, modifiers=modifiers)
 
     def _misprint_mult_for_play(self, state: GameState) -> int:
         if _active_joker_count(state, "Misprint") <= 0:
@@ -1166,6 +1237,10 @@ class LocalBalatroSimulator:
         return frozenset(jokers), frozenset(consumables)
 
     def _cash_out(self, state: GameState) -> GameState:
+        # End-of-round Gros Michel / Cavendish extinction rolls FIRST: the
+        # removal (and the gros_michel_extinct pool flag) must be visible to
+        # the upcoming shop's pool predictions.
+        state = self._seed_faithful_round_end_extinctions(state)
         # Defeating a boss increments the ante, and the post-boss shop is the
         # FIRST shop of the new ante — so its seed-faithful cards/voucher/
         # boosters must be drawn with the incremented ante (e.g. 'cdt2' not
@@ -1608,20 +1683,87 @@ class LocalBalatroSimulator:
             injections["aura_edition"] = self._wheel_of_fortune_edition()
         elif name in {"Familiar", "Grim", "Incantation"}:
             if state.hand:
-                injections["destroyed_hand_card_indices"] = (self._rng.randrange(len(state.hand)),)
+                # pseudorandom_element(G.hand.cards, pseudoseed('random_destroy'))
+                # — card tables sort by sort_id first (misc_functions.lua:260).
+                index = self._seed_faithful_hand_pick(state, "random_destroy")
+                if index is None:
+                    index = self._rng.randrange(len(state.hand))
+                injections["destroyed_hand_card_indices"] = (index,)
             injections["created_hand_cards"] = self._spectral_created_hand_cards(name)
         elif name == "Immolate":
             count = min(5, len(state.hand))
-            injections["destroyed_hand_card_indices"] = tuple(self._rng.sample(range(len(state.hand)), count)) if count else ()
+            indices = self._seed_faithful_immolate_indices(state, count) if count else ()
+            if count and indices is None:
+                indices = tuple(self._rng.sample(range(len(state.hand)), count))
+            injections["destroyed_hand_card_indices"] = tuple(indices or ())
         elif name == "Sigil":
-            injections["sigil_suit"] = self._rng.choice(SUITS)
+            # pseudorandom_element({'S','H','D','C'}, pseudoseed('sigil')) (card.lua:1233)
+            suit = self._seed_faithful_plain_pick(("S", "H", "D", "C"), "sigil")
+            injections["sigil_suit"] = suit if suit is not None else self._rng.choice(SUITS)
         elif name == "Ouija":
-            injections["ouija_rank"] = self._rng.choice(RANKS)
+            # pseudorandom_element({'2'..'T','J','Q','K','A'}, pseudoseed('ouija')) (card.lua:1247)
+            rank = self._seed_faithful_plain_pick(
+                ("2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"), "ouija"
+            )
+            injections["ouija_rank"] = rank if rank is not None else self._rng.choice(RANKS)
         elif name in {"Ankh", "Hex", "Ectoplasm"}:
             eligible = tuple(index for index, joker in enumerate(state.jokers) if name == "Ankh" or not joker.edition)
             if eligible:
-                injections["spectral_joker_index"] = self._rng.choice(eligible)
+                # Ankh: pseudorandom_element(G.jokers.cards, pseudoseed('ankh_choice'))
+                # (card.lua:1434); Hex/Ectoplasm pick among editionless jokers with
+                # pseudoseed('hex'/'ectoplasm') (card.lua:1467-1476). Joker tables
+                # sort by sort_id = acquisition order; the sim's slot order is the
+                # acquisition order (no manual reordering), so it stands in here.
+                key = {"Ankh": "ankh_choice", "Hex": "hex", "Ectoplasm": "ectoplasm"}[name]
+                picked = self._seed_faithful_plain_pick(eligible, key)
+                injections["spectral_joker_index"] = picked if picked is not None else self._rng.choice(eligible)
         return injections
+
+    def _seed_faithful_plain_pick(self, items, key: str):
+        """Balatro ``pseudorandom_element`` over a PLAIN array (array order is
+        preserved — misc_functions.lua:263 sorts by numeric key) on the
+        persistent rng, or None on non-faithful runs."""
+
+        if self.balatro_seed is None or self._balatro_rng is None or self._rng_diverged or not items:
+            return None
+        try:
+            from balatro_ai.rng.luajit_prng import LuaJITPRNG
+        except ImportError:
+            return None
+        seed_float = self._balatro_rng.random(key)
+        return items[LuaJITPRNG.seeded(seed_float).random_int_1_to_n(len(items)) - 1]
+
+    def _seed_faithful_hand_pick(self, state: GameState, key: str) -> int | None:
+        """One ``pseudorandom_element(G.hand.cards, pseudoseed(key))`` pick
+        (card tables sort by sort_id first), returned as an index into
+        ``state.hand``; None on non-faithful runs."""
+
+        if self.balatro_seed is None or self._balatro_rng is None or self._rng_diverged or not state.hand:
+            return None
+        try:
+            from balatro_ai.rng.luajit_prng import LuaJITPRNG
+        except ImportError:
+            return None
+        order = sorted(range(len(state.hand)), key=lambda i: _canonical_card_key(state.hand[i]))
+        seed_float = self._balatro_rng.random(key)
+        return order[LuaJITPRNG.seeded(seed_float).random_int_1_to_n(len(order)) - 1]
+
+    def _seed_faithful_immolate_indices(self, state: GameState, count: int) -> tuple[int, ...] | None:
+        """Immolate's victims (card.lua:1340-1346): copy the hand, sort by
+        creation order (``playing_card`` counter — same ordering as sort_id
+        for playing cards), pseudoshuffle('immolate'), destroy the first
+        ``count``. Returned as indices into ``state.hand``."""
+
+        if self.balatro_seed is None or self._balatro_rng is None or self._rng_diverged:
+            return None
+        try:
+            from balatro_ai.rng.luajit_prng import luajit_pseudoshuffle
+        except ImportError:
+            return None
+        order = sorted(range(len(state.hand)), key=lambda i: _canonical_card_key(state.hand[i]))
+        seed_float = self._balatro_rng.random("immolate")
+        luajit_pseudoshuffle(order, seed_float)
+        return tuple(order[:count])
 
     def _fool_consumables(self, state: GameState, *, storage_use: bool) -> tuple[str, ...]:
         if self._consumable_open_slots_after_use(state, storage_use=storage_use) <= 0:
@@ -2567,14 +2709,41 @@ def _owned_consumable_keys(state: GameState) -> set[str]:
     keys: set[str] = set()
     for item in state.consumables:
         key = None
+        name = None
         if isinstance(item, str):
-            key = item if item.startswith("c_") else None
+            if item.startswith("c_"):
+                key = item
+            else:
+                name = item
         elif isinstance(item, dict):
             raw = item.get("key")
-            key = raw if isinstance(raw, str) and raw.startswith("c_") else None
+            if isinstance(raw, str) and raw.startswith("c_"):
+                key = raw
+            else:
+                raw_name = item.get("name") or item.get("label")
+                name = raw_name if isinstance(raw_name, str) else None
+        else:
+            raw_name = getattr(item, "name", None)
+            name = raw_name if isinstance(raw_name, str) else None
+        if key is None and name:
+            # Sim-held consumables are stored by display NAME ('Venus'); the
+            # pool exclusions compare KEYS ('c_venus') — translate, or owned
+            # consumables silently never leave the pack/shop pools (seed
+            # 0000039: a HELD Venus re-appeared in the sim's ante-5 Celestial
+            # pack; the real pool excludes alive keys, so every later pick
+            # resampled differently and a planet-level flip surfaced in the
+            # ante-6 Pair play).
+            key = _consumable_key_by_name().get(name)
         if key:
             keys.add(key)
     return keys
+
+
+@lru_cache(maxsize=1)
+def _consumable_key_by_name() -> dict[str, str]:
+    from balatro_ai.api.state import CONSUMABLE_KEY_TO_NAME
+
+    return {name: key for key, name in CONSUMABLE_KEY_TO_NAME.items()}
 
 
 _PLAYING_CARD_KEY_RE = re.compile(r"[SHCD]_[2-9TJQKA]")
@@ -2756,10 +2925,18 @@ def _card_without_played_this_ante(card: Card) -> Card:
 
 
 def _hand_size(state: GameState) -> int:
+    # ``hand_size`` is the BASE (8 at run start, or the bridge-reported value
+    # on captured states); ``hand_size_delta`` accumulates joker/consumable
+    # modifiers the sim applies on top (Juggler +1, Stuntman -2, ...). Code
+    # paths that mutate hand size update the explicit key only when present
+    # AND skip the delta (or vice versa), so the effective size is their sum
+    # — explicit alone silently dropped Stuntman's -2 (seed 0000039: sim drew
+    # 8 at an ante-4 round start, the bridge 6).
+    delta = _int_value(state.modifiers.get("hand_size_delta"))
     explicit = _modifier_int_or_none(state.modifiers, ("hand_size", "hand_size_limit", "hand_size_max"))
     if explicit is not None:
-        return max(1, explicit)
-    return max(1, 8 + _int_value(state.modifiers.get("hand_size_delta")))
+        return max(1, explicit + delta)
+    return max(1, 8 + delta)
 
 
 def _blind_kind(state: GameState) -> str:
