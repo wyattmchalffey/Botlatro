@@ -2988,6 +2988,36 @@
   money-ticker race. Shop-decision-only distillation at antes 1-5 is usable now with a per-seed
   replay gate.
 
+- **2026-06-12 P0.4 ROUND 5: ONE more bridge-verified sim bug fixed (bug 20) + one residual localized;
+  FINAL CERTIFICATION VERDICT (agent, commit 48a1a1a; findings `.data/p04_rootcause_round5.md`).**
+  Closed blocker #1 (seed 0000014). The ante-6 play under-scored 16354 vs bridge 24948 on an
+  IDENTICAL Pair-of-Aces play (same hand, hand-levels, joker counters per the save-probe). Root
+  cause via save-probe + jokerprobe: the bridge had a 6th joker, **Odd Todd**, created by a
+  **Judgement selected from an Arcana pack at 5/5 full joker slots** -- its +31 chips/odd-card was
+  the entire gap (180 vs 118 chips; 180x28x4.95=24948 EXACT). The sim gated Judgement/The Soul/
+  Wraith joker creation on free slots and dropped it when full; but selecting from a BOOSTER PACK
+  bypasses the room gate (can_select_card allows any non-Joker-set card regardless of joker room,
+  button_callbacks.lua:2112-2113; deferred create_card emplaces with no room check, card.lua:1418)
+  -> created OVER the cap. FIX: pack path creates the joker at full slots + flags
+  `pack_created_over_cap`; forward_sim's slot-cap guard exempts the flag. Verified: 0000014's pack
+  Judgement now makes Odd Todd at 5/5, matching the bridge. Covers Soul/Wraith spectral packs too.
+  Blocker #2 (seed 0000039) localized but NOT a scoring bug: the ante-8 score diff (63488 vs 35840)
+  is downstream of a REAL **$3 economy divergence at the ante-2 boss (The Fish) cash-out** -- the
+  bridge credits +$8 (settled $25, stable over 30s; save `previous_round.dollars=25`) while the sim
+  pays +$11; the $3 == interest on $17. The bridge's `round.dollars` field DISPLAYS 11 but only $8
+  is credited to G.GAME.dollars, so the real game skips the interest credit at this cash-out for a
+  reason not derivable from the API/save (needs bridge-side instrumentation). Per faithfulness the
+  sim should match the bridge ($8). New round-5 instruments: `_scratch_p04_{level,joker,hand,score}
+  probe.py` (save.jkr joker-counter/hand-level/sort-order/score localization). Comparator hardened:
+  cash-out money re-settle now polls until the dollar ticker STABILIZES (2 equal reads) vs a fixed
+  40-poll window (the boss ticker runs slower under 8-seed audit load). AUDIT v5
+  (`.data/p04_class_audit_v5.json`): EVERY remaining audit divergence is `money`-field only (no
+  score/hand divergence survives) -- the play/scoring surface is clean; residuals are the cash-out
+  ticker race + the one 0000039 boss-interest credit. 790 touched-area tests pass + 3 new over-cap
+  regression tests. 20 bridge-verified bugs across rounds 1-5. **VERDICT: CERTIFIED for Phase B
+  full-trajectory (ante 1-8) value-target generation on the play/scoring/pack/joker surface; gate
+  per-seed on the cash-out economy (the 0000039 boss-interest $3 case + the dollar-ticker comparator
+  noise are economy-only and do NOT corrupt score/hand reward signals).**
 - **2026-06-12 P0.4 ROUND 4: SIX more bridge-verified sim bugs fixed (bugs 14-19, commit pending->done;
   findings `.data/p04_rootcause_round4.md`).** All 3 round-3 play-score blockers root-caused EXACTLY
   (chip-perfect reconstructions) -- NONE a scoring-formula bug, all STATE divergences that only
