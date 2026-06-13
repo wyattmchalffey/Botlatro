@@ -2988,6 +2988,26 @@
   money-ticker race. Shop-decision-only distillation at antes 1-5 is usable now with a per-seed
   replay gate.
 
+- **2026-06-12 P0.4 ROUND 4: SIX more bridge-verified sim bugs fixed (bugs 14-19, commit pending->done;
+  findings `.data/p04_rootcause_round4.md`).** All 3 round-3 play-score blockers root-caused EXACTLY
+  (chip-perfect reconstructions) -- NONE a scoring-formula bug, all STATE divergences that only
+  surface when a deep play reads corrupted state: (14) Soul/Black-Hole pack rolls nuked whole-pack
+  prediction (payload stripped from shop pools -> silent generic fallback); (15) Gros Michel/Cavendish
+  extinction used generic rng per-play, now seed-faithful per-won-round at cash-out + pool flag;
+  (16) Blue Seal made a RANDOM planet vs the real game's forced last-hand planet; (17) hand-size
+  modifiers dropped when an explicit base existed (base+delta now); (18) Immolate/Familiar/Grim/
+  Sigil/Ouija/Ankh/Hex/Ectoplasm used generic rng -> seed-faithful pseudoshuffle/element over
+  sort_id order; (19) owned consumables never excluded from pack pools (names-vs-keys again).
+  NEW GROUND-TRUTH TOOL: the live `save.jkr` decodes to the full G.GAME table (pseudorandom stream
+  states, hand levels, joker counters) via `scripts/_scratch_p04_saveprobe.py` -- stronger than
+  per-step replay. AUDIT v4 (`.data/p04_class_audit_v4.json`): **3/8 FULL per-step match (0000048,
+  0000064 178 steps, 0000015 132 steps); first-ever ante-6+ lockstep in EVERY class bucket.** 667
+  sim/rng tests pass; stale Psychic bridge test now green. **VERDICT: substantially certified --
+  shop/economy + play through ~ante 5 bridge-faithful; per-seed `_rng_diverged` self-check usable as
+  a generation gate. REMAINING (round 5): 2 score divergences at ante 5+ (0000039@114, 0000014@118,
+  same state-corruption class); 3 money-only diffs are the proven dollar-ticker comparator artifact.**
+  19 bridge-verified bugs across rounds 1-4; frontier moved ante 1 (step 13) -> ante 5-7.
+
 - **2026-06-12 P0.4 ROUND 2: SEVEN more sim bugs fixed + bridge-verified (agent, commit 37d7e38,
   findings `.data/p04_rootcause_round2.md`).** used_jokers is a refcount not an accumulator
   (rerolled-away jokers RETURN to the pool); pack-card sort_id ordering + dropped pack
