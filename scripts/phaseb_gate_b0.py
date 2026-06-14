@@ -68,7 +68,7 @@ def main() -> int:
     args = ap.parse_args()
 
     from balatro_ai.bench_stats import wilson_ci
-    from balatro_ai.ml.dataset import RunCapture, examples_from_capture
+    from balatro_ai.ml.dataset import load_or_expand_examples
     from balatro_ai.ml.policy_net import PolicyConfig, save_policy, train_decision_policy
 
     # 1) Load the mixture capture; the MIXTURE WINRATE is its own win fraction.
@@ -77,15 +77,9 @@ def main() -> int:
     print(f"[b0] mixture: {len(rows)} runs, winrate {mix_wins}/{len(rows)} "
           f"({mix_wins/len(rows):.1%})", flush=True)
 
-    # 2) Expand to schema-v2 examples and BC-train the policy.
-    t0 = time.perf_counter()
-    examples = []
-    for i, r in enumerate(rows):
-        examples.extend(examples_from_capture(RunCapture.from_json_dict(r)))
-        if (i + 1) % 100 == 0:
-            print(f"[b0] expanded {i+1}/{len(rows)} runs -> {len(examples)} examples "
-                  f"({time.perf_counter()-t0:.0f}s)", flush=True)
-    print(f"[b0] {len(examples)} examples in {time.perf_counter()-t0:.0f}s; training...", flush=True)
+    # 2) Expand to schema-v2 examples (cached) and BC-train the policy.
+    examples = load_or_expand_examples(args.dataset)
+    print(f"[b0] {len(examples)} examples; training...", flush=True)
     cfg = PolicyConfig(epochs=args.epochs, seed=0)
     t1 = time.perf_counter()
     net, metrics = train_decision_policy(examples, cfg)

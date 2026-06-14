@@ -28,16 +28,22 @@ discounting. Dependency-free (stdlib) — tensorization lives in the model layer
 
 from __future__ import annotations
 
+import json
 import os
+import pickle
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 
 from balatro_ai.api.actions import Action, ActionType
 from balatro_ai.api.state import GamePhase, GameState
-from balatro_ai.ml.encoding import EncodedState, encode_state
+from balatro_ai.ml.encoding import ENCODING_VERSION, EncodedState, encode_state
 from balatro_ai.sim.local_runner import LocalBalatroSimulator
 from balatro_ai.solver.seed_game import SeedGame
 from balatro_ai.solver.trajectory import Policy, _stable_seed_int
+
+# Schema version for the expanded-examples cache; bump when CandidateToken or
+# the candidate-building logic changes (separate from ENCODING_VERSION).
+EXAMPLES_CACHE_VERSION = 1
 
 # Reasons `capture_run` can stop — mirrors `generate_trajectory`.
 TERMINAL_REASONS = frozenset(
@@ -408,6 +414,66 @@ def examples_from_capture(capture: RunCapture) -> list[TrainingExample]:
                 chosen_index=chosen,
             )
         )
+    return examples
+
+
+def load_or_expand_examples(
+    dataset_path: str,
+    *,
+    cache_path: str | None = None,
+    progress_every: int = 100,
+) -> list[TrainingExample]:
+    """Expand a capture JSONL into examples, CACHED to disk.
+
+    Expansion is expensive (the heuristic_choice fusion feature runs
+    basic_strategy per state — ~100 min / 1000 runs), so the result is pickled
+    next to the dataset and reloaded when valid. This unblocks fast retrain
+    loops (value-head salvage, iteration-1 tuning) that would otherwise re-pay
+    the expansion each time. Cache is keyed on the dataset's mtime + the
+    encoding/examples schema versions; a mismatch transparently re-expands."""
+    import time
+
+    cache_path = cache_path or (dataset_path + ".examples.pkl")
+    ds_mtime = os.path.getmtime(dataset_path)
+    if os.path.exists(cache_path):
+        try:
+            with open(cache_path, "rb") as fh:
+                blob = pickle.load(fh)
+            if (
+                blob.get("dataset_mtime") == ds_mtime
+                and blob.get("encoding_version") == ENCODING_VERSION
+                and blob.get("examples_cache_version") == EXAMPLES_CACHE_VERSION
+            ):
+                print(f"[examples] cache hit: {len(blob['examples'])} examples from {cache_path}",
+                      flush=True)
+                return blob["examples"]
+            print("[examples] cache stale (version/mtime) — re-expanding", flush=True)
+        except Exception:  # noqa: BLE001 — a corrupt cache must not block work
+            print("[examples] cache unreadable — re-expanding", flush=True)
+
+    rows = [json.loads(l) for l in open(dataset_path, encoding="utf-8") if l.strip()]
+    examples: list[TrainingExample] = []
+    t0 = time.perf_counter()
+    for i, r in enumerate(rows):
+        examples.extend(examples_from_capture(RunCapture.from_json_dict(r)))
+        if progress_every and (i + 1) % progress_every == 0:
+            print(f"[examples] expanded {i+1}/{len(rows)} runs -> {len(examples)} "
+                  f"({time.perf_counter()-t0:.0f}s)", flush=True)
+    tmp = cache_path + ".tmp"
+    with open(tmp, "wb") as fh:
+        pickle.dump(
+            {
+                "dataset_mtime": ds_mtime,
+                "encoding_version": ENCODING_VERSION,
+                "examples_cache_version": EXAMPLES_CACHE_VERSION,
+                "examples": examples,
+            },
+            fh,
+            protocol=pickle.HIGHEST_PROTOCOL,
+        )
+    os.replace(tmp, cache_path)
+    print(f"[examples] expanded {len(examples)} examples in {time.perf_counter()-t0:.0f}s; "
+          f"cached -> {cache_path}", flush=True)
     return examples
 
 
