@@ -2988,6 +2988,24 @@
   money-ticker race. Shop-decision-only distillation at antes 1-5 is usable now with a per-seed
   replay gate.
 
+- **2026-06-14 GATE B0: PASS (plumbing) — the chassis-replacement pipeline carries a whole policy
+  end-to-end.** After the heuristic_choice fusion fix, re-ran B0 on the same 1000-run mixture
+  dataset (no regeneration): BC train top1 0.843 (no_heuristic 0.39, chance 0.0065), deployed
+  neural_policy_bot **14/256 = 5.5% (Wilson 3.3-9.0%) vs mixture 7.6% (6.1-9.4%)** on training-
+  range seeds 5101001+. Two-proportion test: diff +2.1pp, z=1.18, **p=0.238 — statistically
+  indistinguishable from the mixture; CIs overlap -> PLUMBING PASS** (`.data/phaseb_gate_b0v2.log`,
+  ckpt `.data/phaseb_policy_b0v2.pt`). The net is no longer collapsed (was 0/256); it reproduces
+  the mixture within noise. (Driver's first verdict printed FAIL on a BUGGY overlap formula —
+  required the point estimate above the other's lower bound, not interval intersection; fixed to
+  proper CI-overlap + the two-proportion test.) Honest read: BC is ~2pp below the mixture point
+  estimate (shop-surface agreement 84%, not 100% — the heuristic_choice feature references BASIC
+  shop while the mixture used SOLVER shop), but not significantly, and survival is restored
+  (reaches ante 6-7). PHASE B PLUMBING VALIDATED END-TO-END.
+  SCALE NOTE: expansion now 100 min (was 4 min) — the heuristic_choice feature runs basic_strategy
+  per state; iteration 1+ must CACHE expanded examples to disk (the pre-tensorized-shard TODO) or
+  re-expansion dominates. NEXT: V0 (value-head validity gate) -> iteration 1 (outcome-tilted, the
+  first real test of beating 12.4%).
+
 - **2026-06-14 GATE B0: FAIL (0/256 vs mixture 7.6%) — but the pipeline CLOSES and the failure is
   precisely diagnosed.** The whole Phase-B pipeline ran end-to-end (1000-run mixture capture ->
   126,508 schema-v2 examples -> BC train 12 epochs -> deploy neural_policy_bot -> bench 256

@@ -106,10 +106,15 @@ def main() -> int:
     print(f"[b0] neural_policy_bot: {nn_wins}/{n} ({nn_wins/n:.1%}, "
           f"95% CI {lo:.1%}..{hi:.1%}) in {time.perf_counter()-t2:.0f}s", flush=True)
     print(f"[b0] mixture winrate {mix_wins/len(rows):.1%} (95% CI {mlo:.1%}..{mhi:.1%})", flush=True)
-    # PLUMBING PASS: the two CIs overlap (net reproduces the mixture, no crash/degenerate).
-    overlap = nn_wins / n >= mlo and mix_wins / len(rows) >= lo
+    # PLUMBING PASS: the BC net is not statistically distinguishable from the
+    # mixture (CIs intersect) — it reproduces the mixture end-to-end without
+    # collapse. Proper interval-intersection test (a point estimate landing
+    # just below the other's CI is NOT a fail if the intervals still overlap).
+    overlap = lo <= mhi and mlo <= hi
     verdict = "PASS" if overlap else "FAIL"
-    print(f"[b0] VERDICT (plumbing): {verdict} — CIs {'overlap' if overlap else 'DISJOINT'}", flush=True)
+    print(f"[b0] VERDICT (plumbing): {verdict} — CIs "
+          f"{'overlap' if overlap else 'DISJOINT'} "
+          f"(neural [{lo:.1%},{hi:.1%}] vs mixture [{mlo:.1%},{mhi:.1%}])", flush=True)
     return 0
 
 
