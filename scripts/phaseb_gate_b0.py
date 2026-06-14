@@ -89,9 +89,9 @@ def main() -> int:
     cfg = PolicyConfig(epochs=args.epochs, seed=0)
     t1 = time.perf_counter()
     net, metrics = train_decision_policy(examples, cfg)
-    print(f"[b0] trained in {time.perf_counter()-t1:.0f}s: "
-          f"top1={metrics['top1']} no_playscore={metrics['top1_no_playscore']} "
-          f"chance={metrics['chance']} value_auc={metrics['value_auc']}", flush=True)
+    print("[b0] trained in {:.0f}s: top1={} no_heuristic={} chance={} value_auc={}".format(
+        time.perf_counter() - t1, metrics["top1"], metrics["top1_no_heuristic"],
+        metrics["chance"], metrics["value_auc"]), flush=True)
     save_policy(net, args.ckpt, config=cfg)
 
     # 3) Deploy + bench winrate on training-range seeds.

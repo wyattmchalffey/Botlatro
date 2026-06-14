@@ -111,6 +111,7 @@ class CandidateToken:
     has_target: float        # 1.0 if target_id set
     play_score: float        # normalized Rust immediate score (play actions)
     has_play_score: float    # 1.0 when play_score is real
+    heuristic_choice: float  # 1.0 if the reference heuristic would take this action
 
 
 def _candidate_tokens(
@@ -137,6 +138,7 @@ def candidate_tokens_for_state(state: GameState) -> tuple[CandidateToken, ...]:
     if not legals:
         return ()
     play_scores = _play_scores_by_position(state, legals)
+    heuristic_pos = _heuristic_choice_position(state)
     tokens: list[CandidateToken] = []
     for pos, act in enumerate(legals):
         score = play_scores.get(pos)
@@ -148,9 +150,33 @@ def candidate_tokens_for_state(state: GameState) -> tuple[CandidateToken, ...]:
                 has_target=1.0 if act.target_id else 0.0,
                 play_score=score if score is not None else 0.0,
                 has_play_score=1.0 if score is not None else 0.0,
+                heuristic_choice=1.0 if pos == heuristic_pos else 0.0,
             )
         )
     return tuple(tokens)
+
+
+_REF_HEURISTIC = None
+
+
+def _heuristic_choice_position(state: GameState) -> int:
+    """Index of the candidate the reference heuristic (BasicStrategy — the play
+    policy every mixture bot shares) would take, or -1. THE load-bearing fusion
+    feature: B0 showed the net was near-chance on plays because the immediate
+    score doesn't capture what the heuristic optimizes (min-sufficient + pace);
+    'would the heuristic pick this' does. Pure function of the state; used
+    identically at training (expansion) and inference (the deployed bot)."""
+    global _REF_HEURISTIC
+    try:
+        if _REF_HEURISTIC is None:
+            from balatro_ai.bots.basic_strategy_bot import BasicStrategyBot
+
+            _REF_HEURISTIC = BasicStrategyBot(seed=0)
+        action = _REF_HEURISTIC.choose_action(state)
+        key = action.stable_key
+        return next((i for i, a in enumerate(state.legal_actions) if a.stable_key == key), -1)
+    except Exception:  # noqa: BLE001 — feature extraction must never break capture
+        return -1
 
 
 def _play_scores_by_position(state: GameState, legals: tuple[Action, ...]) -> dict[int, float]:

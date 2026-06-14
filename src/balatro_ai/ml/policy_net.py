@@ -32,8 +32,8 @@ from balatro_ai.ml.dataset import _ACTION_TYPE_ORDER, CandidateToken, TrainingEx
 from balatro_ai.ml.model import Batch, ValueNet, collate_states
 
 _N_ACTION_TYPES = len(_ACTION_TYPE_ORDER)
-_CAND_NNUM = 5  # n_cards, amount, has_target, play_score, has_play_score
-_PLAY_SCORE_COL = 3  # index of play_score within the numeric feature vector
+_CAND_NNUM = 6  # n_cards, amount, has_target, play_score, has_play_score, heuristic_choice
+_HEURISTIC_COLS = (3, 4, 5)  # play_score, has_play_score, heuristic_choice (ablation drops these)
 
 
 @dataclass
@@ -85,7 +85,8 @@ def collate_candidates(examples: Sequence[TrainingExample]) -> CandidateBatch:
         pad = max_c - len(cs)
         type_rows.append([c.action_type_index for c in cs] + [0] * pad)
         num_rows.append(
-            [[c.n_cards, c.amount, c.has_target, c.play_score, c.has_play_score] for c in cs]
+            [[c.n_cards, c.amount, c.has_target, c.play_score, c.has_play_score,
+              c.heuristic_choice] for c in cs]
             + [pad_num] * pad
         )
         mask_rows.append([True] * len(cs) + [False] * pad)
@@ -142,7 +143,7 @@ class DecisionPolicyNet(nn.Module):
         )
 
     def candidate_logits(
-        self, cb: CandidateBatch, *, drop_play_score: bool = False
+        self, cb: CandidateBatch, *, drop_heuristic: bool = False
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Return (candidate_logits [B, C] with masked = -inf, win_logit [B])."""
         trunk = self.value_net._trunk(cb.state)            # [B, d_trunk]
@@ -150,10 +151,13 @@ class DecisionPolicyNet(nn.Module):
         b, c = cb.cand_type.shape
         type_e = self.type_emb(cb.cand_type)               # [B, C, d_type]
         num = cb.cand_num
-        if drop_play_score:
+        if drop_heuristic:
+            # Anti-shortcut ablation: zero ALL heuristic hints (play_score +
+            # has_play_score + heuristic_choice) to test whether the trunk has
+            # signal independent of the heuristic, or is a pure copy.
             num = num.clone()
-            num[..., _PLAY_SCORE_COL] = 0.0
-            num[..., _PLAY_SCORE_COL + 1] = 0.0            # also drop has_play_score
+            for col in _HEURISTIC_COLS:
+                num[..., col] = 0.0
         ctx = trunk.unsqueeze(1).expand(b, c, -1)          # [B, C, d_trunk]
         feats = torch.cat([ctx, type_e, num], dim=-1)
         logits = self.cand_mlp(feats).squeeze(-1)          # [B, C]
@@ -210,20 +214,20 @@ def evaluate(
     keep the [N, ~440] tensor bounded."""
     data = _labelled(examples)
     if not data:
-        return {"top1": 0.0, "top1_no_playscore": 0.0, "value_auc": 0.0}
+        return {"top1": 0.0, "top1_no_heuristic": 0.0, "value_auc": 0.0}
     if sample is not None and len(data) > sample:
         data = random.Random(seed).sample(data, sample)
     net.eval()
     cb = collate_candidates(data)
     logits, win_logit = net.candidate_logits(cb)
     top1 = (logits.argmax(dim=1) == cb.chosen).float().mean().item()
-    logits_abl, _ = net.candidate_logits(cb, drop_play_score=True)
+    logits_abl, _ = net.candidate_logits(cb, drop_heuristic=True)
     top1_abl = (logits_abl.argmax(dim=1) == cb.chosen).float().mean().item()
     # chance baseline: 1 / mean candidate count
     n_cands = cb.cand_mask.sum(dim=1).float().mean().item()
     return {
         "top1": round(top1, 4),
-        "top1_no_playscore": round(top1_abl, 4),
+        "top1_no_heuristic": round(top1_abl, 4),
         "chance": round(1.0 / max(1.0, n_cands), 4),
         "value_auc": round(_auc(torch.sigmoid(win_logit), cb.won), 4),
         "mean_candidates": round(n_cands, 1),

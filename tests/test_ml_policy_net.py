@@ -28,6 +28,7 @@ def _example(chosen: int, n_cands: int, won: bool, *, scored_first: bool = True)
                 has_target=0.0,
                 play_score=(1.0 if j == chosen and scored_first else 0.1),
                 has_play_score=1.0,
+                heuristic_choice=(1.0 if j == chosen and scored_first else 0.0),
             )
         )
     return TrainingExample(
@@ -64,7 +65,7 @@ class TrainTests(unittest.TestCase):
         exs = [_example(i % 4, 4, True) for i in range(40)]
         net, _ = train_decision_policy(exs, PolicyConfig(epochs=5, seed=0))
         m = evaluate(net, exs)
-        self.assertIn("top1_no_playscore", m)   # anti-shortcut ablation present
+        self.assertIn("top1_no_heuristic", m)   # anti-shortcut ablation present
         self.assertIn("value_auc", m)
 
     def test_drops_unlabelled_examples(self) -> None:
