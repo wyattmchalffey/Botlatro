@@ -168,7 +168,14 @@ class DecisionPolicyNet(nn.Module):
 def train_decision_policy(
     examples: Sequence[TrainingExample],
     config: PolicyConfig | None = None,
+    *,
+    val_examples: Sequence[TrainingExample] | None = None,
 ) -> tuple[DecisionPolicyNet, dict]:
+    """BC-train the decision policy. If `val_examples` (a HELD-OUT run set) is
+    given, track held-out value-AUC each epoch and KEEP THE BEST checkpoint —
+    the value-head salvage for V0 (the B0 head overfit: train 0.99 / held 0.63
+    from training all epochs with no early-stop). Held-out val avoids the
+    in-dataset leakage of splitting examples that share a run's outcome label."""
     config = config or PolicyConfig()
     data = _labelled(examples)
     if not data:
@@ -178,9 +185,11 @@ def train_decision_policy(
     opt = torch.optim.Adam(net.parameters(), lr=config.lr, weight_decay=config.weight_decay)
     rng = random.Random(config.seed)
     n, bs = len(data), config.batch_size
-    net.train()
+    val_data = _labelled(val_examples) if val_examples else None
+    best_val_auc, best_state, best_epoch = -1.0, None, -1
     last_loss = 0.0
-    for _ in range(config.epochs):
+    for epoch in range(config.epochs):
+        net.train()
         order = list(range(n))
         rng.shuffle(order)
         for start in range(0, n, bs):
@@ -194,10 +203,34 @@ def train_decision_policy(
             loss.backward()
             opt.step()
             last_loss = float(loss.detach())
+        if val_data is not None:
+            va = _held_out_value_auc(net, val_data, sample=config.eval_sample, seed=config.seed)
+            if va > best_val_auc:
+                import copy
+                best_val_auc, best_epoch = va, epoch
+                best_state = copy.deepcopy(net.state_dict())
+    if best_state is not None:
+        net.load_state_dict(best_state)  # restore best-held-out-value checkpoint
     metrics = evaluate(net, data, sample=config.eval_sample, seed=config.seed)
     metrics["final_loss"] = round(last_loss, 4)
     metrics["n_examples"] = n
+    if val_data is not None:
+        metrics["best_val_value_auc"] = round(best_val_auc, 4)
+        metrics["best_epoch"] = best_epoch
     return net, metrics
+
+
+@torch.no_grad()
+def _held_out_value_auc(
+    net: DecisionPolicyNet, val_data: Sequence[TrainingExample], *, sample: int, seed: int
+) -> float:
+    data = list(val_data)
+    if len(data) > sample:
+        data = random.Random(seed).sample(data, sample)
+    net.eval()
+    cb = collate_candidates(data)
+    _, win_logit = net.candidate_logits(cb)
+    return _auc(torch.sigmoid(win_logit), cb.won)
 
 
 @torch.no_grad()
