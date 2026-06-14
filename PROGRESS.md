@@ -2988,6 +2988,30 @@
   money-ticker race. Shop-decision-only distillation at antes 1-5 is usable now with a per-seed
   replay gate.
 
+- **2026-06-14 GATE B0: FAIL (0/256 vs mixture 7.6%) — but the pipeline CLOSES and the failure is
+  precisely diagnosed.** The whole Phase-B pipeline ran end-to-end (1000-run mixture capture ->
+  126,508 schema-v2 examples -> BC train 12 epochs -> deploy neural_policy_bot -> bench 256
+  training-range seeds). Training looked strong (top1 0.512 vs chance 0.0065; anti-shortcut clean:
+  0.462 with play-score dropped) but DEPLOYED winrate = 0/256 (`.data/phaseb_b0_bench.log`,
+  `.data/phaseb_policy_b0.pt`). This is the documented imitation-deployment gap (cf. the old
+  candidate-subset play policy: 0.388 offline -> -1.4 antes deployed). DIAGNOSIS (20-seed
+  per-phase agreement-with-heuristic + death-ante): dies at ante 1-3 EVERY run; per-phase
+  agreement blind_select/round_eval 100% (trivial single-action), shop 43%, booster 50%,
+  **selecting_hand (play/discard) 19%** -> the net is catastrophic on PLAY, the survival-
+  determining surface, so it fails the early blinds. The 0.512 train-top1 was inflated by the
+  trivial phases; on plays it is near-chance. ROOT CAUSE: the minimal candidate fusion feature
+  (immediate Rust play-score) does NOT capture what basic_strategy actually optimizes (minimum-
+  sufficient hand + discard/pace management, NOT max immediate score), so BC can't even mimic the
+  teacher on plays. FIX (next): richer per-candidate fusion = the heuristic's OWN evaluation of
+  each candidate (basic bot's _play_candidates score / shop value terms), not just raw immediate
+  score — the "candidate fusion features" the inventory flagged and the first cut minimized.
+  ALSO FOUND (bench-as-fuzzer): neural bot picked CHOOSE_PACK_CARD of a joker at 5/5 full slots;
+  sim raises (forward_sim.simulate_choose_pack_card). Either legal-action derivation should not
+  offer over-cap Buffoon-pack joker picks, or (like round-5 bug 20's Judgement path) the real game
+  allows it — needs a bridge check; bench now catches sim.step errors (degenerate pick = loss).
+  THE MEASURE-FIRST GATE DID ITS JOB: caught that minimal features are insufficient for $0, before
+  any rented-scale spend.
+
 - **2026-06-13/14 PHASE B ENGINEERING INVENTORY BUILT — the whole-policy pipeline closes
   end-to-end; first Gate B0 running.** Architecture decision (user's call): follow
   PHASE_B_ARCHITECTURE.md (the Fable-5 DECISION-SHAPED POLICY — candidate scoring over every

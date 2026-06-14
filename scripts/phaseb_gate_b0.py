@@ -47,7 +47,13 @@ def _eval_seed(args) -> bool:
             a = bot.choose_action(st)
             if a.action_type.value == "no_op":
                 break
-            sim.step(a)
+            try:
+                sim.step(a)
+            except Exception:  # noqa: BLE001
+                # A degenerate-but-legal pick the sim refuses (e.g. taking a
+                # Buffoon-pack joker at full slots) ends the run as a loss —
+                # the bot's own fault, not a bench failure.
+                break
     return bool(sim.state.won)
 
 
