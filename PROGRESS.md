@@ -2988,6 +2988,23 @@
   money-ticker race. Shop-decision-only distillation at antes 1-5 is usable now with a per-seed
   replay gate.
 
+- **2026-06-14 GATE V0: FAIL the bar, but OVERFIT not FLAT — the feared value-collapse did NOT
+  occur.** Held-out value-head check (200 fresh mixture runs, 20k states, `.data/phaseb_gate_v0.log`,
+  scripts/phaseb_gate_v0.py): held-out win-AUC **0.634** (bar >=0.65, historical 0.708) — FAIL; BUT
+  prediction spread **std 0.243, range [0,1]** (the documented flat-value failure is std ~0.05, so
+  this is 5x that) and decile calibration shows real discrimination (top decile 45% winrate vs
+  bottom 10%), just non-monotonic in the middle. Train AUC was 0.9946 -> held-out 0.634 = textbook
+  OVERFIT (value head trained jointly in B0 on 126k examples from only 1000 runs / ~76-120 wins /
+  12 epochs / NO validation split or early-stopping). DIAGNOSIS: the value head HAS real signal and
+  is salvageable (regularization + held-out early-stop + more data), NOT the fundamental flatness
+  that would make advantage-weighting impossible. FORK: (a) cheap salvage — retrain the value head
+  with a val split + early-stop + stronger reg, re-gate V0; or (b) take the pre-registered fallback
+  (win-conditioned BC + dense fork-audit play labels), which is robust to a weak value head; or (c)
+  proceed to iteration 1 using the current head as a WEAK baseline (0.634 AUC still beats a constant
+  baseline for credit assignment) + dense play labels. The value head is the credit-assignment
+  substrate for advantage-weighting; 0.634 is usable-but-noisy, so iteration 1's operator strength
+  scales with how much V0 is improved first.
+
 - **2026-06-14 GATE B0: PASS (plumbing) — the chassis-replacement pipeline carries a whole policy
   end-to-end.** After the heuristic_choice fusion fix, re-ran B0 on the same 1000-run mixture
   dataset (no regeneration): BC train top1 0.843 (no_heuristic 0.39, chance 0.0065), deployed
