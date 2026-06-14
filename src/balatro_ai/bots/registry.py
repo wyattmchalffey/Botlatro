@@ -359,6 +359,10 @@ def create_bot(name: str, seed: int | None = None) -> Bot:
 
         policy = normalized[len("recipe_"):-len("_bot")]
         return RouteRecipeBot(policy, SolverShopBasicPlayBot(seed=seed))
+    if normalized in {"neural_policy_bot", "neural_policy"}:
+        from balatro_ai.bots.neural_policy import NeuralPolicyBot
+
+        return NeuralPolicyBot(seed=seed)
     if normalized == "random_bot":
         return RandomBot(seed=seed)
     if normalized == "greedy_bot":

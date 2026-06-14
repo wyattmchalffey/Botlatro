@@ -190,3 +190,44 @@ def _auc(scores: torch.Tensor, labels: torch.Tensor) -> float:
     wins = (pos.unsqueeze(1) > neg.unsqueeze(0)).float().sum()
     ties = (pos.unsqueeze(1) == neg.unsqueeze(0)).float().sum()
     return float((wins + 0.5 * ties) / (pos.numel() * neg.numel()))
+
+
+# --------------------------------------------------------------------------- #
+# Checkpoint I/O + single-state inference (the deployed-bot seam).
+# --------------------------------------------------------------------------- #
+
+def save_policy(net: DecisionPolicyNet, path: str, *, config: PolicyConfig) -> None:
+    torch.save(
+        {
+            "state_dict": net.state_dict(),
+            "config": vars(config),
+            "spec": net.value_net.spec,
+        },
+        path,
+    )
+
+
+def load_policy(path: str) -> DecisionPolicyNet:
+    blob = torch.load(path, map_location="cpu", weights_only=False)
+    cfg = PolicyConfig(**{k: v for k, v in blob["config"].items() if k in PolicyConfig.__annotations__})
+    net = DecisionPolicyNet(cfg, spec=blob.get("spec"))
+    net.load_state_dict(blob["state_dict"])
+    net.eval()
+    return net
+
+
+@torch.no_grad()
+def best_candidate_index(net: DecisionPolicyNet, encoded_state, candidates) -> int:
+    """Argmax candidate for one state — the deployed bot's scoring call.
+    `candidates` is a tuple of CandidateToken (parallel to legal_actions)."""
+    if not candidates:
+        return -1
+    from balatro_ai.ml.dataset import TrainingExample, ValueTarget
+
+    ex = TrainingExample(
+        step=0, phase="", encoded_state=encoded_state, action={}, value=ValueTarget(False, 0, 0),
+        steps_to_end=0, candidates=tuple(candidates), chosen_index=0,
+    )
+    cb = collate_candidates([ex])
+    logits, _ = net.candidate_logits(cb)
+    return int(logits[0].argmax().item())

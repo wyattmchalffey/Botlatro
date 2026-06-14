@@ -120,10 +120,22 @@ def _candidate_tokens(
     one the policy took (`-1` if the taken action is not among the legals —
     e.g. a metadata-only variant; caller can drop those examples)."""
 
+    tokens = candidate_tokens_for_state(state)
+    if not tokens:
+        return (), -1
+    taken_key = taken.stable_key
+    legals = state.legal_actions
+    chosen = next((i for i, a in enumerate(legals) if a.stable_key == taken_key), -1)
+    return tokens, chosen
+
+
+def candidate_tokens_for_state(state: GameState) -> tuple[CandidateToken, ...]:
+    """The candidate feature set for `state.legal_actions`, parallel to
+    `state.legal_actions` by index. Shared by training (schema v2) and
+    inference (the deployed policy bot) — same features both sides."""
     legals = state.legal_actions
     if not legals:
-        return (), -1
-
+        return ()
     play_scores = _play_scores_by_position(state, legals)
     tokens: list[CandidateToken] = []
     for pos, act in enumerate(legals):
@@ -138,10 +150,7 @@ def _candidate_tokens(
                 has_play_score=1.0 if score is not None else 0.0,
             )
         )
-
-    taken_key = taken.stable_key
-    chosen = next((i for i, a in enumerate(legals) if a.stable_key == taken_key), -1)
-    return tuple(tokens), chosen
+    return tuple(tokens)
 
 
 def _play_scores_by_position(state: GameState, legals: tuple[Action, ...]) -> dict[int, float]:
