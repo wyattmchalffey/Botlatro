@@ -46,6 +46,8 @@ class PolicyConfig:
     value_weight: float = 1.0
     d_type: int = 8
     d_hidden: int = 64
+    n_neg: int = 31      # training: score chosen + n_neg sampled negatives, not all
+    eval_sample: int = 2000  # eval top-1 on this many examples (full candidate sets)
     seed: int = 0
 
 
@@ -69,22 +71,59 @@ def _labelled(examples: Sequence[TrainingExample]) -> list[TrainingExample]:
 def collate_candidates(examples: Sequence[TrainingExample]) -> CandidateBatch:
     state = collate_states([e.encoded_state for e in examples])
     max_c = max(len(e.candidates) for e in examples)
-    b = len(examples)
-    cand_type = torch.zeros(b, max_c, dtype=torch.long)
-    cand_num = torch.zeros(b, max_c, _CAND_NNUM)
-    cand_mask = torch.zeros(b, max_c, dtype=torch.bool)
-    chosen = torch.zeros(b, dtype=torch.long)
-    won = torch.zeros(b)
-    for i, ex in enumerate(examples):
-        chosen[i] = ex.chosen_index
-        won[i] = 1.0 if ex.value.won else 0.0
-        for j, c in enumerate(ex.candidates):
-            cand_type[i, j] = c.action_type_index
-            cand_num[i, j] = torch.tensor(
-                [c.n_cards, c.amount, c.has_target, c.play_score, c.has_play_score]
+    # Bulk construction via Python lists + a single torch.tensor per field —
+    # element-wise tensor assignment was the training bottleneck (~140
+    # candidates x examples of tiny tensor allocs per batch per epoch).
+    pad_num = [0.0] * _CAND_NNUM
+    type_rows: list[list[int]] = []
+    num_rows: list[list[list[float]]] = []
+    mask_rows: list[list[bool]] = []
+    chosen: list[int] = []
+    won: list[float] = []
+    for ex in examples:
+        cs = ex.candidates
+        pad = max_c - len(cs)
+        type_rows.append([c.action_type_index for c in cs] + [0] * pad)
+        num_rows.append(
+            [[c.n_cards, c.amount, c.has_target, c.play_score, c.has_play_score] for c in cs]
+            + [pad_num] * pad
+        )
+        mask_rows.append([True] * len(cs) + [False] * pad)
+        chosen.append(ex.chosen_index)
+        won.append(1.0 if ex.value.won else 0.0)
+    return CandidateBatch(
+        state,
+        torch.tensor(type_rows, dtype=torch.long),
+        torch.tensor(num_rows, dtype=torch.float),
+        torch.tensor(mask_rows, dtype=torch.bool),
+        torch.tensor(chosen, dtype=torch.long),
+        torch.tensor(won, dtype=torch.float),
+    )
+
+
+def collate_candidates_sampled(
+    examples: Sequence[TrainingExample], n_neg: int, rng: random.Random
+) -> CandidateBatch:
+    """Training collate with negative sampling: each example keeps the CHOSEN
+    candidate (at index 0) + up to `n_neg` random negatives. Cuts the candidate
+    axis from ~440 (play decisions) to ~32 — the dominant training cost — with
+    no inference-side change (the bot still scores all candidates). Chosen is at
+    index 0, so the CE target is uniformly 0; the scorer is position-free so this
+    introduces no bias."""
+    sub: list[TrainingExample] = []
+    for ex in examples:
+        cs = ex.candidates
+        others = [i for i in range(len(cs)) if i != ex.chosen_index]
+        rng.shuffle(others)
+        keep = [ex.chosen_index] + others[:n_neg]
+        sub.append(
+            TrainingExample(
+                step=ex.step, phase=ex.phase, encoded_state=ex.encoded_state,
+                action=ex.action, value=ex.value, steps_to_end=ex.steps_to_end,
+                candidates=tuple(cs[i] for i in keep), chosen_index=0,
             )
-            cand_mask[i, j] = True
-    return CandidateBatch(state, cand_type, cand_num, cand_mask, chosen, won)
+        )
+    return collate_candidates(sub)
 
 
 class DecisionPolicyNet(nn.Module):
@@ -142,7 +181,7 @@ def train_decision_policy(
         rng.shuffle(order)
         for start in range(0, n, bs):
             chunk = [data[i] for i in order[start:start + bs]]
-            cb = collate_candidates(chunk)
+            cb = collate_candidates_sampled(chunk, config.n_neg, rng)
             logits, win_logit = net.candidate_logits(cb)
             policy_loss = F.cross_entropy(logits, cb.chosen)
             value_loss = F.binary_cross_entropy_with_logits(win_logit, cb.won)
@@ -151,19 +190,29 @@ def train_decision_policy(
             loss.backward()
             opt.step()
             last_loss = float(loss.detach())
-    metrics = evaluate(net, data)
+    metrics = evaluate(net, data, sample=config.eval_sample, seed=config.seed)
     metrics["final_loss"] = round(last_loss, 4)
     metrics["n_examples"] = n
     return net, metrics
 
 
 @torch.no_grad()
-def evaluate(net: DecisionPolicyNet, examples: Sequence[TrainingExample]) -> dict:
+def evaluate(
+    net: DecisionPolicyNet,
+    examples: Sequence[TrainingExample],
+    *,
+    sample: int | None = None,
+    seed: int = 0,
+) -> dict:
     """Top-1 BC accuracy (does the net rank the taken action first?) WITH and
-    WITHOUT the fused play-score feature — the anti-shortcut ablation."""
+    WITHOUT the fused play-score feature — the anti-shortcut ablation. Scores the
+    FULL candidate set (unlike sampled training); capped to `sample` examples to
+    keep the [N, ~440] tensor bounded."""
     data = _labelled(examples)
     if not data:
         return {"top1": 0.0, "top1_no_playscore": 0.0, "value_auc": 0.0}
+    if sample is not None and len(data) > sample:
+        data = random.Random(seed).sample(data, sample)
     net.eval()
     cb = collate_candidates(data)
     logits, win_logit = net.candidate_logits(cb)
