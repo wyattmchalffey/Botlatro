@@ -1,0 +1,192 @@
+"""Decision-shaped policy net (Phase B, component 4).
+
+The chassis-replacement architecture: ONE network scores the legal candidate
+actions of EVERY decision and picks one (softmax argmax), with a value head
+for diagnostics/baselines. Reuses the `ValueNet` set-encoder trunk for state
+context; adds a generic candidate-scoring head over the schema-v2
+`CandidateToken` features (action-type embedding + structural features + the
+heuristic's fused play-score).
+
+Iteration 0 is behavior cloning: train the policy to reproduce the action the
+(recipe-mixture) policy took, over ALL trajectories (diversity preserved; no
+outcome weighting until iteration 1+). Gate B0 is a plumbing check — does this
+net, deployed, reproduce the mixture's winrate?
+
+Anti-shortcut harness (review demand): the fused play-score feature can be
+dropped at train/eval time, and `evaluate` reports top-1 WITH and WITHOUT it —
+if the net only works with the feature present, it learned argmax-of-heuristic
+and starved the trunk (the Stage-2.3 lossy-compression failure in disguise).
+"""
+
+from __future__ import annotations
+
+import random
+from collections.abc import Sequence
+from dataclasses import dataclass
+
+import torch
+import torch.nn.functional as F
+from torch import nn
+
+from balatro_ai.ml.dataset import _ACTION_TYPE_ORDER, CandidateToken, TrainingExample
+from balatro_ai.ml.model import Batch, ValueNet, collate_states
+
+_N_ACTION_TYPES = len(_ACTION_TYPE_ORDER)
+_CAND_NNUM = 5  # n_cards, amount, has_target, play_score, has_play_score
+_PLAY_SCORE_COL = 3  # index of play_score within the numeric feature vector
+
+
+@dataclass
+class PolicyConfig:
+    epochs: int = 20
+    lr: float = 3e-3
+    batch_size: int = 256
+    weight_decay: float = 1e-4
+    dropout: float = 0.1
+    value_weight: float = 1.0
+    d_type: int = 8
+    d_hidden: int = 64
+    seed: int = 0
+
+
+@dataclass
+class CandidateBatch:
+    """A padded minibatch of (state, candidate-set, label, outcome)."""
+
+    state: Batch
+    cand_type: torch.Tensor   # [B, C] long — action-type index per candidate
+    cand_num: torch.Tensor    # [B, C, _CAND_NNUM] float
+    cand_mask: torch.Tensor   # [B, C] bool — True = real candidate
+    chosen: torch.Tensor      # [B] long — index of the taken candidate
+    won: torch.Tensor         # [B] float — run outcome (value target)
+
+
+def _labelled(examples: Sequence[TrainingExample]) -> list[TrainingExample]:
+    """Keep only examples with a real candidate set AND a found chosen index."""
+    return [e for e in examples if e.candidates and 0 <= e.chosen_index < len(e.candidates)]
+
+
+def collate_candidates(examples: Sequence[TrainingExample]) -> CandidateBatch:
+    state = collate_states([e.encoded_state for e in examples])
+    max_c = max(len(e.candidates) for e in examples)
+    b = len(examples)
+    cand_type = torch.zeros(b, max_c, dtype=torch.long)
+    cand_num = torch.zeros(b, max_c, _CAND_NNUM)
+    cand_mask = torch.zeros(b, max_c, dtype=torch.bool)
+    chosen = torch.zeros(b, dtype=torch.long)
+    won = torch.zeros(b)
+    for i, ex in enumerate(examples):
+        chosen[i] = ex.chosen_index
+        won[i] = 1.0 if ex.value.won else 0.0
+        for j, c in enumerate(ex.candidates):
+            cand_type[i, j] = c.action_type_index
+            cand_num[i, j] = torch.tensor(
+                [c.n_cards, c.amount, c.has_target, c.play_score, c.has_play_score]
+            )
+            cand_mask[i, j] = True
+    return CandidateBatch(state, cand_type, cand_num, cand_mask, chosen, won)
+
+
+class DecisionPolicyNet(nn.Module):
+    """ValueNet trunk (state context + win head) + a generic candidate head."""
+
+    def __init__(self, config: PolicyConfig, *, spec: dict | None = None) -> None:
+        super().__init__()
+        self.value_net = ValueNet(spec=spec, dropout=config.dropout)
+        d_trunk = self.value_net.hparams["d_trunk"]
+        self.type_emb = nn.Embedding(_N_ACTION_TYPES, config.d_type)
+        self.cand_mlp = nn.Sequential(
+            nn.Linear(d_trunk + config.d_type + _CAND_NNUM, config.d_hidden),
+            nn.ReLU(),
+            nn.Dropout(config.dropout),
+            nn.Linear(config.d_hidden, 1),
+        )
+
+    def candidate_logits(
+        self, cb: CandidateBatch, *, drop_play_score: bool = False
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Return (candidate_logits [B, C] with masked = -inf, win_logit [B])."""
+        trunk = self.value_net._trunk(cb.state)            # [B, d_trunk]
+        win_logit = self.value_net.win_head(trunk).squeeze(-1)
+        b, c = cb.cand_type.shape
+        type_e = self.type_emb(cb.cand_type)               # [B, C, d_type]
+        num = cb.cand_num
+        if drop_play_score:
+            num = num.clone()
+            num[..., _PLAY_SCORE_COL] = 0.0
+            num[..., _PLAY_SCORE_COL + 1] = 0.0            # also drop has_play_score
+        ctx = trunk.unsqueeze(1).expand(b, c, -1)          # [B, C, d_trunk]
+        feats = torch.cat([ctx, type_e, num], dim=-1)
+        logits = self.cand_mlp(feats).squeeze(-1)          # [B, C]
+        logits = logits.masked_fill(~cb.cand_mask, float("-inf"))
+        return logits, win_logit
+
+
+def train_decision_policy(
+    examples: Sequence[TrainingExample],
+    config: PolicyConfig | None = None,
+) -> tuple[DecisionPolicyNet, dict]:
+    config = config or PolicyConfig()
+    data = _labelled(examples)
+    if not data:
+        raise ValueError("train_decision_policy needs labelled candidate examples")
+    torch.manual_seed(config.seed)
+    net = DecisionPolicyNet(config)
+    opt = torch.optim.Adam(net.parameters(), lr=config.lr, weight_decay=config.weight_decay)
+    rng = random.Random(config.seed)
+    n, bs = len(data), config.batch_size
+    net.train()
+    last_loss = 0.0
+    for _ in range(config.epochs):
+        order = list(range(n))
+        rng.shuffle(order)
+        for start in range(0, n, bs):
+            chunk = [data[i] for i in order[start:start + bs]]
+            cb = collate_candidates(chunk)
+            logits, win_logit = net.candidate_logits(cb)
+            policy_loss = F.cross_entropy(logits, cb.chosen)
+            value_loss = F.binary_cross_entropy_with_logits(win_logit, cb.won)
+            loss = policy_loss + config.value_weight * value_loss
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+            last_loss = float(loss.detach())
+    metrics = evaluate(net, data)
+    metrics["final_loss"] = round(last_loss, 4)
+    metrics["n_examples"] = n
+    return net, metrics
+
+
+@torch.no_grad()
+def evaluate(net: DecisionPolicyNet, examples: Sequence[TrainingExample]) -> dict:
+    """Top-1 BC accuracy (does the net rank the taken action first?) WITH and
+    WITHOUT the fused play-score feature — the anti-shortcut ablation."""
+    data = _labelled(examples)
+    if not data:
+        return {"top1": 0.0, "top1_no_playscore": 0.0, "value_auc": 0.0}
+    net.eval()
+    cb = collate_candidates(data)
+    logits, win_logit = net.candidate_logits(cb)
+    top1 = (logits.argmax(dim=1) == cb.chosen).float().mean().item()
+    logits_abl, _ = net.candidate_logits(cb, drop_play_score=True)
+    top1_abl = (logits_abl.argmax(dim=1) == cb.chosen).float().mean().item()
+    # chance baseline: 1 / mean candidate count
+    n_cands = cb.cand_mask.sum(dim=1).float().mean().item()
+    return {
+        "top1": round(top1, 4),
+        "top1_no_playscore": round(top1_abl, 4),
+        "chance": round(1.0 / max(1.0, n_cands), 4),
+        "value_auc": round(_auc(torch.sigmoid(win_logit), cb.won), 4),
+        "mean_candidates": round(n_cands, 1),
+    }
+
+
+def _auc(scores: torch.Tensor, labels: torch.Tensor) -> float:
+    pos = scores[labels > 0.5]
+    neg = scores[labels <= 0.5]
+    if pos.numel() == 0 or neg.numel() == 0:
+        return 0.5
+    # Mann-Whitney U / (n_pos * n_neg).
+    wins = (pos.unsqueeze(1) > neg.unsqueeze(0)).float().sum()
+    ties = (pos.unsqueeze(1) == neg.unsqueeze(0)).float().sum()
+    return float((wins + 0.5 * ties) / (pos.numel() * neg.numel()))
