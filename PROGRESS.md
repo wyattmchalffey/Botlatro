@@ -2988,6 +2988,40 @@
   money-ticker race. Shop-decision-only distillation at antes 1-5 is usable now with a per-seed
   replay gate.
 
+- **2026-06-13/14 PHASE B ENGINEERING INVENTORY BUILT — the whole-policy pipeline closes
+  end-to-end; first Gate B0 running.** Architecture decision (user's call): follow
+  PHASE_B_ARCHITECTURE.md (the Fable-5 DECISION-SHAPED POLICY — candidate scoring over every
+  decision, heuristic evals fused as features — NOT the roadmap's older value-in-search framing;
+  SUPERHUMAN_ROADMAP.md Phase 2 reconciled to point here). All 5 inventory components shipped +
+  tested this session:
+  1. **Capture** (scripts/phase8_onpolicy_value.py): true per-run resumability, `--bot
+     "name:w,..."` mixtures (deterministic per-seed), bot_name provenance.
+  2. **Encoder v3->v4** (ml/encoding.py): pack-contents tokens (_pack_item_vocab) + blind-tag
+     index (_tag_vocab, drift-guarded vs sim.local_runner.TAG_KEYS_BY_NAME) — CHOOSE_PACK_CARD and
+     SKIP_BLIND were invisible to the net. Additive; encoder proven order-blind.
+  3. **Dataset schema v2** (ml/dataset.py): each example carries the legal-candidate set
+     (CandidateToken: action-type + structural features + fused batched-Rust play-score with a
+     has_play_score missing-feature flag) + chosen_index (stable_key match). Computed at replay;
+     capture JSONL stays thin. 98.6% chosen-index match across all phases.
+  4. **Multi-decision trainer** (ml/policy_net.py): DecisionPolicyNet = ValueNet trunk + generic
+     candidate head; BC cross-entropy over candidates + win-BCE value head. ANTI-SHORTCUT harness:
+     evaluate() reports top-1 WITH and WITHOUT the play-score feature. Neg-sampling (chosen + 31
+     negs) + bulk collate make 1000-run training ~1h (was ~4.5h).
+  5. **neural_policy_bot** (bots/neural_policy.py, registry-wired): loads a ckpt
+     (BALATRO_POLICY_CKPT), scores candidates, returns argmax legal Action; falls back to
+     BasicStrategy on any failure (never crashes a run). Honest-mode blinded.
+  EARLY EVIDENCE (4-run smoke, train-set, optimistic): top-1 0.475 vs chance 0.007 (~67x), and
+  **anti-shortcut PASSES — top-1 holds at 0.440 with play-score DROPPED**, so the trunk learned
+  real structure, not argmax-of-heuristic (the Stage-2.3 compression failure is avoided).
+  **GATE B0 (plumbing, scripts/phaseb_gate_b0.py): RUNNING.** Dataset = 1000 honest-shuffle
+  mixture runs (55% deployed + 45% across 8 recipes + flush_commit), seeds 5.1M+, **mixture
+  winrate 76/1000 = 7.6%** (`.data/phaseb_mix_1000.jsonl`). B0 trains BC, deploys, benches
+  neural_policy_bot on training-range seeds 5101001+; PASS = its winrate CI overlaps the 7.6%
+  mixture CI (the BC net reproduces the mixture, no crash/degenerate). NEXT after B0: V0 (value
+  validity gate) then outcome-tilted iteration 1+ per the plan. Scale TODO before rent:
+  pre-tensorized sharded dataset (the collate is in-memory), held-out eval (train-AUC overfits at
+  this scale).
+
 - **2026-06-12 P0.4 ROUND 5: ONE more bridge-verified sim bug fixed (bug 20) + one residual localized;
   FINAL CERTIFICATION VERDICT (agent, commit 48a1a1a; findings `.data/p04_rootcause_round5.md`).**
   Closed blocker #1 (seed 0000014). The ante-6 play under-scored 16354 vs bridge 24948 on an
