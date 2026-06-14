@@ -170,16 +170,25 @@ def train_decision_policy(
     config: PolicyConfig | None = None,
     *,
     val_examples: Sequence[TrainingExample] | None = None,
+    example_weights: Sequence[float] | None = None,
 ) -> tuple[DecisionPolicyNet, dict]:
     """BC-train the decision policy. If `val_examples` (a HELD-OUT run set) is
     given, track held-out value-AUC each epoch and KEEP THE BEST checkpoint —
     the value-head salvage for V0 (the B0 head overfit: train 0.99 / held 0.63
     from training all epochs with no early-stop). Held-out val avoids the
-    in-dataset leakage of splitting examples that share a run's outcome label."""
+    in-dataset leakage of splitting examples that share a run's outcome label.
+
+    `example_weights` (aligned with `_labelled(examples)` order) weights each
+    example's POLICY loss — the iteration-1 improvement operator: advantage
+    weights upweight decisions from winning trajectories, so the policy tilts
+    toward what won. Uniform weights == plain BC (iteration 0)."""
     config = config or PolicyConfig()
     data = _labelled(examples)
     if not data:
         raise ValueError("train_decision_policy needs labelled candidate examples")
+    weights = list(example_weights) if example_weights is not None else None
+    if weights is not None and len(weights) != len(data):
+        raise ValueError(f"example_weights ({len(weights)}) must align with labelled data ({len(data)})")
     torch.manual_seed(config.seed)
     net = DecisionPolicyNet(config)
     opt = torch.optim.Adam(net.parameters(), lr=config.lr, weight_decay=config.weight_decay)
@@ -193,10 +202,16 @@ def train_decision_policy(
         order = list(range(n))
         rng.shuffle(order)
         for start in range(0, n, bs):
-            chunk = [data[i] for i in order[start:start + bs]]
+            idxs = order[start:start + bs]
+            chunk = [data[i] for i in idxs]
             cb = collate_candidates_sampled(chunk, config.n_neg, rng)
             logits, win_logit = net.candidate_logits(cb)
-            policy_loss = F.cross_entropy(logits, cb.chosen)
+            if weights is None:
+                policy_loss = F.cross_entropy(logits, cb.chosen)
+            else:
+                ce = F.cross_entropy(logits, cb.chosen, reduction="none")
+                w = torch.tensor([weights[i] for i in idxs], dtype=torch.float)
+                policy_loss = (ce * w).sum() / w.sum().clamp_min(1e-6)
             value_loss = F.binary_cross_entropy_with_logits(win_logit, cb.won)
             loss = policy_loss + config.value_weight * value_loss
             opt.zero_grad()
@@ -218,6 +233,35 @@ def train_decision_policy(
         metrics["best_val_value_auc"] = round(best_val_auc, 4)
         metrics["best_epoch"] = best_epoch
     return net, metrics
+
+
+@torch.no_grad()
+def compute_advantage_weights(
+    examples: Sequence[TrainingExample],
+    baseline: DecisionPolicyNet,
+    *,
+    beta: float = 2.0,
+    w_max: float = 5.0,
+    batch: int = 512,
+) -> list[float]:
+    """Per-example AWR weights = clip(exp(beta * (R - V(s))), 0, w_max), where
+    R = run outcome (won) and V(s) is the FROZEN baseline value head (the
+    salvaged V0 head). Decisions in winning games the baseline thought were
+    losing get the most weight -> the policy tilts toward surprising wins.
+    Aligned with `_labelled(examples)` order (the trainer's data order)."""
+    data = _labelled(examples)
+    baseline.eval()
+    weights: list[float] = []
+    import math
+    for i in range(0, len(data), batch):
+        chunk = data[i:i + batch]
+        cb = collate_candidates(chunk)
+        _, win_logit = baseline.candidate_logits(cb)
+        v = torch.sigmoid(win_logit).tolist()
+        for ex, vs in zip(chunk, v):
+            r = 1.0 if ex.value.won else 0.0
+            weights.append(min(w_max, math.exp(beta * (r - vs))))
+    return weights
 
 
 @torch.no_grad()
