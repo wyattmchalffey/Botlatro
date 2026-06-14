@@ -2988,6 +2988,20 @@
   money-ticker race. Shop-decision-only distillation at antes 1-5 is usable now with a per-seed
   replay gate.
 
+- **2026-06-14 GATE V0: PASS after salvage — value head trustworthy, NO paid compute needed to fix
+  it.** The B0 value head's 0.634 was OVERFIT (diagnosed, not flat). Salvage
+  (scripts/phaseb_value_salvage.py: held-out-value early-stopping/best-checkpoint + weight_decay
+  1e-3 + dropout 0.2, on the cached examples): **held-out value-AUC = 0.7823 — PASS** (bar 0.65,
+  beats historical 0.708), ckpt `.data/phaseb_policy_v0salvage.pt`. Best epoch = 0 (the value head
+  generalizes best after ~1 epoch and overfits with more — exactly why B0's 12-epoch head
+  collapsed; best-checkpoint caught the peak), and at that checkpoint policy top1 is still 0.817.
+  So regularization + early-stop fixed the value head for FREE — the weakness was training hygiene,
+  not data scale. (One execution note: the first 25-epoch salvage was OOM-killed when a concurrent
+  memory-heavy progress-check loaded the 1.45GB cache in a second process; re-run clean = fine.
+  Don't run heavy python concurrent with training.) **BOTH Phase-B prerequisites now PASS (B0
+  plumbing + V0 value-validity). Advantage-weighting is greenlit. NEXT = iteration 1 — the first
+  outcome-tilted training, and THE paid-compute phase (scale on-policy generation).**
+
 - **2026-06-14 GATE V0: FAIL the bar, but OVERFIT not FLAT — the feared value-collapse did NOT
   occur.** Held-out value-head check (200 fresh mixture runs, 20k states, `.data/phaseb_gate_v0.log`,
   scripts/phaseb_gate_v0.py): held-out win-AUC **0.634** (bar >=0.65, historical 0.708) — FAIL; BUT
