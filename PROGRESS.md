@@ -2988,6 +2988,27 @@
   money-ticker race. Shop-decision-only distillation at antes 1-5 is usable now with a per-seed
   replay gate.
 
+- **2026-06-14 ITERATION 1 (offline AWR mechanism check): NULL — re-weighting alone does not move
+  winrate; the cheap offline proxy is too weak, pointing to on-policy generation OR the stronger
+  value-in-search operator.** AWR retrain on the cached mixture (frozen salvaged value head as
+  baseline, beta=2, 13% of decisions upweighted) then PAIRED bench vs the B0 plain-BC policy:
+  **AWR 13/256 (5.1%) vs B0 14/256 (5.5%) — TIED** (gained 10 / lost 11, d=-0.4%, CI -3.9..+3.1,
+  McNemar p=1.000; `.data/phaseb_iter1.log`). AWR policy trained fine (top1 0.817, value_auc 0.79)
+  — it just didn't deploy better. DIAGNOSIS: offline AWR can only RE-WEIGHT decisions already in
+  the data, and the mixture's play decisions ARE the heuristic's (mixture play = basic play), so
+  upweighting winning-game decisions just re-emphasizes the heuristic on seed-specific wins that
+  don't generalize. This is the EXPECTED weakness of the offline proxy, NOT proof the operator is
+  doomed — but it gives no cheap green light for paid on-policy scale. PATTERN: 3rd
+  improvement-mechanism with no gain (delegation -5.9pp, draw-probs neutral, offline-AWR null),
+  consistent with the standing diagnosis that gains need something stronger than per-decision
+  re-weighting. KEY OPPORTUNITY: V0 just PASSED (value head 0.78), so the ROADMAP'S value-in-search
+  operator (the stronger one Fable 5 deferred to Phase C) is now CHEAPLY TESTABLE — 1-ply lookahead
+  picking the highest-value post-action state, no training/generation needed. FORK: (a) test
+  value-in-search cheaply first (value head works, no spend); (b) pay for on-policy AWR generation
+  (the offline proxy couldn't prove it, but on-policy is the operator's real form); (c) deeper
+  diagnosis. Recommend (a) before (b) — the offline null is mild evidence the engine is search, not
+  re-weighting.
+
 - **2026-06-14 GATE V0: PASS after salvage — value head trustworthy, NO paid compute needed to fix
   it.** The B0 value head's 0.634 was OVERFIT (diagnosed, not flat). Salvage
   (scripts/phaseb_value_salvage.py: held-out-value early-stopping/best-checkpoint + weight_decay
