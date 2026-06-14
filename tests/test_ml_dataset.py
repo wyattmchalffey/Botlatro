@@ -106,6 +106,31 @@ class TestExamples(unittest.TestCase):
                          cap.n_steps)
 
 
+class TestCandidatesSchemaV2(unittest.TestCase):
+    """Schema v2: every example carries the legal-candidate set + the index of
+    the taken action — the decision-shaped policy's training input."""
+
+    def test_candidates_populated_and_chosen_matches_action(self) -> None:
+        examples = ds.examples_from_capture(_capture())
+        matched = 0
+        for ex in examples:
+            if ex.chosen_index >= 0:
+                matched += 1
+                self.assertLess(ex.chosen_index, len(ex.candidates))
+                chosen = ex.candidates[ex.chosen_index]
+                self.assertEqual(
+                    chosen.action_type_index,
+                    ds._ACTION_TYPE_INDEX[ActionType(ex.action["type"])],
+                )
+        self.assertGreater(matched / max(1, len(examples)), 0.9)
+
+    def test_missing_feature_flag_is_honest(self) -> None:
+        for ex in ds.examples_from_capture(_capture()):
+            for c in ex.candidates:
+                if not c.has_play_score:
+                    self.assertEqual(c.play_score, 0.0)
+
+
 class TestFaithfulToGenerator(unittest.TestCase):
     def test_capture_matches_generate_trajectory(self) -> None:
         """capture_run reproduces the canonical generate_trajectory run."""

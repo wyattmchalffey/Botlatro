@@ -87,6 +87,91 @@ class ValueTarget:
     final_score: int
 
 
+# --------------------------------------------------------------------------- #
+# Schema v2: per-decision candidate sets (the decision-shaped policy's input).
+# --------------------------------------------------------------------------- #
+
+# Action types in a fixed order -> embedding index for candidate tokens.
+_ACTION_TYPE_ORDER: tuple[ActionType, ...] = tuple(ActionType)
+_ACTION_TYPE_INDEX = {t: i for i, t in enumerate(_ACTION_TYPE_ORDER)}
+
+
+@dataclass(frozen=True, slots=True)
+class CandidateToken:
+    """One legal action as a scorable candidate. Structural features + the
+    heuristic's own evaluation fused in where cheap (the architecture's core
+    idea: the net learns WHEN the heuristic is wrong, not chip math). The
+    `has_*` flags are missing-feature indicators — absence is informative
+    (the Rust play score legitimately doesn't exist on hard boss states), so
+    it is flagged, never zero-pretended."""
+
+    action_type_index: int
+    n_cards: float           # len(card_indices) / 8
+    amount: float            # (amount or 0) / 20
+    has_target: float        # 1.0 if target_id set
+    play_score: float        # normalized Rust immediate score (play actions)
+    has_play_score: float    # 1.0 when play_score is real
+
+
+def _candidate_tokens(
+    state: GameState, taken: Action
+) -> tuple[tuple[CandidateToken, ...], int]:
+    """Build the candidate set for `state.legal_actions` and the index of the
+    one the policy took (`-1` if the taken action is not among the legals —
+    e.g. a metadata-only variant; caller can drop those examples)."""
+
+    legals = state.legal_actions
+    if not legals:
+        return (), -1
+
+    play_scores = _play_scores_by_position(state, legals)
+    tokens: list[CandidateToken] = []
+    for pos, act in enumerate(legals):
+        score = play_scores.get(pos)
+        tokens.append(
+            CandidateToken(
+                action_type_index=_ACTION_TYPE_INDEX.get(act.action_type, 0),
+                n_cards=min(len(act.card_indices), 8) / 8.0,
+                amount=min(abs(act.amount or 0), 20) / 20.0,
+                has_target=1.0 if act.target_id else 0.0,
+                play_score=score if score is not None else 0.0,
+                has_play_score=1.0 if score is not None else 0.0,
+            )
+        )
+
+    taken_key = taken.stable_key
+    chosen = next((i for i, a in enumerate(legals) if a.stable_key == taken_key), -1)
+    return tuple(tokens), chosen
+
+
+def _play_scores_by_position(state: GameState, legals: tuple[Action, ...]) -> dict[int, float]:
+    """Batched Rust immediate score for the PLAY_HAND candidates, normalized to
+    a stable log scale. Returns {} (all has_play_score=0) if the Rust path
+    bails — the missing-feature flag then carries that honestly."""
+    play_positions = [
+        i for i, a in enumerate(legals)
+        if a.action_type == ActionType.PLAY_HAND and a.card_indices
+    ]
+    if not play_positions:
+        return {}
+    try:
+        from math import log10
+
+        from balatro_ai.search.rust_bridge import rust_play_action_evals
+
+        play_actions = [legals[i] for i in play_positions]
+        evals = rust_play_action_evals(state, play_actions)
+        if evals is None:
+            return {}
+        out: dict[int, float] = {}
+        for pos, entry in zip(play_positions, evals):
+            if entry is not None:
+                out[pos] = min(log10(max(1, int(entry[0]))) / 6.0, 3.0)
+        return out
+    except Exception:  # noqa: BLE001 — feature extraction must never break capture
+        return {}
+
+
 @dataclass(frozen=True, slots=True)
 class TrainingExample:
     step: int
@@ -95,6 +180,8 @@ class TrainingExample:
     action: dict            # Action.to_json() — replay-complete policy target
     value: ValueTarget
     steps_to_end: int       # actions remaining from this step (incl. this one)
+    candidates: tuple[CandidateToken, ...] = ()  # schema v2: scorable legal actions
+    chosen_index: int = -1                        # which candidate the policy took
 
 
 @dataclass(frozen=True, slots=True)
@@ -273,6 +360,7 @@ def examples_from_capture(capture: RunCapture) -> list[TrainingExample]:
     for i, (state, action) in enumerate(
         replay_states(capture.seed, capture.actions, stake=capture.stake)
     ):
+        candidates, chosen = _candidate_tokens(state, action)
         examples.append(
             TrainingExample(
                 step=i,
@@ -281,6 +369,8 @@ def examples_from_capture(capture: RunCapture) -> list[TrainingExample]:
                 action=action.to_json(),
                 value=value,
                 steps_to_end=total - i,
+                candidates=candidates,
+                chosen_index=chosen,
             )
         )
     return examples
