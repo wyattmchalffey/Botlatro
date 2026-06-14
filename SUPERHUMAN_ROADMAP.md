@@ -175,7 +175,15 @@ plus optional cheap rented compute (repo's own costing: 10-50k solver-quality ru
 
 Expected exit: honest winrate in the **30-45%** range. P1 also produces the planner that Phase 2 trains.
 
-### Phase 2 — The learning engine (self-play value iteration, ~2-3 months)
+### Phase 2 — The learning engine (~2-3 months)
+
+> **ARCHITECTURE DECISION (2026-06-12, user's call): the canonical Phase 2 design is
+> `PHASE_B_ARCHITECTURE.md` (v2, adversarially reviewed) — a DECISION-SHAPED POLICY (candidate
+> scoring over every decision type, heuristic evals fused as features), BC on the recipe-diverse
+> mixture → Gate B0 (plumbing) → V0 → gated iterations. The value-in-search framing below was the
+> considered alternative; policy-direct is the chosen engine. Search (value-leaf + shallow
+> chance-aware lookahead) is deferred to the doc's "Phase C" hook if iterations plateau. Build to
+> PHASE_B_ARCHITECTURE.md; the text below is retained as the alternative's rationale.**
 
 The only component class that exceeds its teacher, and the only one never attempted. The formula that is
 unanimous in comparable games: **learned whole-run (after)state value + shallow chance-aware search,

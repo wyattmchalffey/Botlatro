@@ -289,5 +289,42 @@ class TestJokerScalingCounter(unittest.TestCase):
         self.assertEqual(self._counter(), 0.0)
 
 
+class PackAndTagEncodingTests(unittest.TestCase):
+    """v4: opened-pack contents + offered blind-tag are visible to the encoder
+    (Phase B whole-policy: CHOOSE_PACK_CARD and SKIP_BLIND decisions need them)."""
+
+    def test_tag_vocab_in_sync_with_sim(self) -> None:
+        from balatro_ai.sim.local_runner import TAG_KEYS_BY_NAME
+
+        self.assertEqual(set(enc._TAG_NAMES), set(TAG_KEYS_BY_NAME))
+
+    def test_pack_contents_encoded(self) -> None:
+        s = GameState(phase=GamePhase.BOOSTER_OPENED, ante=2,
+                      pack=("Mercury", "The Fool", "Joker"))
+        e = enc.encode_state(s)
+        self.assertEqual(len(e.pack), 3)
+        self.assertTrue(all(idx > 1 for idx in e.pack))  # all known -> non-PAD/UNK
+
+    def test_tag_index(self) -> None:
+        s = GameState(phase=GamePhase.BLIND_SELECT, ante=1,
+                      modifiers={"current_blind": {"name": "Small Blind", "tag": "Charm Tag"}})
+        self.assertEqual(enc.encode_state(s).tag_index, enc._tag_vocab()["Charm Tag"])
+
+    def test_empty_defaults_safe(self) -> None:
+        e = enc.encode_state(GameState(phase=GamePhase.SHOP, ante=1))
+        self.assertEqual(e.pack, ())
+        self.assertEqual(e.tag_index, 0)  # PAD
+
+    def test_indices_fit_spec(self) -> None:
+        spec = enc.encoding_spec()
+        s = GameState(phase=GamePhase.BOOSTER_OPENED, ante=3,
+                      pack=("Joker", "Pluto", "definitely_not_a_real_item"),
+                      modifiers={"current_blind": {"tag": "Rare Tag"}})
+        e = enc.encode_state(s)
+        self.assertLess(e.tag_index, spec["tag_vocab_size"])
+        for idx in e.pack:
+            self.assertLess(idx, spec["pack_item_vocab_size"])
+
+
 if __name__ == "__main__":
     unittest.main()

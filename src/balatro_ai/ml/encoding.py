@@ -49,7 +49,7 @@ from balatro_ai.api.state import (
 # voucher offer are now encoded as shop tokens (item-key vocab grew by the boosters).
 # v3: joker scaling counter now reads metadata (current_mult/current_xmult/current_chips),
 # not just the (unpopulated) effect text -> the net finally sees scaling-joker progress.
-ENCODING_VERSION = 3
+ENCODING_VERSION = 4  # v4: pack-contents tokens + blind-tag index (Phase B whole-policy)
 
 _DATA = Path(__file__).resolve().parent.parent / "data"
 
@@ -181,6 +181,35 @@ def _item_key_vocab() -> dict[str, int]:
     for group in ("jokers", "tarots", "planets", "spectrals", "vouchers", "boosters"):
         keys.update(item["key"] for item in d.get(group, []) if item.get("key"))
     return {k: i + _RESERVED for i, k in enumerate(sorted(keys))}
+
+
+# Tag identity (Phase B: SELECT_BLIND / SKIP_BLIND decisions must SEE the tag on
+# offer — the route-oracle's top lever). Mirror of
+# `sim.local_runner.TAG_KEYS_BY_NAME` keys; kept local to keep the encoder light
+# (no sim import). `test_encoding` asserts these stay in sync so drift is caught.
+_TAG_NAMES = (
+    "Uncommon Tag", "Rare Tag", "Negative Tag", "Foil Tag", "Holographic Tag",
+    "Polychrome Tag", "Investment Tag", "Voucher Tag", "Boss Tag", "Standard Tag",
+    "Charm Tag", "Meteor Tag", "Buffoon Tag", "Handy Tag", "Garbage Tag",
+    "Ethereal Tag", "Coupon Tag", "Double Tag", "Juggle Tag", "D6 Tag",
+    "Top-up Tag", "Skip Tag", "Orbital Tag", "Economy Tag",
+)
+
+
+@functools.lru_cache(maxsize=1)
+def _tag_vocab() -> dict[str, int]:
+    return {name: i + _RESERVED for i, name in enumerate(_TAG_NAMES)}
+
+
+@functools.lru_cache(maxsize=1)
+def _pack_item_vocab() -> dict[str, int]:
+    """Opened-booster-pack contents by display name (Phase B: CHOOSE_PACK_CARD
+    must SEE the cards on offer). Pack items are heterogeneous (jokers from Buffoon;
+    planets/tarots/spectrals from Celestial/Arcana/Spectral); union the joker +
+    consumable name vocabs. Standard-pack playing cards fall to UNK at the state
+    level — per-card rank/suit detail is carried by candidate features."""
+    names = set(_joker_name_vocab()) | set(_consumable_name_vocab())
+    return {n: i + _RESERVED for i, n in enumerate(sorted(names))}
 
 
 # --------------------------------------------------------------------------- #
@@ -355,6 +384,8 @@ class EncodedState:
     shop: tuple[ShopToken, ...]
     consumables: tuple[int, ...]     # _consumable_name_vocab indices
     vouchers: tuple[int, ...]        # _voucher_name_vocab indices
+    pack: tuple[int, ...] = ()       # _pack_item_vocab indices (opened booster contents)
+    tag_index: int = PAD             # _tag_vocab index of the offered blind tag
 
 
 # --------------------------------------------------------------------------- #
@@ -451,6 +482,15 @@ def _blind_type(state: GameState) -> str:
     return ""
 
 
+def _tag_index(state: GameState) -> int:
+    """Vocab index of the tag offered on the current (skippable) blind, or PAD.
+    The tag lives in modifiers['current_blind']['tag'] as a display name."""
+    current = state.modifiers.get("current_blind")
+    if not isinstance(current, dict):
+        return PAD
+    return _vocab_index(_tag_vocab(), current.get("tag"))
+
+
 def _boss_index(state: GameState) -> int:
     if _blind_type(state) == "boss":
         name = state.blind or ""
@@ -524,6 +564,8 @@ def encode_state(state: GameState) -> EncodedState:
         vouchers=tuple(
             _vocab_index(_voucher_name_vocab(), n) for n in state.vouchers
         ),
+        pack=tuple(_vocab_index(_pack_item_vocab(), label) for label in state.pack),
+        tag_index=_tag_index(state),
     )
 
 
@@ -545,6 +587,8 @@ def encoding_spec() -> dict:
         "consumable_vocab_size": len(_consumable_name_vocab()) + _RESERVED,
         "voucher_vocab_size": len(_voucher_name_vocab()) + _RESERVED,
         "item_vocab_size": len(_item_key_vocab()) + _RESERVED,
+        "tag_vocab_size": len(_tag_vocab()) + _RESERVED,
+        "pack_item_vocab_size": len(_pack_item_vocab()) + _RESERVED,
         "boss_vocab_size": _BOSS_VOCAB_SIZE,
         "rank_vocab_size": len(RANKS),
         "suit_vocab_size": len(SUITS) + 1,
