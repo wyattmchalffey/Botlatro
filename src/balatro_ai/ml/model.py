@@ -66,6 +66,14 @@ class Batch:
     def size(self) -> int:
         return self.scalars.shape[0]
 
+    def to(self, device) -> "Batch":
+        """Move every tensor field to `device` (CPU/GPU). Generic over fields so
+        it survives schema additions. Used by the trainer to run on a GPU when
+        one is present (training is the only GPU-side step; inference stays CPU)."""
+        from dataclasses import fields
+
+        return Batch(**{f.name: getattr(self, f.name).to(device) for f in fields(self)})
+
 
 def _pad_tokens(
     cat_rows: list[list[tuple[int, ...]]],

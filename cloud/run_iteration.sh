@@ -38,8 +38,13 @@ export BALATRO_NO_FORESIGHT=shuffle
 export BALATRO_EXPAND_JOBS="$JOBS"
 export PYTHONPATH=src
 D=.data
+SHARDS="$D/shards"        # out-of-core example shards (training streams these)
 mkdir -p "$D"
+# Training device: auto-detect (CUDA if the box has a GPU, else CPU). Override
+# with BALATRO_DEVICE=cuda|cpu. GPU is ~4x cheaper+faster for this tiny net at
+# scale; gen/expand are always CPU (the sim is CPU-bound).
 echo "[run] n_runs=$N_RUNS heldout=$HELDOUT onpolicy=$ONPOLICY eval_seeds=$EVAL_SEEDS jobs=$JOBS"
+echo "[run] device=${BALATRO_DEVICE:-auto}; out-of-core shards in $SHARDS (streams, no full RAM load)"
 echo "[run] seed map: mix 5.10M+, heldout 5.50M+, onpolicy 5.20M+, gate 5.30M+ (disjoint)"
 
 step() { echo; echo "===== $* ====="; }
@@ -55,14 +60,16 @@ python cloud/gen_mixture.py --n-runs "$HELDOUT" --seed-offset 5500000 \
   --shards 1 --shard-id 0 --jobs "$JOBS" --out-dir "$D/cloud_heldout"
 cat "$D"/cloud_heldout/shard*.jsonl > "$D/cloud_heldout.jsonl"
 
-step "3/7 B0 — BC + plumbing gate"
+step "3/7 B0 — BC + plumbing gate (out-of-core; expands mixture shards once)"
 python scripts/phaseb_gate_b0.py --dataset "$D/cloud_mix.jsonl" \
+  --shard-dir "$SHARDS/mix" --runs-per-shard 500 \
   --epochs 20 --eval-seeds 512 --eval-offset 5100000 --workers "$JOBS" \
   --ckpt "$D/cloud_b0.pt"
 
-step "4/7 V0 — value-head salvage"
+step "4/7 V0 — value-head salvage (reuses mixture shards)"
 python scripts/phaseb_value_salvage.py --dataset "$D/cloud_mix.jsonl" \
-  --heldout "$D/cloud_heldout.jsonl" --epochs 25 --ckpt "$D/cloud_v0.pt"
+  --shard-dir "$SHARDS/mix" --heldout "$D/cloud_heldout.jsonl" --epochs 25 \
+  --ckpt "$D/cloud_v0.pt"
 
 step "5/7 fork-audit dense play labels"
 python scripts/phaseb_forkaudit_labels.py --caps "$D/cloud_mix.jsonl" \
@@ -78,6 +85,7 @@ python scripts/phaseb_onpolicy_gen.py --ckpt "$D/cloud_b0.pt" \
 step "7/7 iteration 1 — AWR + powered $EVAL_SEEDS-seed gate"
 python scripts/phaseb_iter1_full.py \
   --mixture "$D/cloud_mix.jsonl" --onpolicy "$D/cloud_onpolicy.jsonl" \
+  --shard-dir "$SHARDS" --runs-per-shard 500 \
   --forkaudit "$D/cloud_forkaudit.pkl" --fork-weight 5.0 \
   --heldout "$D/cloud_heldout.jsonl" --baseline-value "$D/cloud_v0.pt" \
   --b0 "$D/cloud_b0.pt" --beta 2.0 --w-max 5.0 --per-policy-blend 0.5 \

@@ -65,6 +65,9 @@ def main() -> int:
     ap.add_argument("--eval-offset", type=int, default=5100000)
     ap.add_argument("--workers", type=int, default=12)
     ap.add_argument("--ckpt", default=".data/phaseb_policy_b0.pt")
+    ap.add_argument("--shard-dir", default=None,
+                    help="out-of-core: expand to disk shards + stream-train (for 50k+ runs)")
+    ap.add_argument("--runs-per-shard", type=int, default=500)
     args = ap.parse_args()
 
     from balatro_ai.bench_stats import wilson_ci
@@ -77,12 +80,23 @@ def main() -> int:
     print(f"[b0] mixture: {len(rows)} runs, winrate {mix_wins}/{len(rows)} "
           f"({mix_wins/len(rows):.1%})", flush=True)
 
-    # 2) Expand to schema-v2 examples (cached) and BC-train the policy.
-    examples = load_or_expand_examples(args.dataset)
-    print(f"[b0] {len(examples)} examples; training...", flush=True)
+    # 2) Expand to schema-v2 examples and BC-train. Out-of-core (--shard-dir)
+    #    streams disk shards so 50k+ runs train without holding ~all examples
+    #    in RAM; otherwise the in-RAM cached path.
     cfg = PolicyConfig(epochs=args.epochs, seed=0)
     t1 = time.perf_counter()
-    net, metrics = train_decision_policy(examples, cfg)
+    if args.shard_dir:
+        from balatro_ai.ml.dataset import ShardedExampleStore, expand_to_shards
+        from balatro_ai.ml.policy_net import train_decision_policy_sharded
+
+        expand_to_shards(args.dataset, args.shard_dir, runs_per_shard=args.runs_per_shard)
+        store = ShardedExampleStore(args.shard_dir)
+        print(f"[b0] {len(store)} examples (out-of-core); training...", flush=True)
+        net, metrics = train_decision_policy_sharded(store, cfg)
+    else:
+        examples = load_or_expand_examples(args.dataset)
+        print(f"[b0] {len(examples)} examples; training...", flush=True)
+        net, metrics = train_decision_policy(examples, cfg)
     print("[b0] trained in {:.0f}s: top1={} no_heuristic={} chance={} value_auc={}".format(
         time.perf_counter() - t1, metrics["top1"], metrics["top1_no_heuristic"],
         metrics["chance"], metrics["value_auc"]), flush=True)

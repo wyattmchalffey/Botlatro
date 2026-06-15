@@ -563,6 +563,161 @@ def load_or_expand_examples(
     return examples
 
 
+# --------------------------------------------------------------------------- #
+# Out-of-core (sharded) example storage. At 50k runs the full example list is
+# ~6M examples ~= 300-400GB in RAM (the per-candidate features are bulky), which
+# fits no normal box. Expansion writes fixed-run shards to disk; training
+# streams them one shard at a time (~0.7GB resident). Benches/gates are
+# unaffected — they run the bot on seeds, not stored examples.
+# --------------------------------------------------------------------------- #
+
+def _shard_manifest_path(shard_dir: str) -> str:
+    return os.path.join(shard_dir, "manifest.json")
+
+
+def expand_to_shards(
+    dataset_path: str,
+    shard_dir: str,
+    *,
+    runs_per_shard: int = 500,
+    jobs: int | None = None,
+    progress_every: int = 2000,
+) -> dict:
+    """Expand a capture JSONL into sharded example pickles on disk, holding at
+    most ~runs_per_shard runs of examples in RAM at once. Writes
+    shard_dir/shardNNNNN.pkl + manifest.json (versions/mtime/shard list/counts),
+    and reuses an existing valid manifest. Returns the manifest dict.
+
+    `jobs` defaults to BALATRO_EXPAND_JOBS or 1 (expansion parallelizes across
+    runs); the parent buffers at most one shard's worth, so memory stays bounded
+    regardless of total dataset size."""
+    import time
+
+    os.makedirs(shard_dir, exist_ok=True)
+    ds_mtime = os.path.getmtime(dataset_path)
+    manifest_path = _shard_manifest_path(shard_dir)
+    if os.path.exists(manifest_path):
+        try:
+            with open(manifest_path, encoding="utf-8") as fh:
+                m = json.load(fh)
+            if (
+                m.get("dataset_mtime") == ds_mtime
+                and m.get("encoding_version") == ENCODING_VERSION
+                and m.get("examples_cache_version") == EXAMPLES_CACHE_VERSION
+                and all(os.path.exists(os.path.join(shard_dir, s)) for s in m.get("shards", []))
+            ):
+                print(f"[shards] manifest hit: {m['n_examples']} examples in "
+                      f"{len(m['shards'])} shards from {shard_dir}", flush=True)
+                return m
+            print("[shards] manifest stale — re-expanding", flush=True)
+        except Exception:  # noqa: BLE001
+            print("[shards] manifest unreadable — re-expanding", flush=True)
+
+    if jobs is None:
+        jobs = int(os.environ.get("BALATRO_EXPAND_JOBS", "1"))
+    rows = [json.loads(l) for l in open(dataset_path, encoding="utf-8") if l.strip()]
+    shards: list[str] = []
+    state = {"n_examples": 0}
+    buf: list[TrainingExample] = []
+    runs_in_buf = 0
+    t0 = time.perf_counter()
+
+    def _flush() -> None:
+        nonlocal buf, runs_in_buf
+        if not buf:
+            return
+        name = f"shard{len(shards):05d}.pkl"
+        tmp = os.path.join(shard_dir, name + ".tmp")
+        with open(tmp, "wb") as fh:
+            pickle.dump(buf, fh, protocol=pickle.HIGHEST_PROTOCOL)
+        os.replace(tmp, os.path.join(shard_dir, name))
+        shards.append(name)
+        state["n_examples"] += len(buf)
+        buf = []
+        runs_in_buf = 0
+
+    def _consume(run_examples: list[TrainingExample], done: int) -> None:
+        nonlocal runs_in_buf
+        buf.extend(run_examples)
+        runs_in_buf += 1
+        if runs_in_buf >= runs_per_shard:
+            _flush()
+        if progress_every and done % progress_every == 0:
+            print(f"[shards] expanded {done}/{len(rows)} runs -> "
+                  f"{state['n_examples'] + len(buf)} ex, {len(shards)} shards "
+                  f"({time.perf_counter()-t0:.0f}s)", flush=True)
+
+    if jobs and jobs > 1:
+        from concurrent.futures import ProcessPoolExecutor
+
+        print(f"[shards] expanding {len(rows)} runs across {jobs} workers "
+              f"(runs_per_shard={runs_per_shard})...", flush=True)
+        with ProcessPoolExecutor(max_workers=jobs) as ex:
+            for done, chunk in enumerate(ex.map(_expand_row, rows, chunksize=4), start=1):
+                _consume(chunk, done)
+    else:
+        for done, r in enumerate(rows, start=1):
+            _consume(_expand_row(r), done)
+    _flush()
+
+    manifest = {
+        "dataset_mtime": ds_mtime,
+        "encoding_version": ENCODING_VERSION,
+        "examples_cache_version": EXAMPLES_CACHE_VERSION,
+        "runs_per_shard": runs_per_shard,
+        "shards": shards,
+        "n_examples": state["n_examples"],
+        "n_runs": len(rows),
+    }
+    tmp = manifest_path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(manifest, fh)
+    os.replace(tmp, manifest_path)
+    print(f"[shards] DONE: {state['n_examples']} examples in {len(shards)} shards "
+          f"({time.perf_counter()-t0:.0f}s) -> {shard_dir}", flush=True)
+    return manifest
+
+
+class ShardedExampleStore:
+    """Streaming reader over expand_to_shards output. `iter_shards` yields one
+    shard's example list at a time (shuffle the shard order per epoch); the
+    trainer shuffles within each shard, so SGD sees a shard-local shuffle —
+    standard for large-data training (cf. webdataset). `load_all` materializes
+    everything (only for small sets that fit in RAM, e.g. held-out)."""
+
+    def __init__(self, shard_dir) -> None:
+        # Accept one dir or several — iter1 streams mixture+on-policy as one
+        # store. Shard files concatenate; the global index is the weight key.
+        dirs = [shard_dir] if isinstance(shard_dir, str) else list(shard_dir)
+        self.shard_dirs = dirs
+        self.shard_files: list[str] = []
+        self.n_examples = 0
+        self.manifests: list[dict] = []
+        for d in dirs:
+            with open(_shard_manifest_path(d), encoding="utf-8") as fh:
+                m = json.load(fh)
+            self.manifests.append(m)
+            self.shard_files.extend(os.path.join(d, s) for s in m["shards"])
+            self.n_examples += int(m["n_examples"])
+
+    def __len__(self) -> int:
+        return self.n_examples
+
+    def iter_shards(self, *, shuffle: bool = False, rng=None):
+        order = list(range(len(self.shard_files)))
+        if shuffle and rng is not None:
+            rng.shuffle(order)
+        for i in order:
+            with open(self.shard_files[i], "rb") as fh:
+                yield i, pickle.load(fh)
+
+    def load_all(self) -> list[TrainingExample]:
+        out: list[TrainingExample] = []
+        for _, ex in self.iter_shards():
+            out.extend(ex)
+        return out
+
+
 def build_examples(
     seed: str,
     policy: Policy,

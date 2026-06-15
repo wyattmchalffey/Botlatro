@@ -30,22 +30,34 @@ def main() -> int:
     ap.add_argument("--weight-decay", type=float, default=1e-3)
     ap.add_argument("--dropout", type=float, default=0.2)
     ap.add_argument("--ckpt", default=".data/phaseb_policy_v0salvage.pt")
+    ap.add_argument("--shard-dir", default=None,
+                    help="out-of-core: stream-train the value head over disk shards (50k+ runs)")
+    ap.add_argument("--runs-per-shard", type=int, default=500)
     args = ap.parse_args()
 
     from balatro_ai.ml.dataset import load_or_expand_examples
     from balatro_ai.ml.policy_net import PolicyConfig, save_policy, train_decision_policy
 
-    train = load_or_expand_examples(args.dataset)
+    # Held-out set is small -> always in RAM for the value-AUC early-stop.
     val = load_or_expand_examples(args.heldout)
-    print(f"[salvage] train {len(train)} examples, val {len(val)} examples", flush=True)
-
     cfg = PolicyConfig(
         epochs=args.epochs,
         weight_decay=args.weight_decay,
         dropout=args.dropout,
         seed=0,
     )
-    net, metrics = train_decision_policy(train, cfg, val_examples=val)
+    if args.shard_dir:
+        from balatro_ai.ml.dataset import ShardedExampleStore, expand_to_shards
+        from balatro_ai.ml.policy_net import train_decision_policy_sharded
+
+        expand_to_shards(args.dataset, args.shard_dir, runs_per_shard=args.runs_per_shard)
+        store = ShardedExampleStore(args.shard_dir)
+        print(f"[salvage] train {len(store)} examples (out-of-core), val {len(val)}", flush=True)
+        net, metrics = train_decision_policy_sharded(store, cfg, val_examples=val)
+    else:
+        train = load_or_expand_examples(args.dataset)
+        print(f"[salvage] train {len(train)} examples, val {len(val)} examples", flush=True)
+        net, metrics = train_decision_policy(train, cfg, val_examples=val)
     print(f"[salvage] best_val_value_auc={metrics.get('best_val_value_auc')} "
           f"(epoch {metrics.get('best_epoch')}) | policy top1={metrics['top1']} "
           f"no_heuristic={metrics['top1_no_heuristic']}", flush=True)

@@ -94,6 +94,9 @@ def main() -> int:
     ap.add_argument("--jobs", type=int, default=12)
     ap.add_argument("--out", default=".data/phaseb_policy_iter1full.pt")
     ap.add_argument("--result", default=".data/phaseb_iter1full_result.json")
+    ap.add_argument("--shard-dir", default=None,
+                    help="out-of-core base dir: streams mixture+on-policy from disk shards (50k+ runs)")
+    ap.add_argument("--runs-per-shard", type=int, default=500)
     args = ap.parse_args()
 
     from balatro_ai.bench_stats import mcnemar_exact_p, paired_delta_ci, paired_mean_diff_ci
@@ -106,16 +109,8 @@ def main() -> int:
         train_decision_policy,
     )
 
-    # ---- assemble training data ------------------------------------------- #
-    behavior = load_or_expand_examples(args.mixture)
-    n_mix = len(behavior)
-    if args.onpolicy and os.path.exists(args.onpolicy):
-        onp = load_or_expand_examples(args.onpolicy)
-        behavior = behavior + onp
-        print(f"[iter1full] mixture {n_mix} + on-policy {len(onp)} = {len(behavior)} behavior examples",
-              flush=True)
-    else:
-        print(f"[iter1full] mixture {n_mix} behavior examples (no on-policy set)", flush=True)
+    # ---- common: fork labels (small, in RAM), held-out, AWR baseline ------ #
+    from balatro_ai.ml.policy_net import _labelled
 
     fork: list = []
     if args.forkaudit and os.path.exists(args.forkaudit):
@@ -123,33 +118,60 @@ def main() -> int:
             fork = pickle.load(fh)
         print(f"[iter1full] + {len(fork)} fork-audit search-improved play labels "
               f"(flat weight {args.fork_weight})", flush=True)
-
     val = load_or_expand_examples(args.heldout)
     baseline = load_policy(args.baseline_value)
-
-    # ---- weights: per-policy AWR on behavior, flat elevated on fork ------- #
-    from balatro_ai.ml.policy_net import _labelled
-
-    w_behavior = compute_advantage_weights(
-        behavior, baseline, beta=args.beta, w_max=args.w_max,
-        per_policy_blend=args.per_policy_blend,
-    )
-    lab_behavior = _labelled(behavior)
-    lab_fork = _labelled(fork)
-    w_fork = [args.fork_weight] * len(lab_fork)
-    all_examples = behavior + fork
-    all_weights = w_behavior + w_fork
-    import statistics
-    print(f"[iter1full] labelled: {len(lab_behavior)} behavior + {len(lab_fork)} fork = "
-          f"{len(all_weights)} weighted examples", flush=True)
-    if w_behavior:
-        print(f"[iter1full] behavior AWR weight mean={statistics.mean(w_behavior):.3f} "
-              f"max={max(w_behavior):.2f} frac>1={sum(1 for w in w_behavior if w > 1)/len(w_behavior):.2f}",
-              flush=True)
-
-    # ---- train ------------------------------------------------------------ #
     cfg = PolicyConfig(epochs=args.epochs, weight_decay=1e-3, dropout=0.2, seed=0)
-    net, m = train_decision_policy(all_examples, cfg, val_examples=val, example_weights=all_weights)
+
+    if args.shard_dir:
+        # ---- out-of-core: stream mixture+on-policy from disk shards -------- #
+        from balatro_ai.ml.dataset import ShardedExampleStore, expand_to_shards
+        from balatro_ai.ml.policy_net import (
+            compute_advantage_weights_sharded,
+            train_decision_policy_sharded,
+        )
+
+        mix_dir = os.path.join(args.shard_dir, "mix")
+        expand_to_shards(args.mixture, mix_dir, runs_per_shard=args.runs_per_shard)
+        dirs = [mix_dir]
+        if args.onpolicy and os.path.exists(args.onpolicy):
+            onp_dir = os.path.join(args.shard_dir, "onp")
+            expand_to_shards(args.onpolicy, onp_dir, runs_per_shard=args.runs_per_shard)
+            dirs.append(onp_dir)
+        store = ShardedExampleStore(dirs)
+        weight_dir = os.path.join(args.shard_dir, "awr_w")
+        print(f"[iter1full] out-of-core: {len(store)} behavior examples in "
+              f"{len(store.shard_files)} shards + {len(fork)} fork; AWR weights...", flush=True)
+        compute_advantage_weights_sharded(
+            store, baseline, weight_dir, beta=args.beta, w_max=args.w_max,
+            per_policy_blend=args.per_policy_blend,
+        )
+        net, m = train_decision_policy_sharded(
+            store, cfg, val_examples=val, weight_dir=weight_dir,
+            extra_examples=fork, extra_weight=args.fork_weight,
+        )
+    else:
+        # ---- in-RAM path (local / small datasets) ------------------------- #
+        behavior = load_or_expand_examples(args.mixture)
+        n_mix = len(behavior)
+        if args.onpolicy and os.path.exists(args.onpolicy):
+            onp = load_or_expand_examples(args.onpolicy)
+            behavior = behavior + onp
+            print(f"[iter1full] mixture {n_mix} + on-policy {len(onp)} = {len(behavior)} behavior",
+                  flush=True)
+        else:
+            print(f"[iter1full] mixture {n_mix} behavior examples (no on-policy set)", flush=True)
+        w_behavior = compute_advantage_weights(
+            behavior, baseline, beta=args.beta, w_max=args.w_max,
+            per_policy_blend=args.per_policy_blend,
+        )
+        lab_fork = _labelled(fork)
+        all_examples = behavior + fork
+        all_weights = w_behavior + [args.fork_weight] * len(lab_fork)
+        import statistics
+        print(f"[iter1full] labelled: {len(_labelled(behavior))} behavior + {len(lab_fork)} fork; "
+              f"AWR weight mean={statistics.mean(w_behavior):.3f} max={max(w_behavior):.2f}", flush=True)
+        net, m = train_decision_policy(all_examples, cfg, val_examples=val, example_weights=all_weights)
+
     print(f"[iter1full] policy: top1={m['top1']} top1_no_heuristic={m['top1_no_heuristic']} "
           f"value_auc={m.get('best_val_value_auc')}", flush=True)
     save_policy(net, args.out, config=cfg)
@@ -183,7 +205,8 @@ def main() -> int:
         "value_auc": m.get("best_val_value_auc"),
         "config": {"beta": args.beta, "w_max": args.w_max, "per_policy_blend": args.per_policy_blend,
                    "fork_weight": args.fork_weight, "epochs": args.epochs,
-                   "n_behavior": len(lab_behavior), "n_fork": len(lab_fork)},
+                   "n_behavior": m.get("n_examples", 0), "n_fork": len(fork),
+                   "out_of_core": bool(args.shard_dir)},
     }
     print(f"[iter1full] iter1 {iter_w}/{n} ({iter_w/n:.1%}) vs B0 {b0_w}/{n} ({b0_w/n:.1%})", flush=True)
     print(f"[iter1full] d_winrate {(gained-lost)/n:+.1%} (95% CI {lo:+.1%}..{hi:+.1%}), "

@@ -70,6 +70,28 @@ class CandidateBatch:
     chosen: torch.Tensor      # [B] long — index of the taken candidate
     won: torch.Tensor         # [B] float — run outcome (value target)
 
+    def to(self, device) -> "CandidateBatch":
+        return CandidateBatch(
+            self.state.to(device), self.cand_type.to(device), self.cand_num.to(device),
+            self.cand_mask.to(device), self.chosen.to(device), self.won.to(device),
+        )
+
+
+def _resolve_device():
+    """Training device: BALATRO_DEVICE override, else CUDA if present, else CPU.
+    GPU training is ~4x cheaper+faster for this tiny net at scale; CPU is the
+    default so local runs and the bench are unaffected."""
+    import os
+
+    name = os.environ.get("BALATRO_DEVICE", "").strip()
+    if name:
+        return torch.device(name)
+    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+def _net_device(net: nn.Module):
+    return next(net.parameters()).device
+
 
 def _labelled(examples: Sequence[TrainingExample]) -> list[TrainingExample]:
     """Keep only examples with a real candidate set AND a found chosen index."""
@@ -199,7 +221,8 @@ def train_decision_policy(
     if weights is not None and len(weights) != len(data):
         raise ValueError(f"example_weights ({len(weights)}) must align with labelled data ({len(data)})")
     torch.manual_seed(config.seed)
-    net = DecisionPolicyNet(config)
+    device = _resolve_device()
+    net = DecisionPolicyNet(config).to(device)
     opt = torch.optim.Adam(net.parameters(), lr=config.lr, weight_decay=config.weight_decay)
     rng = random.Random(config.seed)
     n, bs = len(data), config.batch_size
@@ -213,13 +236,13 @@ def train_decision_policy(
         for start in range(0, n, bs):
             idxs = order[start:start + bs]
             chunk = [data[i] for i in idxs]
-            cb = collate_candidates_sampled(chunk, config.n_neg, rng)
+            cb = collate_candidates_sampled(chunk, config.n_neg, rng).to(device)
             logits, win_logit = net.candidate_logits(cb)
             if weights is None:
                 policy_loss = F.cross_entropy(logits, cb.chosen)
             else:
                 ce = F.cross_entropy(logits, cb.chosen, reduction="none")
-                w = torch.tensor([weights[i] for i in idxs], dtype=torch.float)
+                w = torch.tensor([weights[i] for i in idxs], dtype=torch.float, device=device)
                 policy_loss = (ce * w).sum() / w.sum().clamp_min(1e-6)
             value_loss = F.binary_cross_entropy_with_logits(win_logit, cb.won)
             loss = policy_loss + config.value_weight * value_loss
@@ -296,6 +319,157 @@ def compute_advantage_weights(
     return weights
 
 
+# --------------------------------------------------------------------------- #
+# Out-of-core (sharded) training — for 50k-scale data that won't fit in RAM.
+# Mirrors train_decision_policy / compute_advantage_weights exactly, but streams
+# one shard at a time (dataset.ShardedExampleStore) instead of a full in-RAM list.
+# --------------------------------------------------------------------------- #
+
+def _shard_weight_path(weight_dir: str, idx: int) -> str:
+    import os
+    return os.path.join(weight_dir, f"w{idx:05d}.pkl")
+
+
+@torch.no_grad()
+def compute_advantage_weights_sharded(
+    store,
+    baseline: "DecisionPolicyNet",
+    weight_dir: str,
+    *,
+    beta: float = 2.0,
+    w_max: float = 5.0,
+    per_policy_blend: float = 0.0,
+    batch: int = 512,
+) -> dict:
+    """Per-shard AWR weight files (w{idx}.pkl, each aligned with _labelled(shard)).
+    Two streaming passes: (1) global per-policy mean winrate over all shards,
+    (2) write weights per shard. Never holds more than one shard in RAM."""
+    import os
+    import pickle
+    import math
+    from collections import defaultdict
+
+    os.makedirs(weight_dir, exist_ok=True)
+    policy_mean: dict[str, float] = {}
+    if per_policy_blend > 0.0:
+        wins: dict[str, int] = defaultdict(int)
+        tot: dict[str, int] = defaultdict(int)
+        for _, examples in store.iter_shards():
+            for ex in _labelled(examples):
+                tot[ex.source] += 1
+                wins[ex.source] += 1 if ex.value.won else 0
+        policy_mean = {k: wins[k] / max(1, tot[k]) for k in tot}
+    baseline.eval()
+    n_written = 0
+    for idx, examples in store.iter_shards():
+        data = _labelled(examples)
+        weights: list[float] = []
+        for i in range(0, len(data), batch):
+            chunk = data[i:i + batch]
+            cb = collate_candidates(chunk)
+            _, win_logit = baseline.candidate_logits(cb)
+            v = torch.sigmoid(win_logit).tolist()
+            for ex, vs in zip(chunk, v):
+                r = 1.0 if ex.value.won else 0.0
+                base = vs
+                if per_policy_blend > 0.0:
+                    pm = policy_mean.get(ex.source, vs)
+                    base = (1.0 - per_policy_blend) * vs + per_policy_blend * pm
+                weights.append(min(w_max, math.exp(beta * (r - base))))
+        with open(_shard_weight_path(weight_dir, idx), "wb") as fh:
+            pickle.dump(weights, fh, protocol=pickle.HIGHEST_PROTOCOL)
+        n_written += len(weights)
+    return {"weight_dir": weight_dir, "n_weights": n_written, "policy_mean": policy_mean}
+
+
+def train_decision_policy_sharded(
+    store,
+    config: PolicyConfig | None = None,
+    *,
+    val_examples: Sequence[TrainingExample] | None = None,
+    weight_dir: str | None = None,
+    extra_examples: Sequence[TrainingExample] | None = None,
+    extra_weight: float = 1.0,
+) -> tuple[DecisionPolicyNet, dict]:
+    """Streaming BC/AWR training over a ShardedExampleStore. Same loss/neg-
+    sampling/value-head/best-checkpoint logic as train_decision_policy, but
+    one shard resident at a time. `weight_dir` supplies per-shard AWR weights
+    (compute_advantage_weights_sharded). `extra_examples` (e.g. the small
+    fork-audit label set, in RAM) is appended each epoch at a flat `extra_weight`
+    — the out-of-core analog of concatenating mixture+fork in the in-RAM path."""
+    import os
+    import pickle
+
+    config = config or PolicyConfig()
+    torch.manual_seed(config.seed)
+    device = _resolve_device()
+    net = DecisionPolicyNet(config).to(device)
+    opt = torch.optim.Adam(net.parameters(), lr=config.lr, weight_decay=config.weight_decay)
+    rng = random.Random(config.seed)
+    bs = config.batch_size
+    val_data = _labelled(val_examples) if val_examples else None
+    extra = _labelled(extra_examples) if extra_examples else []
+    best_val_auc, best_state, best_epoch = -1.0, None, -1
+    last_loss = 0.0
+
+    def _run_chunk(chunk, weights):
+        nonlocal last_loss
+        cb = collate_candidates_sampled(chunk, config.n_neg, rng).to(device)
+        logits, win_logit = net.candidate_logits(cb)
+        if weights is None:
+            policy_loss = F.cross_entropy(logits, cb.chosen)
+        else:
+            ce = F.cross_entropy(logits, cb.chosen, reduction="none")
+            w = torch.tensor(weights, dtype=torch.float, device=device)
+            policy_loss = (ce * w).sum() / w.sum().clamp_min(1e-6)
+        value_loss = F.binary_cross_entropy_with_logits(win_logit, cb.won)
+        loss = policy_loss + config.value_weight * value_loss
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+        last_loss = float(loss.detach())
+
+    for epoch in range(config.epochs):
+        net.train()
+        for idx, examples in store.iter_shards(shuffle=True, rng=rng):
+            data = _labelled(examples)
+            shard_w = None
+            if weight_dir is not None:
+                wp = _shard_weight_path(weight_dir, idx)
+                if os.path.exists(wp):
+                    with open(wp, "rb") as fh:
+                        shard_w = pickle.load(fh)
+            # append the flat-weighted extra set into this shard's pool
+            pool = data + extra
+            pool_w = None
+            if shard_w is not None:
+                pool_w = list(shard_w) + [extra_weight] * len(extra)
+            order = list(range(len(pool)))
+            rng.shuffle(order)
+            for start in range(0, len(pool), bs):
+                idxs = order[start:start + bs]
+                chunk = [pool[i] for i in idxs]
+                w = [pool_w[i] for i in idxs] if pool_w is not None else None
+                _run_chunk(chunk, w)
+        if val_data is not None:
+            va = _held_out_value_auc(net, val_data, sample=config.eval_sample, seed=config.seed)
+            if va > best_val_auc:
+                import copy
+                best_val_auc, best_epoch = va, epoch
+                best_state = copy.deepcopy(net.state_dict())
+    if best_state is not None:
+        net.load_state_dict(best_state)
+    # metrics: top1 on one representative shard (bounded RAM), value-auc on val
+    sample_shard = next(iter(store.iter_shards()), (None, []))[1]
+    metrics = evaluate(net, _labelled(sample_shard), sample=config.eval_sample, seed=config.seed)
+    metrics["final_loss"] = round(last_loss, 4)
+    metrics["n_examples"] = store.n_examples
+    if val_data is not None:
+        metrics["best_val_value_auc"] = round(best_val_auc, 4)
+        metrics["best_epoch"] = best_epoch
+    return net, metrics
+
+
 @torch.no_grad()
 def _held_out_value_auc(
     net: DecisionPolicyNet, val_data: Sequence[TrainingExample], *, sample: int, seed: int
@@ -304,7 +478,7 @@ def _held_out_value_auc(
     if len(data) > sample:
         data = random.Random(seed).sample(data, sample)
     net.eval()
-    cb = collate_candidates(data)
+    cb = collate_candidates(data).to(_net_device(net))
     _, win_logit = net.candidate_logits(cb)
     return _auc(torch.sigmoid(win_logit), cb.won)
 
@@ -327,7 +501,7 @@ def evaluate(
     if sample is not None and len(data) > sample:
         data = random.Random(seed).sample(data, sample)
     net.eval()
-    cb = collate_candidates(data)
+    cb = collate_candidates(data).to(_net_device(net))
     logits, win_logit = net.candidate_logits(cb)
     top1 = (logits.argmax(dim=1) == cb.chosen).float().mean().item()
     logits_abl, _ = net.candidate_logits(cb, drop_heuristic=True)

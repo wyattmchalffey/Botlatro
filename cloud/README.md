@@ -62,6 +62,35 @@ Generation is ~55% deployed-solver (the slow, strong bot), so the plan-faithful
 mix is ~1.6× costlier to *generate* than a recipe-only mix — already priced in
 above. A **5-iteration program is still only ~$30–55 total.**
 
+---
+
+## Out-of-core training & scaling past 50k
+
+Training examples are bulky (~40–60 KB each), so 50k runs (~6M examples) would
+need ~300–400 GB RAM if held in memory. `run_iteration.sh` therefore trains
+**out-of-core**: `expand_to_shards` writes disk shards (`.data/shards/`, ~1.4 GB
+per 1k runs) and the trainer **streams one shard at a time** (~0.7 GB resident).
+This is automatic — nothing to configure. It scales to **any** `--n-runs`
+(200k, 500k…), bounded by disk, not RAM.
+
+Speed note: the trainer re-reads shards each epoch. When the box RAM exceeds the
+shard total (e.g. 50k = ~72 GB shards on a 192 GB box), the OS page cache holds
+them and re-reads are fast. Past that (200k+ on a small box) it's disk-bound —
+use NVMe and a GPU.
+
+## Device (CPU vs GPU)
+
+Training auto-detects: **CUDA if the box has a GPU, else CPU** (override with
+`BALATRO_DEVICE=cuda|cpu`). The net is tiny (0.97M params), so a GPU does the
+*whole* training in ~1–2 GPU-hr — **~4× cheaper and faster than CPU training**,
+and the gap grows with `--n-runs`. Generation + expansion are **always CPU**
+(the simulator is CPU-bound), so:
+- **Cheapest at 50k:** a budget CPU spot box (GCP c3-highcpu / Vast.ai) ≈ $6.
+- **Cheapest at scale / fastest:** a box with many vCPUs **and** a cheap GPU
+  (RunPod/Vast.ai, e.g. an L4) — gen/expand on the cores, train on the GPU.
+  The GPU sits idle during gen, so size CPU for your run and treat the GPU as
+  a cheap training accelerator.
+
 **Cut wall-clock with sharding** (gen is embarrassingly parallel):
 
 ```bash
