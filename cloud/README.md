@@ -10,16 +10,10 @@ whole dataset). Rent **cores, not CUDA**. See the cost model below.
 
 ---
 
-## Prerequisite (the one blocker)
+## Prerequisite
 
-The cloud box `git clone`s this repo, so **the Phase-B work must be pushed to
-`origin` first**. It's currently local/uncommitted. From your machine:
-
-```bash
-git add -A && git commit -m "Phase B + cloud pipeline" && git push origin <branch>
-```
-
-*(Ask me and I'll commit + push for you.)* Do **not** transfer `.data/` (8.6 GB,
+The Phase-B + cloud work is pushed to the **`phaseb-cloud-pipeline`** branch, so
+the box clones *that branch* (not `main`). Do **not** transfer `.data/` (8.6 GB,
 regenerated on the box).
 
 ---
@@ -28,7 +22,7 @@ regenerated on the box).
 
 ```bash
 # on a fresh Ubuntu 22.04/24.04 box:
-git clone https://github.com/wyattmchalffey/Botlatro && cd Botlatro
+git clone -b phaseb-cloud-pipeline https://github.com/wyattmchalffey/Botlatro && cd Botlatro
 bash cloud/bootstrap.sh                 # ~5–10 min: rust+maturin, cython, cpu-torch, smoke test
 source ~/botlatro-venv/bin/activate
 
