@@ -1,0 +1,13 @@
+# Pinned Python deps for the Botlatro Phase-B cloud pipeline.
+# NOTE: torch is installed SEPARATELY in bootstrap.sh from the CPU index
+# (https://download.pytorch.org/whl/cpu) so a CUDA wheel is never pulled onto
+# a CPU-only box. Listed here only for documentation.
+#
+#   torch         (CPU build, installed via bootstrap)
+numpy>=1.26,<3
+
+# Build-time tools for the native extensions:
+maturin>=1.7,<2        # builds botlatro-core -> balatro_core (PyO3)
+cython>=3.0            # builds balatro_ai.rules.hand_evaluator_native
+setuptools>=69
+wheel

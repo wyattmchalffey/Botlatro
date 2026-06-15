@@ -43,7 +43,8 @@ from balatro_ai.solver.trajectory import Policy, _stable_seed_int
 
 # Schema version for the expanded-examples cache; bump when CandidateToken or
 # the candidate-building logic changes (separate from ENCODING_VERSION).
-EXAMPLES_CACHE_VERSION = 1
+# v2: rich play-surface fusion features (hand_strength, is_discard, draw_odds).
+EXAMPLES_CACHE_VERSION = 2
 
 # Reasons `capture_run` can stop — mirrors `generate_trajectory`.
 TERMINAL_REASONS = frozenset(
@@ -109,7 +110,17 @@ class CandidateToken:
     idea: the net learns WHEN the heuristic is wrong, not chip math). The
     `has_*` flags are missing-feature indicators — absence is informative
     (the Rust play score legitimately doesn't exist on hard boss states), so
-    it is flagged, never zero-pretended."""
+    it is flagged, never zero-pretended.
+
+    The rich fusion features (hand_strength/is_discard/draw_odds, schema v2)
+    are concentrated on the PLAY surface, because that is where the measured
+    headroom is (29.7% of losses have a clearing line the bot didn't find) and
+    where the thin v1 features starved the iteration-1 signal. They are FREE:
+    `hand_strength` is the made-hand type the Rust batch already returns and v1
+    discarded; `draw_odds` is harvested from the single BasicStrategy call
+    `_heuristic_choice_info` already makes. SHOP candidates get no extra
+    fusion features by design — per-decision shop selection is measured
+    near-optimal, so the heuristic_choice flag already routes it."""
 
     action_type_index: int
     n_cards: float           # len(card_indices) / 8
@@ -118,6 +129,11 @@ class CandidateToken:
     play_score: float        # normalized Rust immediate score (play actions)
     has_play_score: float    # 1.0 when play_score is real
     heuristic_choice: float  # 1.0 if the reference heuristic would take this action
+    hand_strength: float = 0.0   # made-hand rank/11 (HighCard=0..FlushFive=1) for plays
+    has_hand_type: float = 0.0   # 1.0 when the Rust made-hand type is known
+    is_discard: float = 0.0      # 1.0 if a DISCARD action (draw-odds-relevant)
+    draw_odds: float = 0.0       # heuristic's completion P for its targeted hand
+    has_draw_odds: float = 0.0   # 1.0 when draw_odds is a real heuristic estimate
 
 
 def _candidate_tokens(
@@ -143,35 +159,63 @@ def candidate_tokens_for_state(state: GameState) -> tuple[CandidateToken, ...]:
     legals = state.legal_actions
     if not legals:
         return ()
-    play_scores = _play_scores_by_position(state, legals)
-    heuristic_pos = _heuristic_choice_position(state)
+    play_evals = _play_scores_by_position(state, legals)
+    heuristic_pos, heuristic_draw_odds = _heuristic_choice_info(state)
     tokens: list[CandidateToken] = []
     for pos, act in enumerate(legals):
-        score = play_scores.get(pos)
+        ev = play_evals.get(pos)                     # (norm_score, hand_strength) or None
+        is_chosen = pos == heuristic_pos
         tokens.append(
             CandidateToken(
                 action_type_index=_ACTION_TYPE_INDEX.get(act.action_type, 0),
                 n_cards=min(len(act.card_indices), 8) / 8.0,
                 amount=min(abs(act.amount or 0), 20) / 20.0,
                 has_target=1.0 if act.target_id else 0.0,
-                play_score=score if score is not None else 0.0,
-                has_play_score=1.0 if score is not None else 0.0,
-                heuristic_choice=1.0 if pos == heuristic_pos else 0.0,
+                play_score=ev[0] if ev is not None else 0.0,
+                has_play_score=1.0 if ev is not None else 0.0,
+                heuristic_choice=1.0 if is_chosen else 0.0,
+                hand_strength=ev[1] if ev is not None else 0.0,
+                has_hand_type=1.0 if ev is not None else 0.0,
+                is_discard=1.0 if act.action_type == ActionType.DISCARD else 0.0,
+                # The heuristic's draw-odds estimate is computed for ITS chosen
+                # action only (that's the one call we make), so it is fused onto
+                # that candidate; absence is flagged, never zero-pretended.
+                draw_odds=heuristic_draw_odds if (is_chosen and heuristic_draw_odds is not None) else 0.0,
+                has_draw_odds=1.0 if (is_chosen and heuristic_draw_odds is not None) else 0.0,
             )
         )
     return tuple(tokens)
 
 
 _REF_HEURISTIC = None
+_HAND_TYPE_RANK: dict[str, float] | None = None
+import re as _re
+
+_DRAW_P_RE = _re.compile(r"\bp=([01](?:\.\d+)?)")
 
 
-def _heuristic_choice_position(state: GameState) -> int:
-    """Index of the candidate the reference heuristic (BasicStrategy — the play
-    policy every mixture bot shares) would take, or -1. THE load-bearing fusion
-    feature: B0 showed the net was near-chance on plays because the immediate
-    score doesn't capture what the heuristic optimizes (min-sufficient + pace);
-    'would the heuristic pick this' does. Pure function of the state; used
-    identically at training (expansion) and inference (the deployed bot)."""
+def _hand_type_rank() -> dict[str, float]:
+    """value-string -> normalized strength (HighCard=0 .. FlushFive=1). Built
+    once; the ordering is the HandType enum's declaration order (ascending)."""
+    global _HAND_TYPE_RANK
+    if _HAND_TYPE_RANK is None:
+        from balatro_ai.bots.basic_strategy.hand_value import HandType
+
+        members = list(HandType)
+        denom = max(1, len(members) - 1)
+        _HAND_TYPE_RANK = {ht.value: i / denom for i, ht in enumerate(members)}
+    return _HAND_TYPE_RANK
+
+
+def _heuristic_choice_info(state: GameState) -> tuple[int, float | None]:
+    """(index of the candidate the reference heuristic would take or -1,
+    the heuristic's draw-odds for its target or None). BasicStrategy is the play
+    policy every mixture bot shares; `heuristic_choice` is THE load-bearing
+    fusion feature (B0: plays were near-chance on the immediate score because it
+    doesn't capture min-sufficient+pace; 'would the heuristic pick this' does).
+    The draw-odds is harvested from the SAME single choose_action call (parsed
+    from the chosen action's reason string `p=…`), so it costs nothing extra.
+    Pure function of the state; identical at expansion and inference."""
     global _REF_HEURISTIC
     try:
         if _REF_HEURISTIC is None:
@@ -180,15 +224,26 @@ def _heuristic_choice_position(state: GameState) -> int:
             _REF_HEURISTIC = BasicStrategyBot(seed=0)
         action = _REF_HEURISTIC.choose_action(state)
         key = action.stable_key
-        return next((i for i, a in enumerate(state.legal_actions) if a.stable_key == key), -1)
+        pos = next((i for i, a in enumerate(state.legal_actions) if a.stable_key == key), -1)
+        draw_odds: float | None = None
+        reason = (action.metadata or {}).get("reason") if action.metadata else None
+        if isinstance(reason, str):
+            m = _DRAW_P_RE.search(reason)
+            if m:
+                draw_odds = float(m.group(1))
+        return pos, draw_odds
     except Exception:  # noqa: BLE001 — feature extraction must never break capture
-        return -1
+        return -1, None
 
 
-def _play_scores_by_position(state: GameState, legals: tuple[Action, ...]) -> dict[int, float]:
-    """Batched Rust immediate score for the PLAY_HAND candidates, normalized to
-    a stable log scale. Returns {} (all has_play_score=0) if the Rust path
-    bails — the missing-feature flag then carries that honestly."""
+def _play_scores_by_position(
+    state: GameState, legals: tuple[Action, ...]
+) -> dict[int, tuple[float, float]]:
+    """Batched Rust eval for the PLAY_HAND candidates: (normalized log-score,
+    made-hand strength rank). Returns {} (all has_play_score/has_hand_type=0) if
+    the Rust path bails — the missing-feature flags then carry that honestly.
+    The made-hand strength is `entry[1]`, which v1 computed and discarded; it is
+    the single highest-value play feature (what hand a play makes)."""
     play_positions = [
         i for i, a in enumerate(legals)
         if a.action_type == ActionType.PLAY_HAND and a.card_indices
@@ -200,14 +255,17 @@ def _play_scores_by_position(state: GameState, legals: tuple[Action, ...]) -> di
 
         from balatro_ai.search.rust_bridge import rust_play_action_evals
 
+        ranks = _hand_type_rank()
         play_actions = [legals[i] for i in play_positions]
         evals = rust_play_action_evals(state, play_actions)
         if evals is None:
             return {}
-        out: dict[int, float] = {}
+        out: dict[int, tuple[float, float]] = {}
         for pos, entry in zip(play_positions, evals):
             if entry is not None:
-                out[pos] = min(log10(max(1, int(entry[0]))) / 6.0, 3.0)
+                norm_score = min(log10(max(1, int(entry[0]))) / 6.0, 3.0)
+                strength = ranks.get(str(entry[1]), 0.0)
+                out[pos] = (norm_score, strength)
         return out
     except Exception:  # noqa: BLE001 — feature extraction must never break capture
         return {}
@@ -223,6 +281,7 @@ class TrainingExample:
     steps_to_end: int       # actions remaining from this step (incl. this one)
     candidates: tuple[CandidateToken, ...] = ()  # schema v2: scorable legal actions
     chosen_index: int = -1                        # which candidate the policy took
+    source: str = ""                              # generating bot/recipe (per-policy AWR baselines)
 
 
 @dataclass(frozen=True, slots=True)
@@ -243,6 +302,7 @@ class RunCapture:
     final_money: int
     terminated_reason: str
     step_summaries: tuple[tuple[int, int, int], ...] = field(default_factory=tuple)
+    source: str = ""        # generating bot/recipe name (propagated to examples)
 
     @property
     def n_steps(self) -> int:
@@ -259,6 +319,7 @@ class RunCapture:
             "final_money": self.final_money,
             "terminated_reason": self.terminated_reason,
             "step_summaries": [list(s) for s in self.step_summaries],
+            "bot_name": self.source,
         }
 
     @classmethod
@@ -273,6 +334,7 @@ class RunCapture:
             final_money=int(data.get("final_money", 0)),
             terminated_reason=str(data.get("terminated_reason", "")),
             step_summaries=tuple(tuple(int(x) for x in s) for s in data.get("step_summaries", ())),
+            source=str(data.get("bot_name", data.get("source", ""))),
         )
 
 
@@ -412,9 +474,15 @@ def examples_from_capture(capture: RunCapture) -> list[TrainingExample]:
                 steps_to_end=total - i,
                 candidates=candidates,
                 chosen_index=chosen,
+                source=capture.source,
             )
         )
     return examples
+
+
+def _expand_row(row: dict) -> list[TrainingExample]:
+    """Top-level (picklable) per-run expander for parallel expansion."""
+    return examples_from_capture(RunCapture.from_json_dict(row))
 
 
 def load_or_expand_examples(
@@ -422,15 +490,17 @@ def load_or_expand_examples(
     *,
     cache_path: str | None = None,
     progress_every: int = 100,
+    jobs: int | None = None,
 ) -> list[TrainingExample]:
     """Expand a capture JSONL into examples, CACHED to disk.
 
     Expansion is expensive (the heuristic_choice fusion feature runs
-    basic_strategy per state — ~100 min / 1000 runs), so the result is pickled
-    next to the dataset and reloaded when valid. This unblocks fast retrain
-    loops (value-head salvage, iteration-1 tuning) that would otherwise re-pay
-    the expansion each time. Cache is keyed on the dataset's mtime + the
-    encoding/examples schema versions; a mismatch transparently re-expands."""
+    basic_strategy per state — ~100 min / 1000 runs single-process), so the
+    result is pickled next to the dataset and reloaded when valid, and the
+    first expansion can fan out across processes (`jobs`>1; expansion is
+    embarrassingly parallel across runs — ~Nx on N cores). Cache is keyed on
+    the dataset's mtime + the encoding/examples schema versions; a mismatch
+    transparently re-expands. `jobs` defaults to BALATRO_EXPAND_JOBS or 1."""
     import time
 
     cache_path = cache_path or (dataset_path + ".examples.pkl")
@@ -451,14 +521,30 @@ def load_or_expand_examples(
         except Exception:  # noqa: BLE001 — a corrupt cache must not block work
             print("[examples] cache unreadable — re-expanding", flush=True)
 
+    if jobs is None:
+        jobs = int(os.environ.get("BALATRO_EXPAND_JOBS", "1"))
     rows = [json.loads(l) for l in open(dataset_path, encoding="utf-8") if l.strip()]
     examples: list[TrainingExample] = []
     t0 = time.perf_counter()
-    for i, r in enumerate(rows):
-        examples.extend(examples_from_capture(RunCapture.from_json_dict(r)))
-        if progress_every and (i + 1) % progress_every == 0:
-            print(f"[examples] expanded {i+1}/{len(rows)} runs -> {len(examples)} "
-                  f"({time.perf_counter()-t0:.0f}s)", flush=True)
+    if jobs and jobs > 1:
+        from concurrent.futures import ProcessPoolExecutor
+
+        print(f"[examples] expanding {len(rows)} runs across {jobs} workers...", flush=True)
+        done = 0
+        with ProcessPoolExecutor(max_workers=jobs) as ex:
+            # chunksize batches rows per task to amortize IPC of the big result lists
+            for chunk in ex.map(_expand_row, rows, chunksize=4):
+                examples.extend(chunk)
+                done += 1
+                if progress_every and done % progress_every == 0:
+                    print(f"[examples] expanded {done}/{len(rows)} runs -> {len(examples)} "
+                          f"({time.perf_counter()-t0:.0f}s)", flush=True)
+    else:
+        for i, r in enumerate(rows):
+            examples.extend(examples_from_capture(RunCapture.from_json_dict(r)))
+            if progress_every and (i + 1) % progress_every == 0:
+                print(f"[examples] expanded {i+1}/{len(rows)} runs -> {len(examples)} "
+                      f"({time.perf_counter()-t0:.0f}s)", flush=True)
     tmp = cache_path + ".tmp"
     with open(tmp, "wb") as fh:
         pickle.dump(

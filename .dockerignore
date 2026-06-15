@@ -1,0 +1,15 @@
+# Keep the Docker build context small + reproducible: exclude regenerated data,
+# local venv, build artifacts, and machine-specific caches.
+.data/
+.venv/
+**/target/
+.git/
+**/__pycache__/
+**/*.pyc
+*.pdb
+*.pyd
+*.so
+*.dll
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/

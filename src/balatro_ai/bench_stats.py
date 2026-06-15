@@ -61,3 +61,22 @@ def paired_delta_ci(
     delta = (c - b) / n_pairs
     se = sqrt(max(0.0, (b + c) - (b - c) ** 2 / n_pairs)) / n_pairs
     return (max(-1.0, delta - z * se), min(1.0, delta + z * se))
+
+
+def paired_mean_diff_ci(diffs: list[float], z: float = 1.96) -> tuple[float, float, float]:
+    """95% (default) CI for the mean of per-pair differences (B - A).
+
+    Returns (mean, lo, hi). Used for the mean-ante surrogate the iteration
+    gate reports alongside d_winrate — a continuous secondary endpoint with
+    more power than the binary win/loss when per-iteration winrate moves are
+    small (the v2 powered-gate requirement).
+    """
+    n = len(diffs)
+    if n == 0:
+        return (0.0, -1.0, 1.0)
+    mean = sum(diffs) / n
+    if n == 1:
+        return (mean, mean, mean)
+    var = sum((d - mean) ** 2 for d in diffs) / (n - 1)
+    se = sqrt(var / n)
+    return (mean, mean - z * se, mean + z * se)

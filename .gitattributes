@@ -1,0 +1,4 @@
+# Shell scripts run on the Linux cloud boxes (cloud/*.sh) — force LF so bash
+# never sees a CRLF shebang (`/bin/bash^M: bad interpreter`), regardless of the
+# committer's platform or core.autocrlf setting.
+*.sh text eol=lf

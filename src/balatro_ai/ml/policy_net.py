@@ -32,8 +32,16 @@ from balatro_ai.ml.dataset import _ACTION_TYPE_ORDER, CandidateToken, TrainingEx
 from balatro_ai.ml.model import Batch, ValueNet, collate_states
 
 _N_ACTION_TYPES = len(_ACTION_TYPE_ORDER)
-_CAND_NNUM = 6  # n_cards, amount, has_target, play_score, has_play_score, heuristic_choice
-_HEURISTIC_COLS = (3, 4, 5)  # play_score, has_play_score, heuristic_choice (ablation drops these)
+# Candidate numeric feature columns (order MUST match collate_candidates' rows
+# and CandidateToken). v2 added hand_strength/has_hand_type/is_discard (cols
+# 6-8, objective facts about the action) and draw_odds/has_draw_odds (cols 9-10,
+# the heuristic's estimate).
+_CAND_NNUM = 11
+# Anti-shortcut ablation drops the heuristic's OPINION features (its score, its
+# pick, its draw-odds estimate) but KEEPS objective action facts (hand_strength,
+# is_discard) — so the ablation tests "without the heuristic's opinions, can the
+# trunk still rank?", not "without knowing what the action is".
+_HEURISTIC_COLS = (3, 4, 5, 9, 10)
 
 
 @dataclass
@@ -86,7 +94,8 @@ def collate_candidates(examples: Sequence[TrainingExample]) -> CandidateBatch:
         type_rows.append([c.action_type_index for c in cs] + [0] * pad)
         num_rows.append(
             [[c.n_cards, c.amount, c.has_target, c.play_score, c.has_play_score,
-              c.heuristic_choice] for c in cs]
+              c.heuristic_choice, c.hand_strength, c.has_hand_type, c.is_discard,
+              c.draw_odds, c.has_draw_odds] for c in cs]
             + [pad_num] * pad
         )
         mask_rows.append([True] * len(cs) + [False] * pad)
@@ -243,13 +252,32 @@ def compute_advantage_weights(
     beta: float = 2.0,
     w_max: float = 5.0,
     batch: int = 512,
+    per_policy_blend: float = 0.0,
 ) -> list[float]:
-    """Per-example AWR weights = clip(exp(beta * (R - V(s))), 0, w_max), where
-    R = run outcome (won) and V(s) is the FROZEN baseline value head (the
-    salvaged V0 head). Decisions in winning games the baseline thought were
-    losing get the most weight -> the policy tilts toward surprising wins.
+    """Per-example AWR weights = clip(exp(beta * (R - base)), 0, w_max), where
+    R = run outcome (won) and `base` is the advantage baseline. With
+    per_policy_blend=0, base = V(s), the FROZEN value head (the salvaged V0
+    head) — the standard state-conditioned baseline.
+
+    With per_policy_blend>0, base blends V(s) with the GENERATING POLICY's mean
+    winrate: base = (1-b)*V(s) + b*mean_winrate(source). This is the v2 fix for
+    'naive winner-upweighting deletes diversity' — a low-winrate recipe's wins
+    are upweighted relative to ITS OWN baseline, not the global one, so the
+    high-variance recipes keep contributing their above-average lines instead
+    of being flattened by a neural-dominated global baseline.
+
     Aligned with `_labelled(examples)` order (the trainer's data order)."""
     data = _labelled(examples)
+    policy_mean: dict[str, float] = {}
+    if per_policy_blend > 0.0:
+        from collections import defaultdict
+
+        wins: dict[str, int] = defaultdict(int)
+        tot: dict[str, int] = defaultdict(int)
+        for ex in data:
+            tot[ex.source] += 1
+            wins[ex.source] += 1 if ex.value.won else 0
+        policy_mean = {k: wins[k] / max(1, tot[k]) for k in tot}
     baseline.eval()
     weights: list[float] = []
     import math
@@ -260,7 +288,11 @@ def compute_advantage_weights(
         v = torch.sigmoid(win_logit).tolist()
         for ex, vs in zip(chunk, v):
             r = 1.0 if ex.value.won else 0.0
-            weights.append(min(w_max, math.exp(beta * (r - vs))))
+            base = vs
+            if per_policy_blend > 0.0:
+                pm = policy_mean.get(ex.source, vs)
+                base = (1.0 - per_policy_blend) * vs + per_policy_blend * pm
+            weights.append(min(w_max, math.exp(beta * (r - base))))
     return weights
 
 
@@ -347,11 +379,11 @@ def load_policy(path: str) -> DecisionPolicyNet:
 
 
 @torch.no_grad()
-def best_candidate_index(net: DecisionPolicyNet, encoded_state, candidates) -> int:
-    """Argmax candidate for one state — the deployed bot's scoring call.
-    `candidates` is a tuple of CandidateToken (parallel to legal_actions)."""
-    if not candidates:
-        return -1
+def candidate_logit_vector(net: DecisionPolicyNet, encoded_state, candidates) -> torch.Tensor:
+    """The full [C] candidate-logit vector for one state (masked entries already
+    dropped — every candidate here is real). The scoring primitive behind both
+    the deployed argmax bot and the on-policy exploration sampler (which needs
+    the whole distribution to measure top-2 margin and temperature-sample)."""
     from balatro_ai.ml.dataset import TrainingExample, ValueTarget
 
     ex = TrainingExample(
@@ -360,4 +392,13 @@ def best_candidate_index(net: DecisionPolicyNet, encoded_state, candidates) -> i
     )
     cb = collate_candidates([ex])
     logits, _ = net.candidate_logits(cb)
-    return int(logits[0].argmax().item())
+    return logits[0]
+
+
+@torch.no_grad()
+def best_candidate_index(net: DecisionPolicyNet, encoded_state, candidates) -> int:
+    """Argmax candidate for one state — the deployed bot's scoring call.
+    `candidates` is a tuple of CandidateToken (parallel to legal_actions)."""
+    if not candidates:
+        return -1
+    return int(candidate_logit_vector(net, encoded_state, candidates).argmax().item())
