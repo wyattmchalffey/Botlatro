@@ -54,9 +54,16 @@ fi
 source "$VENV/bin/activate"
 python -m pip install --quiet --upgrade pip wheel
 
-# CPU-only torch (a CUDA wheel would pull ~2GB of unused libs onto a CPU box).
-echo "[bootstrap] installing CPU torch + numpy + build tools..."
-python -m pip install --quiet --index-url https://download.pytorch.org/whl/cpu torch
+# torch: CUDA wheel on a GPU box (RunPod GPU pod / nvidia-smi present, or
+# BOTLATRO_GPU=1), else the CPU wheel (no ~2GB CUDA libs on a CPU box). Training
+# auto-uses the GPU when present; gen/expand stay on CPU regardless.
+if [[ "${BOTLATRO_GPU:-}" == "1" ]] || command -v nvidia-smi >/dev/null 2>&1; then
+  echo "[bootstrap] GPU detected -> installing CUDA torch..."
+  python -m pip install --quiet torch
+else
+  echo "[bootstrap] no GPU -> installing CPU torch..."
+  python -m pip install --quiet --index-url https://download.pytorch.org/whl/cpu torch
+fi
 python -m pip install --quiet -r "$REPO_ROOT/cloud/requirements.txt"
 
 # --- 4. native extensions -------------------------------------------------- #
