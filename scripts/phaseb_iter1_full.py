@@ -88,6 +88,9 @@ def main() -> int:
     ap.add_argument("--beta", type=float, default=2.0)
     ap.add_argument("--w-max", type=float, default=5.0)
     ap.add_argument("--per-policy-blend", type=float, default=0.5)
+    ap.add_argument("--progress-lambda", type=float, default=0.0,
+                    help="AWR reward shaping: R=(1-L)*won+L*ante_norm (0=binary win/loss, "
+                         "L>0 credits far-but-losing runs by how far they reached)")
     ap.add_argument("--epochs", type=int, default=15)
     ap.add_argument("--eval-seeds", type=int, default=1024)
     ap.add_argument("--eval-offset", type=int, default=5300000)
@@ -143,7 +146,7 @@ def main() -> int:
               f"{len(store.shard_files)} shards + {len(fork)} fork; AWR weights...", flush=True)
         compute_advantage_weights_sharded(
             store, baseline, weight_dir, beta=args.beta, w_max=args.w_max,
-            per_policy_blend=args.per_policy_blend,
+            per_policy_blend=args.per_policy_blend, progress_lambda=args.progress_lambda,
         )
         net, m = train_decision_policy_sharded(
             store, cfg, val_examples=val, weight_dir=weight_dir,
@@ -162,7 +165,7 @@ def main() -> int:
             print(f"[iter1full] mixture {n_mix} behavior examples (no on-policy set)", flush=True)
         w_behavior = compute_advantage_weights(
             behavior, baseline, beta=args.beta, w_max=args.w_max,
-            per_policy_blend=args.per_policy_blend,
+            per_policy_blend=args.per_policy_blend, progress_lambda=args.progress_lambda,
         )
         lab_fork = _labelled(fork)
         all_examples = behavior + fork
@@ -204,6 +207,7 @@ def main() -> int:
         "top1": m["top1"], "top1_no_heuristic": m["top1_no_heuristic"],
         "value_auc": m.get("best_val_value_auc"),
         "config": {"beta": args.beta, "w_max": args.w_max, "per_policy_blend": args.per_policy_blend,
+                   "progress_lambda": args.progress_lambda,
                    "fork_weight": args.fork_weight, "epochs": args.epochs,
                    "n_behavior": m.get("n_examples", 0), "n_fork": len(fork),
                    "out_of_core": bool(args.shard_dir)},

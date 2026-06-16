@@ -268,6 +268,24 @@ def train_decision_policy(
 
 
 @torch.no_grad()
+def _shaped_return(won: bool, final_ante: int, progress_lambda: float) -> float:
+    """AWR scalar return R. progress_lambda=0 -> pure binary outcome (1.0/0.0),
+    BIT-IDENTICAL to the original (winners=1, losers=0). progress_lambda>0 blends
+    in a normalized progress signal so 'far but losing' runs earn partial credit:
+
+        R = (1-λ)·won + λ·ante_norm,   ante_norm = clip((final_ante - 1)/7, 0, 1)
+
+    A win has final_ante>=8 -> ante_norm≈1 -> R≈1 regardless of λ (winners are
+    UNAFFECTED); only losers' R rises with how far they reached. This lifts a
+    deep loss (ante 7) from advantage ~ -V(s) toward neutral, while an early
+    flop (ante 1-2) stays near 0 — exactly the signal binary reward discards."""
+    w = 1.0 if won else 0.0
+    if progress_lambda <= 0.0:
+        return w
+    ante_norm = min(1.0, max(0.0, (final_ante - 1) / 7.0))
+    return (1.0 - progress_lambda) * w + progress_lambda * ante_norm
+
+
 def compute_advantage_weights(
     examples: Sequence[TrainingExample],
     baseline: DecisionPolicyNet,
@@ -276,6 +294,7 @@ def compute_advantage_weights(
     w_max: float = 5.0,
     batch: int = 512,
     per_policy_blend: float = 0.0,
+    progress_lambda: float = 0.0,
 ) -> list[float]:
     """Per-example AWR weights = clip(exp(beta * (R - base)), 0, w_max), where
     R = run outcome (won) and `base` is the advantage baseline. With
@@ -310,7 +329,7 @@ def compute_advantage_weights(
         _, win_logit = baseline.candidate_logits(cb)
         v = torch.sigmoid(win_logit).tolist()
         for ex, vs in zip(chunk, v):
-            r = 1.0 if ex.value.won else 0.0
+            r = _shaped_return(ex.value.won, ex.value.final_ante, progress_lambda)
             base = vs
             if per_policy_blend > 0.0:
                 pm = policy_mean.get(ex.source, vs)
@@ -339,6 +358,7 @@ def compute_advantage_weights_sharded(
     beta: float = 2.0,
     w_max: float = 5.0,
     per_policy_blend: float = 0.0,
+    progress_lambda: float = 0.0,
     batch: int = 512,
 ) -> dict:
     """Per-shard AWR weight files (w{idx}.pkl, each aligned with _labelled(shard)).
@@ -370,7 +390,7 @@ def compute_advantage_weights_sharded(
             _, win_logit = baseline.candidate_logits(cb)
             v = torch.sigmoid(win_logit).tolist()
             for ex, vs in zip(chunk, v):
-                r = 1.0 if ex.value.won else 0.0
+                r = _shaped_return(ex.value.won, ex.value.final_ante, progress_lambda)
                 base = vs
                 if per_policy_blend > 0.0:
                     pm = policy_mean.get(ex.source, vs)
