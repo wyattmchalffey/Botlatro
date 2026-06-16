@@ -47,11 +47,13 @@ def _eval_seed(task) -> tuple[bool, int]:
 
     # Deterministic eval: single-threaded torch fixes the FP reduction order, so a
     # fixed policy on a fixed seed is bit-reproducible. Without this, multi-threaded
-    # reductions flip ~2% of argmax-boundary decisions run-to-run, and over a
-    # 4000-step game that compounds into different win/loss outcomes — a noise floor
-    # (~±5-9 wins at 1024 seeds) that swamps small gate effects and makes the CIs
-    # understate true variance. The pool already gives parallelism across PROCESSES,
-    # so one thread per worker keeps all cores busy at zero throughput cost.
+    # reductions flip ~1-2% of argmax-boundary decisions run-to-run, and over a
+    # 4000-step game that compounds into a different win/loss outcome — so the SAME
+    # policy benched twice gave 38 vs 42 wins / 1024, an irreproducible point
+    # estimate. (Single-process back-to-back is already 0/24; the sim is
+    # deterministic per seed — this is purely the parallel-eval threading layer.)
+    # The pool parallelizes across PROCESSES, so one thread per worker keeps all
+    # cores busy at zero throughput cost.
     import random
 
     import numpy as np
