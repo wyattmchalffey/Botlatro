@@ -382,6 +382,72 @@ def compute_advantage_weights_sharded(
     return {"weight_dir": weight_dir, "n_weights": n_written, "policy_mean": policy_mean}
 
 
+class _ShardStream(torch.utils.data.IterableDataset):
+    """Streams (example, weight) from a sharded store for DataLoader workers so
+    collation runs in PARALLEL processes — without this a GPU starves on the
+    single-threaded Python collate (measured ~3x the compute, i.e. ~97% GPU idle
+    on accelerated hardware). Each worker takes a disjoint shard slice
+    (i % num_workers == worker_id) and streams it through a cross-shard shuffle
+    buffer (the WebDataset pattern: mixes examples across shard boundaries for
+    better SGD than whole-shard ordering). The in-RAM `extra` set is handled by
+    the trainer's main loop, not here."""
+
+    def __init__(self, shard_files, weight_dir, seed, shuffle_buffer=20000):
+        self.shard_files = list(shard_files)
+        self.weight_dir = weight_dir
+        self.seed = seed
+        self.shuffle_buffer = shuffle_buffer
+
+    def __iter__(self):
+        import os
+        import pickle
+        import random as _r
+
+        info = torch.utils.data.get_worker_info()
+        wid = info.id if info else 0
+        nw = info.num_workers if info else 1
+        rng = _r.Random(self.seed * 1000 + wid)
+        mine = [i for i in range(len(self.shard_files)) if i % nw == wid]
+        rng.shuffle(mine)
+        buf: list = []
+        for i in mine:
+            with open(self.shard_files[i], "rb") as fh:
+                ex = pickle.load(fh)
+            lab = _labelled(ex)
+            ws = None
+            if self.weight_dir:
+                wp = _shard_weight_path(self.weight_dir, i)
+                if os.path.exists(wp):
+                    with open(wp, "rb") as fh:
+                        ws = pickle.load(fh)
+            for k, e in enumerate(lab):
+                buf.append((e, ws[k] if ws is not None else 1.0))
+                if len(buf) >= self.shuffle_buffer:
+                    j = rng.randrange(len(buf))
+                    buf[j], buf[-1] = buf[-1], buf[j]
+                    yield buf.pop()
+        rng.shuffle(buf)
+        yield from buf
+
+
+def _stream_collate(batch, n_neg):
+    """DataLoader collate_fn (runs in a worker): negative-sample + tensorize a
+    list of (example, weight) into (CandidateBatch, weight_tensor)."""
+    import random as _r
+
+    examples = [e for e, _w in batch]
+    weights = [w for _e, w in batch]
+    cb = collate_candidates_sampled(examples, n_neg, _r)
+    return cb, torch.tensor(weights, dtype=torch.float)
+
+
+def _seed_worker(_worker_id):
+    import random as _r
+
+    info = torch.utils.data.get_worker_info()
+    _r.seed((info.seed if info else 0) % (2 ** 32))
+
+
 def train_decision_policy_sharded(
     store,
     config: PolicyConfig | None = None,
@@ -412,15 +478,19 @@ def train_decision_policy_sharded(
     best_val_auc, best_state, best_epoch = -1.0, None, -1
     last_loss = 0.0
 
-    def _run_chunk(chunk, weights):
+    loader_workers = int(os.environ.get("BALATRO_LOADER_WORKERS", "0"))
+    use_weights = weight_dir is not None
+
+    def _run_cb(cb, weights):
         nonlocal last_loss
-        cb = collate_candidates_sampled(chunk, config.n_neg, rng).to(device)
+        cb = cb.to(device)
         logits, win_logit = net.candidate_logits(cb)
         if weights is None:
             policy_loss = F.cross_entropy(logits, cb.chosen)
         else:
             ce = F.cross_entropy(logits, cb.chosen, reduction="none")
-            w = torch.tensor(weights, dtype=torch.float, device=device)
+            w = weights.to(device) if torch.is_tensor(weights) \
+                else torch.tensor(weights, dtype=torch.float, device=device)
             policy_loss = (ce * w).sum() / w.sum().clamp_min(1e-6)
         value_loss = F.binary_cross_entropy_with_logits(win_logit, cb.won)
         loss = policy_loss + config.value_weight * value_loss
@@ -429,28 +499,52 @@ def train_decision_policy_sharded(
         opt.step()
         last_loss = float(loss.detach())
 
+    def _run_chunk(chunk, weights):
+        _run_cb(collate_candidates_sampled(chunk, config.n_neg, rng), weights)
+
+    def _train_extra():
+        # in-RAM extra (e.g. fork labels) — flat-weighted, ONCE per epoch (was
+        # erroneously re-trained per-shard in the old sync loop -> Nx over-weight).
+        if not extra:
+            return
+        eo = list(range(len(extra)))
+        rng.shuffle(eo)
+        for start in range(0, len(extra), bs):
+            idxs = eo[start:start + bs]
+            chunk = [extra[i] for i in idxs]
+            _run_chunk(chunk, [extra_weight] * len(idxs) if use_weights else None)
+
     for epoch in range(config.epochs):
         net.train()
-        for idx, examples in store.iter_shards(shuffle=True, rng=rng):
-            data = _labelled(examples)
-            shard_w = None
-            if weight_dir is not None:
-                wp = _shard_weight_path(weight_dir, idx)
-                if os.path.exists(wp):
-                    with open(wp, "rb") as fh:
-                        shard_w = pickle.load(fh)
-            # append the flat-weighted extra set into this shard's pool
-            pool = data + extra
-            pool_w = None
-            if shard_w is not None:
-                pool_w = list(shard_w) + [extra_weight] * len(extra)
-            order = list(range(len(pool)))
-            rng.shuffle(order)
-            for start in range(0, len(pool), bs):
-                idxs = order[start:start + bs]
-                chunk = [pool[i] for i in idxs]
-                w = [pool_w[i] for i in idxs] if pool_w is not None else None
-                _run_chunk(chunk, w)
+        if loader_workers > 0:
+            # parallel-collate path: N workers tensorize batches concurrently so
+            # the GPU stays fed (single-thread collate is ~3x the compute).
+            from functools import partial
+
+            loader = torch.utils.data.DataLoader(
+                _ShardStream(store.shard_files, weight_dir, config.seed + epoch),
+                batch_size=bs, collate_fn=partial(_stream_collate, n_neg=config.n_neg),
+                num_workers=loader_workers, prefetch_factor=2, worker_init_fn=_seed_worker,
+            )
+            for cb, w in loader:
+                _run_cb(cb, w if use_weights else None)
+        else:
+            for idx, examples in store.iter_shards(shuffle=True, rng=rng):
+                data = _labelled(examples)
+                shard_w = None
+                if weight_dir is not None:
+                    wp = _shard_weight_path(weight_dir, idx)
+                    if os.path.exists(wp):
+                        with open(wp, "rb") as fh:
+                            shard_w = pickle.load(fh)
+                order = list(range(len(data)))
+                rng.shuffle(order)
+                for start in range(0, len(data), bs):
+                    idxs = order[start:start + bs]
+                    chunk = [data[i] for i in idxs]
+                    w = [shard_w[i] for i in idxs] if shard_w is not None else None
+                    _run_chunk(chunk, w)
+        _train_extra()
         if val_data is not None:
             va = _held_out_value_auc(net, val_data, sample=config.eval_sample, seed=config.seed)
             if va > best_val_auc:
