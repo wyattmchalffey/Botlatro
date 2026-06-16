@@ -45,6 +45,23 @@ def _eval_seed(task) -> tuple[bool, int]:
     seed, ckpt = task
     from dataclasses import replace
 
+    # Deterministic eval: single-threaded torch fixes the FP reduction order, so a
+    # fixed policy on a fixed seed is bit-reproducible. Without this, multi-threaded
+    # reductions flip ~2% of argmax-boundary decisions run-to-run, and over a
+    # 4000-step game that compounds into different win/loss outcomes — a noise floor
+    # (~±5-9 wins at 1024 seeds) that swamps small gate effects and makes the CIs
+    # understate true variance. The pool already gives parallelism across PROCESSES,
+    # so one thread per worker keeps all cores busy at zero throughput cost.
+    import random
+
+    import numpy as np
+    import torch
+
+    torch.set_num_threads(1)
+    torch.manual_seed(0)
+    np.random.seed(0)
+    random.seed(0)
+
     from balatro_ai.api.state import with_derived_legal_actions
     from balatro_ai.bots.config import DEFAULT_CONFIG, bot_config_scope
     from balatro_ai.bots.registry import create_bot

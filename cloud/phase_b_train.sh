@@ -27,6 +27,10 @@ B0_EP="${B0_EP:-10}"; V0_EP="${V0_EP:-12}"; ITER_EP="${ITER_EP:-10}"
 export BALATRO_NO_FORESIGHT=shuffle
 export BALATRO_EXPAND_JOBS="$JOBS"
 export PYTHONPATH=src
+# Reproducible eval gate: stable hash ordering + single-thread torch per worker
+# (see _eval_seed). Cuts gate eval noise ~60% (2.0%->0.8% per-seed flips); the
+# ~1% residual is the sim's not-yet-seed-deterministic per-card/pack/boss RNG.
+export PYTHONHASHSEED=0
 export BALATRO_DEVICE="${BALATRO_DEVICE:-cuda}"   # GPU training; falls back to cpu if no CUDA
 # Parallel collation so the GPU never starves on single-threaded data prep
 # (measured: collate is ~3x the compute on CPU -> ~97% GPU idle without this).
