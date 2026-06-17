@@ -43,6 +43,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 def _eval_seed(task) -> tuple[bool, int]:
     """Drive `neural_policy_bot` (ckpt via env) on one seed; return (won, ante)."""
     seed, ckpt = task
+    # CPU eval: forked pool worker + the parent's post-training CUDA context = a
+    # deadlock if the worker touches CUDA. Single-game inference needs no GPU.
+    os.environ["BALATRO_DEVICE"] = "cpu"
     from dataclasses import replace
 
     # Deterministic eval: single-threaded torch fixes the FP reduction order, so a

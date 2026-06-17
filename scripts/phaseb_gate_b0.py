@@ -26,6 +26,15 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 def _eval_seed(args) -> bool:
     seed, ckpt = args
+    # CPU eval: this runs in a forked pool worker, and after GPU training the parent
+    # holds a CUDA context — a forked worker that touches CUDA DEADLOCKS (this hung
+    # the gate for 10h). Single-game inference doesn't need the GPU. Single torch
+    # thread also makes the bench bit-reproducible.
+    os.environ["BALATRO_DEVICE"] = "cpu"
+    import torch
+
+    torch.set_num_threads(1)
+    torch.manual_seed(0)
     from dataclasses import replace
 
     from balatro_ai.api.state import with_derived_legal_actions

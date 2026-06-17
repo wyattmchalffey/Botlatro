@@ -21,7 +21,10 @@ VENV="${BOTLATRO_VENV:-$HOME/botlatro-venv}"
 
 EVAL_SEEDS="${1:-2048}"
 ONPOLICY="${2:-15000}"
-JOBS="$(nproc 2>/dev/null || echo 8)"
+# nproc on a cloud GPU pod often reports the HOST cores (e.g. 256), not the vCPU
+# allocation — cap with JOBS=N. Also each ~1GB shard unpickles to ~12GB, so
+# BALATRO_LOADER_WORKERS must stay small (≈6 on a 125GB box) or the trainer OOMs.
+JOBS="${JOBS:-$(nproc 2>/dev/null || echo 8)}"
 B0_EP="${B0_EP:-10}"; V0_EP="${V0_EP:-12}"; ITER_EP="${ITER_EP:-10}"
 
 export BALATRO_NO_FORESIGHT=shuffle
@@ -45,10 +48,14 @@ python -c "import torch;print('[phaseB] torch',torch.__version__,'cuda',torch.cu
 step() { echo; echo "===== $* ====="; }
 
 step "1/4 B0 — BC (GPU) + plumbing gate (reuses Phase-A mix shards)"
-python scripts/phaseb_gate_b0.py --dataset "$D/cloud_mix.jsonl" \
-  --shard-dir "$SHARDS/mix" --runs-per-shard 500 \
-  --epochs "$B0_EP" --eval-seeds 512 --eval-offset 5100000 --workers "$JOBS" \
-  --ckpt "$D/cloud_b0.pt"
+if [[ "${SKIP_B0:-}" == "1" && -f "$D/cloud_b0.pt" ]]; then
+  echo "[skip] B0 — cloud_b0.pt exists (SKIP_B0=1); resuming from V0"
+else
+  python scripts/phaseb_gate_b0.py --dataset "$D/cloud_mix.jsonl" \
+    --shard-dir "$SHARDS/mix" --runs-per-shard 500 \
+    --epochs "$B0_EP" --eval-seeds 512 --eval-offset 5100000 --workers "$JOBS" \
+    --ckpt "$D/cloud_b0.pt"
+fi
 
 step "2/4 V0 — value-head salvage (GPU, reuses mix shards)"
 python scripts/phaseb_value_salvage.py --dataset "$D/cloud_mix.jsonl" \
