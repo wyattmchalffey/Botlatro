@@ -545,6 +545,13 @@ def train_decision_policy_sharded(
                 _ShardStream(store.shard_files, weight_dir, config.seed + epoch),
                 batch_size=bs, collate_fn=partial(_stream_collate, n_neg=config.n_neg),
                 num_workers=loader_workers, prefetch_factor=2, worker_init_fn=_seed_worker,
+                # MUST be spawn: by training time the net is already on CUDA, and
+                # Linux's default fork start-method gives workers a broken inherited
+                # CUDA context -> they die on startup and the main hangs in do_poll
+                # (0% GPU, 0% CPU). spawn = fresh workers, no inherited CUDA. No-op on
+                # Windows (spawn is already the default there, where this was validated).
+                multiprocessing_context="spawn",
+                persistent_workers=False,
             )
             for cb, w in loader:
                 _run_cb(cb, w if use_weights else None)
