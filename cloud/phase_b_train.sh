@@ -37,6 +37,11 @@ export PYTHONPATH=src
 # the sim (default sim seeds its RNG per game-seed and is deterministic).
 export PYTHONHASHSEED=0
 export BALATRO_DEVICE="${BALATRO_DEVICE:-cuda}"   # GPU training; falls back to cpu if no CUDA
+# 1 torch/BLAS thread per process: parallelism comes from the JOBS worker PROCESSES.
+# Without this, each torch worker spawns ~nproc intra-op threads, and nproc reports
+# the HOST (256) on a pod -> 32 gen workers x ~256 threads = ~8k threads -> thrash to
+# a standstill (on-policy gen stalled at 400/15000, load 152). One thread each fixes it.
+export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 # Parallel collation so the GPU never starves on single-threaded data prep
 # (measured: collate is ~3x the compute on CPU -> ~97% GPU idle without this).
 export BALATRO_LOADER_WORKERS="${BALATRO_LOADER_WORKERS:-$(( JOBS > 6 ? JOBS - 2 : 4 ))}"
@@ -58,9 +63,13 @@ else
 fi
 
 step "2/4 V0 — value-head salvage (GPU, reuses mix shards)"
-python scripts/phaseb_value_salvage.py --dataset "$D/cloud_mix.jsonl" \
-  --shard-dir "$SHARDS/mix" --heldout "$D/cloud_heldout.jsonl" --epochs "$V0_EP" \
-  --ckpt "$D/cloud_v0.pt"
+if [[ "${SKIP_V0:-}" == "1" && -f "$D/cloud_v0.pt" ]]; then
+  echo "[skip] V0 — cloud_v0.pt exists (SKIP_V0=1); resuming from on-policy gen"
+else
+  python scripts/phaseb_value_salvage.py --dataset "$D/cloud_mix.jsonl" \
+    --shard-dir "$SHARDS/mix" --heldout "$D/cloud_heldout.jsonl" --epochs "$V0_EP" \
+    --ckpt "$D/cloud_v0.pt"
+fi
 
 step "3/4 on-policy generation from B0 ($ONPOLICY, CPU on this box)"
 python scripts/phaseb_onpolicy_gen.py --ckpt "$D/cloud_b0.pt" \
