@@ -174,6 +174,11 @@ def main() -> int:
             baseline_ckpt=args.baseline_value,
         )
         val = load_or_expand_examples(args.heldout)  # deferred until after the AWR pass
+        if len(val) > 40000:  # ~40GB unsampled at 50k scale; 40k is ample for the value-AUC
+            import random as _vr
+            _vr.seed(0)
+            val = _vr.sample(val, 40000)
+            print(f"[iter1full] held-out sampled to {len(val)} examples (memory)", flush=True)
         net, m = train_decision_policy_sharded(
             store, cfg, val_examples=val, weight_dir=weight_dir,
             extra_examples=fork, extra_weight=args.fork_weight,
