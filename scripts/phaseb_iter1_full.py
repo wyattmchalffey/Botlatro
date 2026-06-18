@@ -143,7 +143,9 @@ def main() -> int:
             fork = pickle.load(fh)
         print(f"[iter1full] + {len(fork)} fork-audit search-improved play labels "
               f"(flat weight {args.fork_weight})", flush=True)
-    val = load_or_expand_examples(args.heldout)
+    # held-out `val` is loaded LATER, right before training — at 50k scale it is
+    # ~40GB in RAM, and keeping it out during the parallel AWR pass leaves headroom
+    # for the AWR worker pool.
     baseline = load_policy(args.baseline_value)
     cfg = PolicyConfig(epochs=args.epochs, weight_decay=1e-3, dropout=0.2, seed=0)
 
@@ -169,7 +171,9 @@ def main() -> int:
         compute_advantage_weights_sharded(
             store, baseline, weight_dir, beta=args.beta, w_max=args.w_max,
             per_policy_blend=args.per_policy_blend, progress_lambda=args.progress_lambda,
+            baseline_ckpt=args.baseline_value,
         )
+        val = load_or_expand_examples(args.heldout)  # deferred until after the AWR pass
         net, m = train_decision_policy_sharded(
             store, cfg, val_examples=val, weight_dir=weight_dir,
             extra_examples=fork, extra_weight=args.fork_weight,
@@ -195,6 +199,7 @@ def main() -> int:
         import statistics
         print(f"[iter1full] labelled: {len(_labelled(behavior))} behavior + {len(lab_fork)} fork; "
               f"AWR weight mean={statistics.mean(w_behavior):.3f} max={max(w_behavior):.2f}", flush=True)
+        val = load_or_expand_examples(args.heldout)
         net, m = train_decision_policy(all_examples, cfg, val_examples=val, example_weights=all_weights)
 
     print(f"[iter1full] policy: top1={m['top1']} top1_no_heuristic={m['top1_no_heuristic']} "

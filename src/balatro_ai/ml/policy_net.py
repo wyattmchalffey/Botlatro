@@ -349,6 +349,59 @@ def _shard_weight_path(weight_dir: str, idx: int) -> str:
     return os.path.join(weight_dir, f"w{idx:05d}.pkl")
 
 
+def _awr_count_shard(shard_file):
+    """Pool worker: unpickle one shard, return per-source (wins, totals)."""
+    import pickle
+    from collections import defaultdict
+
+    wins: dict = defaultdict(int)
+    tot: dict = defaultdict(int)
+    with open(shard_file, "rb") as fh:
+        examples = pickle.load(fh)
+    for ex in _labelled(examples):
+        tot[ex.source] += 1
+        wins[ex.source] += 1 if ex.value.won else 0
+    return dict(wins), dict(tot)
+
+
+def _awr_weight_shard(task):
+    """Pool worker (spawn): compute + write AWR weights for ONE shard. Reloads the
+    value head from its ckpt on CPU (fresh process, no inherited CUDA), so the slow
+    per-shard unpickle+collate+forward parallelizes across shards."""
+    import math
+    import os
+    import pickle
+
+    os.environ["BALATRO_DEVICE"] = "cpu"
+    import torch as _t
+
+    _t.set_num_threads(1)
+    (shard_file, weight_path, v0_ckpt, policy_mean,
+     beta, w_max, per_policy_blend, progress_lambda, batch) = task
+    baseline = load_policy(v0_ckpt)
+    baseline.eval()
+    with open(shard_file, "rb") as fh:
+        examples = pickle.load(fh)
+    data = _labelled(examples)
+    weights: list[float] = []
+    with _t.no_grad():
+        for i in range(0, len(data), batch):
+            chunk = data[i:i + batch]
+            cb = collate_candidates(chunk)
+            _, win_logit = baseline.candidate_logits(cb)
+            v = _t.sigmoid(win_logit).tolist()
+            for ex, vs in zip(chunk, v):
+                r = _shaped_return(ex.value.won, ex.value.final_ante, progress_lambda)
+                base = vs
+                if per_policy_blend > 0.0:
+                    pm = policy_mean.get(ex.source, vs)
+                    base = (1.0 - per_policy_blend) * vs + per_policy_blend * pm
+                weights.append(min(w_max, math.exp(beta * (r - base))))
+    with open(weight_path, "wb") as fh:
+        pickle.dump(weights, fh, protocol=pickle.HIGHEST_PROTOCOL)
+    return len(weights)
+
+
 @torch.no_grad()
 def compute_advantage_weights_sharded(
     store,
@@ -360,16 +413,51 @@ def compute_advantage_weights_sharded(
     per_policy_blend: float = 0.0,
     progress_lambda: float = 0.0,
     batch: int = 512,
+    baseline_ckpt: "str | None" = None,
 ) -> dict:
     """Per-shard AWR weight files (w{idx}.pkl, each aligned with _labelled(shard)).
     Two streaming passes: (1) global per-policy mean winrate over all shards,
-    (2) write weights per shard. Never holds more than one shard in RAM."""
+    (2) write weights per shard. Never holds more than one shard in RAM.
+
+    With baseline_ckpt set and BALATRO_AWR_JOBS>1, both passes run in a SPAWN pool
+    (each worker reloads the value head from baseline_ckpt on CPU) — the slow
+    per-shard unpickle+collate that made this ~13h single-threaded parallelizes
+    cleanly across shards to ~13h/N."""
     import os
     import pickle
     import math
     from collections import defaultdict
 
     os.makedirs(weight_dir, exist_ok=True)
+
+    awr_jobs = int(os.environ.get("BALATRO_AWR_JOBS", "1"))
+    if baseline_ckpt is not None and awr_jobs > 1:
+        import multiprocessing
+        from concurrent.futures import ProcessPoolExecutor
+
+        ctx = multiprocessing.get_context("spawn")
+        pmean: dict[str, float] = {}
+        if per_policy_blend > 0.0:
+            w_acc: dict[str, int] = defaultdict(int)
+            t_acc: dict[str, int] = defaultdict(int)
+            with ProcessPoolExecutor(max_workers=awr_jobs, mp_context=ctx) as ex:
+                for w, t in ex.map(_awr_count_shard, store.shard_files):
+                    for k, c in w.items():
+                        w_acc[k] += c
+                    for k, c in t.items():
+                        t_acc[k] += c
+            pmean = {k: w_acc[k] / max(1, t_acc[k]) for k in t_acc}
+        tasks = [(store.shard_files[idx], _shard_weight_path(weight_dir, idx),
+                  baseline_ckpt, pmean, beta, w_max, per_policy_blend, progress_lambda, batch)
+                 for idx in range(len(store.shard_files))]
+        n_par = 0
+        with ProcessPoolExecutor(max_workers=awr_jobs, mp_context=ctx) as ex:
+            for n in ex.map(_awr_weight_shard, tasks):
+                n_par += n
+        print(f"[awr] parallel weights done: {awr_jobs} workers, {n_par} weights "
+              f"over {len(store.shard_files)} shards", flush=True)
+        return {"weight_dir": weight_dir, "n_weights": n_par, "policy_mean": pmean}
+
     policy_mean: dict[str, float] = {}
     if per_policy_blend > 0.0:
         wins: dict[str, int] = defaultdict(int)
