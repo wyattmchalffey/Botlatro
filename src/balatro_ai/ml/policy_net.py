@@ -430,6 +430,27 @@ def compute_advantage_weights_sharded(
 
     os.makedirs(weight_dir, exist_ok=True)
 
+    # Resume: a completed AWR pass writes one w{idx}.pkl per shard, and the
+    # shard<->idx mapping is stable across runs (ShardedExampleStore enumerates
+    # shards in manifest order), so existing weight files stay aligned. Opt-in
+    # via BALATRO_AWR_RESUME=1 (explicit — a normal run never silently reuses
+    # weights) skips the expensive recompute AND its page-cache pre-fill, which
+    # otherwise leaves no headroom for the training data-loader workers.
+    if os.environ.get("BALATRO_AWR_RESUME") == "1":
+        n = len(store.shard_files)
+        paths = [_shard_weight_path(weight_dir, i) for i in range(n)]
+        if n > 0 and all(os.path.exists(p) and os.path.getsize(p) > 0 for p in paths):
+            total = 0
+            for p in paths:
+                with open(p, "rb") as fh:
+                    total += len(pickle.load(fh))
+            print(f"[awr] RESUME: all {n} weight files present, skipping recompute "
+                  f"({total} weights)", flush=True)
+            return {"weight_dir": weight_dir, "n_weights": total, "policy_mean": {}, "resumed": True}
+        missing = sum(1 for p in paths if not (os.path.exists(p) and os.path.getsize(p) > 0))
+        print(f"[awr] RESUME requested but {missing}/{n} weight files missing/empty "
+              f"-> full recompute", flush=True)
+
     awr_jobs = int(os.environ.get("BALATRO_AWR_JOBS", "1"))
     if baseline_ckpt is not None and awr_jobs > 1:
         import multiprocessing
@@ -534,6 +555,12 @@ class _ShardStream(torch.utils.data.IterableDataset):
                     j = rng.randrange(len(buf))
                     buf[j], buf[-1] = buf[-1], buf[j]
                     yield buf.pop()
+            # Free this shard (~12.5GB unpickled) BEFORE the next pickle.load:
+            # without this, `ex = pickle.load(...)` builds shard N+1 while shard N
+            # is still referenced (lab is rebound only afterwards), so each worker
+            # transiently holds TWO shards (~25GB). xN workers that doubled past the
+            # cgroup limit and OOM-killed the workers (main then hangs in do_poll).
+            ex = lab = ws = None
         rng.shuffle(buf)
         yield from buf
 
