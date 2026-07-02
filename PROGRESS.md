@@ -3324,6 +3324,47 @@
   self-play engine (FFI once per RUN — every per-decision hybrid measured <=1x) vs renting cores
   ($3-50/batch); the rng/pseudohash.rs + tw223 Rust pieces in the plan's diagram were never built.
 
+- **2026-06-19 CLOUD ITERATION-1 VERDICT (50k runs, the plan's actual test): NEUTRAL, trending
+  negative — the data-scale hypothesis is DEAD.** Full-fidelity Phase-B iter1 on RunPod GPU over
+  49,998 mixture runs / 6,417,737 examples (+ 15k on-policy runs from B0 + 7,880 fork-audit labels
+  at flat 5.0): iter1 53/2048 (2.59%) vs B0 69/2048 (3.37%) paired; d_winrate **-0.78pp** (95% CI
+  -1.83..+0.27), McNemar p=0.171, mean-ante +0.027 (CI -0.077..+0.132); ALL supervised metrics
+  regressed vs B0 (top1 0.835->0.764, no_heur 0.42->0.3695, value_auc ~0.72->0.6695). B0 itself
+  FAILED the pre-registered plumbing premise at this n (3.37% vs mixture 7.6-8.2%, disjoint CIs).
+  By cloud/README's own pre-registration: "if iteration-1 is still flat at this scale, the null is
+  real and the pivot to value-in-search is well-earned." Post-mortem (2026-07-01, probe scripts
+  `.data/_probe_awr_dist.py` / `.data/_probe_ckpt_diff.py`): (a) binary-outcome AWR degenerates to
+  run-level lottery reweighting — every winner run's mean weight in [3.53,5.00] vs every loser
+  run's in [0.51,0.99], zero overlap, within-run modulation 13.5x smaller in log-space than the
+  outcome gap, ESS halved — arithmetically "BC on lucky runs at ~5x", no credit assignment;
+  (b) EXECUTION CONFOUND: iter1 hardcoded wd 1e-3/dropout 0.2 vs B0's 1e-4/0.1
+  (phaseb_iter1_full.py:150) and retrained from scratch — checkpoint relL2 ~1.0 vs B0, so the
+  delta is unattributable to AWR alone; (c) BUG: _train_extra trains the all-won=True fork labels
+  as the LAST batches each epoch with UNWEIGHTED value BCE -> iter1's value head saturated (mean
+  win-prob 0.9999 on 19%-base data); (d) fork labels were ~0.4% of gradient mass — numerically
+  invisible. Verdict artifacts: `.data/cloud_iter1_result.json`, checkpoints `cloud_b0/v0/iter1.pt`.
+
+- **2026-07-02 VALUE-IN-SEARCH 1-PLY TEST (the 2026-06-14 fork (a), run at last): NEGATIVE/NULL —
+  V0 has no per-decision play signal above its noise floor; the operator has nothing to amplify.**
+  New gate `scripts/phaseb_gate_value1ply.py`: B0 proposes top-8 play/discard candidates; each is
+  1-ply-expanded via forward_sim (draws from the BLINDED DeckModel belief, CRN across candidates)
+  and re-ranked by cloud_v0.pt's state-only value head; all other phases pure B0 argmax (paired,
+  honest, CPU-deterministic, consumable actions passed through untouched). Results (16-seed paired
+  smokes — conclusive because the mechanism, not the estimate, is the finding): pure argmax-V
+  overrode 43.8% of play decisions and cost **-1.25 mean antes** (CI -2.51..+0.01) — overrides fire
+  on median V-spreads of 0.004 (noise); with a 0.02 confidence margin, overrides collapse to
+  **1/748 (0.1%)** and behavior is byte-identical to B0 (delta exactly 0.000). Diagnostic
+  (`.data/_probe_v1ply_diag.py`): V0's only above-noise preference is clear-vs-non-clear
+  (gaps 0.03-0.05, 6/6 correct) — but the policy/heuristic already takes those plays. This
+  reproduces the shop-ranker verdict ("the threshold only becomes safe when it suppresses
+  essentially all overrides") on the PLAY surface with the 50k-run value head. Combined read:
+  offline AWR null (06-14, n=256) + cloud AWR negative (06-19, n=2048) + value-1-ply null/negative
+  (07-02) all share one root cause — **the learned value lacks per-decision resolution**, so
+  neither re-weighting nor shallow search can extract improvement from it. Per the pre-registered
+  fallback ("search amplifies a good value function, it does not repair a bad one"), the design
+  review fires: the next lever is a BETTER VALUE TARGET (P2 self-play TD(lambda)+target-net on
+  planner runs, plan-horizon leaf) or the P1 whole-run planner — not another operator on V0.
+
 ## Next Steps
 
 > **Top priority (2026-06-09): execute `SUPERHUMAN_ROADMAP.md`.** The shop-ranker steps that
